@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <AssemblyName>GameOverlay.Windows</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <EnableXamlDesigner>true</EnableXamlDesigner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="0.png" />
+    <None Remove="croix_deplacement.png" />
+    <None Remove="kikimeter_logo.png" />
+    <None Remove="logo_loot.png" />
+    <None Remove="NP-BG-3.png" />
+    <None Remove="NP-SearchBar-1.png" />
+    <None Remove="parameter.png" />
+    <None Remove="Paysage.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameOverlay.Kikimeter\GameOverlay.Kikimeter.csproj" />
+    <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
+    <ProjectReference Include="..\GameOverlay.Themes\GameOverlay.Themes.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="0.png" />
+    <Resource Include="croix_deplacement.png" />
+    <Resource Include="kikimeter_logo.png" />
+    <Resource Include="logo_loot.png" />
+    <Resource Include="NP-BG-3.png" />
+    <Resource Include="NP-SearchBar-1.png" />
+    <Resource Include="parameter.png" />
+    <Resource Include="Paysage.png" />
+  </ItemGroup>
+
+</Project>
+

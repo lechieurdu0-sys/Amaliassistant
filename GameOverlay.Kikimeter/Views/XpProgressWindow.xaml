@@ -1,0 +1,112 @@
+<Window x:Class="GameOverlay.Kikimeter.Views.XpProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:converters="clr-namespace:GameOverlay.Kikimeter.Converters"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        mc:Ignorable="d"
+        d:DesignHeight="400" d:DesignWidth="340"
+        Title="Barre d'XP"
+        Width="340"
+        Height="62"
+        MinWidth="220"
+        MinHeight="48"
+        WindowStartupLocation="Manual"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="CanResizeWithGrip"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0"
+                             CornerRadius="0"
+                             GlassFrameThickness="0"
+                             ResizeBorderThickness="5"
+                             UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <converters:RatioToWidthConverter x:Key="ProgressRatioToWidthConverter"/>
+    </Window.Resources>
+    <Window.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="Masquer la barre d'XP"
+                      Click="HideMenuItem_Click" />
+            <Separator />
+            <MenuItem Header="Changer la couleur..."
+                      Click="ColorMenuItem_Click" />
+            <MenuItem Header="Réinitialiser la couleur"
+                      Click="ResetColorMenuItem_Click" />
+            <MenuItem Header="Réinitialiser la progression"
+                      Click="ResetMenuItem_Click" />
+            <Separator />
+            <MenuItem Header="Réinitialiser toutes les barres"
+                      Click="ResetAllMenuItem_Click" />
+        </ContextMenu>
+    </Window.ContextMenu>
+    <Border Background="{DynamicResource SectionBackgroundBrush}"
+            BorderBrush="{DynamicResource CyanAccentBrush}"
+            BorderThickness="1"
+            Padding="4,2"
+            CornerRadius="8"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Text="{Binding EntityName}"
+                       Visibility="Collapsed"/>
+
+            <Grid Grid.Column="1"
+                  Height="22"
+                  VerticalAlignment="Center"
+                  Margin="0,0,12,0">
+                <Grid ClipToBounds="True">
+                    <Border Background="{DynamicResource SectionBackgroundBrush}"
+                            CornerRadius="4"
+                            Opacity="0.85"/>
+                    <Border Background="{Binding ProgressBrush}"
+                            CornerRadius="4"
+                            HorizontalAlignment="Left">
+                        <Border.Width>
+                            <MultiBinding Converter="{StaticResource ProgressRatioToWidthConverter}">
+                                <Binding Path="ProgressRatio"/>
+                                <Binding RelativeSource="{RelativeSource AncestorType=Grid}" Path="ActualWidth"/>
+                            </MultiBinding>
+                        </Border.Width>
+                    </Border>
+                </Grid>
+
+                <TextBlock Text="{Binding EntityName}"
+                           x:Name="EntityNameTextBlock"
+                           FontWeight="SemiBold"
+                           FontSize="11"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource CyanAccentBrush}"
+                           Margin="8,0,0,0"
+                           TextTrimming="CharacterEllipsis"/>
+            </Grid>
+
+            <TextBlock Grid.Column="2"
+                       Text="{Binding TotalExperienceDisplay}"
+                       FontWeight="SemiBold"
+                       FontSize="12"
+                       Foreground="{DynamicResource CyanAccentBrush}"
+                       VerticalAlignment="Center"
+                       Margin="0,0,4,0"/>
+
+            <ResizeGrip Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="4,-6,-6,0"
+                        Visibility="Visible"/>
+        </Grid>
+    </Border>
+</Window>
+

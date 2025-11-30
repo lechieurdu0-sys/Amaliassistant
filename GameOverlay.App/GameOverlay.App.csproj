@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
+    <ProjectReference Include="..\GameOverlay.Windows\GameOverlay.Windows.csproj" />
+    <ProjectReference Include="..\GameOverlay.Kikimeter\GameOverlay.Kikimeter.csproj" />
+    <ProjectReference Include="..\GameOverlay.Themes\GameOverlay.Themes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+    <PackageReference Include="System.Windows.Forms" Version="4.0.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableXamlDesigner>true</EnableXamlDesigner>
+    <AssemblyTitle>Amaliassistant</AssemblyTitle>
+    <AssemblyProduct>Amaliassistant</AssemblyProduct>
+    <AssemblyCompany>Amaliassistant</AssemblyCompany>
+    <AssemblyDescription>Overlay de sites web pour jeux - Optimisé Windows 11</AssemblyDescription>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <ApplicationIcon>Amalia.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="background.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Amalia.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

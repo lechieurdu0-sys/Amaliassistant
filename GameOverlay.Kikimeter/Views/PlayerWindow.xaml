@@ -1,0 +1,253 @@
+<Window x:Class="GameOverlay.Kikimeter.Views.PlayerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        d:DesignHeight="350" d:DesignWidth="400"
+        x:Name="PlayerWindowControl"
+        Height="350" Width="400"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="CanResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        MouseDown="Window_MouseDown"
+        MouseMove="Window_MouseMove"
+        MouseLeftButtonUp="Window_MouseLeftButtonUp"
+        RenderOptions.BitmapScalingMode="HighQuality"
+        RenderOptions.ClearTypeHint="Enabled">
+    <Window.Resources>
+        <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF00BFFF"/>
+        <SolidColorBrush x:Key="SectionBackgroundBrush" Color="#80000000"/>
+        
+        <!-- Style pour scrollbar fine -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style TargetType="ScrollViewer">
+            <Setter Property="ScrollBar.Width" Value="6"/>
+        </Style>
+    </Window.Resources>
+    <Border x:Name="MainBorder" 
+            Background="Transparent" 
+            BorderBrush="{DynamicResource CyanAccentBrush}" 
+            BorderThickness="2"
+            CornerRadius="5"
+            RenderOptions.BitmapScalingMode="HighQuality"
+            UseLayoutRounding="True"
+            MouseRightButtonDown="MainBorder_MouseRightButtonDown">
+        <Grid x:Name="MainGrid" UseLayoutRounding="True">
+            <Grid.LayoutTransform>
+                <ScaleTransform x:Name="WindowScale" ScaleX="1" ScaleY="1"/>
+            </Grid.LayoutTransform>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="22"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Barre de titre avec contrôles -->
+            <Grid Grid.Row="0" Background="#80000000">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <TextBlock Grid.Column="0"
+                           Text="📊" 
+                           FontSize="13" 
+                           FontWeight="Bold" 
+                           Foreground="{DynamicResource CyanAccentBrush}"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           Margin="8,1"/>
+                
+                <CheckBox x:Name="BackToNormalModeCheckbox"
+                         Grid.Column="1"
+                         Content="Mode normal"
+                         FontSize="10"
+                         Foreground="{DynamicResource CyanAccentBrush}"
+                         VerticalAlignment="Center"
+                         Margin="8,0"
+                         Checked="ReturnToMainCheckBox_Checked"
+                         Unchecked="ReturnToMainCheckBox_Unchecked" />
+                
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,1">
+                    <Button x:Name="MinimizeButton" 
+                            Content="─" 
+                            Width="18" 
+                            Height="18"
+                            Click="MinimizeButton_Click"
+                            Background="#80000000"
+                            Foreground="{DynamicResource CyanAccentBrush}"
+                            BorderBrush="{DynamicResource CyanAccentBrush}"
+                            FontWeight="SemiBold"
+                            FontSize="11"
+                            Padding="0"/>
+                    <Button x:Name="CloseButton" 
+                            Content="✕" 
+                            Width="18" 
+                            Height="18"
+                            Click="CloseButton_Click"
+                            Background="#80000000"
+                            Foreground="{DynamicResource CyanAccentBrush}"
+                            BorderBrush="{DynamicResource CyanAccentBrush}"
+                            FontWeight="SemiBold"
+                            FontSize="11"
+                            Margin="4,0,0,0"
+                            Padding="0"/>
+                </StackPanel>
+            </Grid>
+            
+            <!-- Contenu principal avec Border comme dans la fenêtre principale -->
+            <Border Grid.Row="1" 
+                    BorderBrush="{DynamicResource CyanAccentBrush}" 
+                    BorderThickness="1" 
+                    Margin="3,0,3,3" 
+                    Padding="5,2,5,2"
+                    Background="{DynamicResource SectionBackgroundBrush}"
+                    CornerRadius="2">
+                <StackPanel>
+                    <!-- En attente/Nom du joueur et DPT centré sur la même ligne -->
+                    <Grid Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="TurnsText"
+                                   Grid.Column="0"
+                                   Text="En attente..." 
+                                   FontSize="12"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CyanAccentBrush}"/>
+                        <TextBlock x:Name="DPTText"
+                                   Grid.Column="1"
+                                   Text="{Binding DPTDisplay}" 
+                                   FontSize="12"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CyanAccentBrush}"/>
+                    </Grid>
+                    
+                    <!-- Dégâts infligés -->
+                    <Grid Margin="0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="55"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Dmg:" 
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Foreground="#FF8888"/>
+                        <Grid Grid.Column="1" Margin="4,0.5,1,0.5">
+                            <ProgressBar x:Name="DamageProgressBar"
+                                Height="16" 
+                                         Foreground="#FF4444"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                RenderOptions.BitmapScalingMode="HighQuality"
+                                Maximum="1"/>
+                            <TextBlock x:Name="DamageText"
+                                       FontSize="10"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="White"
+                                       FontWeight="Bold"/>
+                        </Grid>
+                    </Grid>
+                    
+                    <!-- Dégâts subis -->
+                    <Grid Margin="0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="55"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Recu:" 
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Foreground="#FFAA88"/>
+                        <Grid Grid.Column="1" Margin="4,0.5,1,0.5">
+                            <ProgressBar x:Name="ReceivedProgressBar"
+                                Height="16" 
+                                         Foreground="#FF8800"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                RenderOptions.BitmapScalingMode="HighQuality"
+                                Maximum="1"/>
+                            <TextBlock x:Name="ReceivedText"
+                                       FontSize="10"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="White"
+                                       FontWeight="Bold"/>
+                        </Grid>
+                    </Grid>
+                    
+                    <!-- Soins prodigués -->
+                    <Grid Margin="0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="55"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Soin:" 
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Foreground="#88FF88"/>
+                        <Grid Grid.Column="1" Margin="4,0.5,1,0.5">
+                            <ProgressBar x:Name="HealingProgressBar"
+                                Height="16" 
+                                         Foreground="#44FF44"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                RenderOptions.BitmapScalingMode="HighQuality"
+                                Maximum="1"/>
+                            <TextBlock x:Name="HealingText"
+                                       FontSize="10"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="White"
+                                       FontWeight="Bold"/>
+                        </Grid>
+                    </Grid>
+                    
+                    <!-- Bouclier donné -->
+                    <Grid Margin="0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="55"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Bouclier:" 
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Foreground="#88AAFF"/>
+                        <Grid Grid.Column="1" Margin="4,0.5,1,0.5">
+                            <ProgressBar x:Name="ShieldProgressBar"
+                                Height="16" 
+                                         Foreground="#44AAFF"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                RenderOptions.BitmapScalingMode="HighQuality"
+                                Maximum="1"/>
+                            <TextBlock x:Name="ShieldText"
+                                       FontSize="10"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="White"
+                                       FontWeight="Bold"/>
+                        </Grid>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
+

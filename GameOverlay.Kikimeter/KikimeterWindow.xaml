@@ -1,0 +1,652 @@
+<Window x:Class="GameOverlay.Kikimeter.KikimeterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        xmlns:local="clr-namespace:GameOverlay.Kikimeter.Models;assembly=GameOverlay.Kikimeter"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        d:DesignHeight="600"
+        Title="📊"
+        Height="200"
+        Width="288"
+        MinHeight="125"
+        MinWidth="200"
+        MaxHeight="2000"
+        MaxWidth="406"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="{x:Null}"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        RenderOptions.BitmapScalingMode="HighQuality"
+        RenderOptions.ClearTypeHint="Enabled"
+        RenderOptions.EdgeMode="Aliased"
+        MouseDown="Window_MouseDown"
+        MouseMove="Window_MouseMove"
+        MouseLeftButtonUp="Window_MouseLeftButtonUp" Foreground="{x:Null}">
+    <FrameworkElement.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GameOverlay.Kikimeter;component/Views/PlayerStatsTemplate.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF00BFFF" />
+            <SolidColorBrush x:Key="SectionBackgroundBrush" Color="#20000000" />
+            <ItemsPanelTemplate x:Key="VerticalPlayersItemsPanelTemplate">
+                <StackPanel Orientation="Vertical" Margin="0" VerticalAlignment="Top" UseLayoutRounding="True"/>
+            </ItemsPanelTemplate>
+            <ItemsPanelTemplate x:Key="HorizontalPlayersItemsPanelTemplate">
+                <WrapPanel Orientation="Horizontal" IsItemsHost="True"/>
+            </ItemsPanelTemplate>
+            <Style x:Key="ClassIconImageStyle" TargetType="Image">
+                <Setter Property="Stretch" Value="UniformToFill"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="RenderOptions.BitmapScalingMode" Value="HighQuality"/>
+                <Setter Property="RenderOptions.EdgeMode" Value="Aliased"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+            <Style x:Key="HeaderToggleButtonStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="18"/>
+                <Setter Property="Height" Value="18"/>
+                <Setter Property="Margin" Value="0,0,6,0"/>
+                <Setter Property="Background" Value="{DynamicResource SectionBackgroundBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="FontSize" Value="9"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="3">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsChecked" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource CyanAccentBrush}"/>
+                        <Setter Property="Foreground" Value="#FF000000"/>
+                    </Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="BorderBrush" Value="#FFFFFFFF"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="{x:Type CheckBox}" TargetType="{x:Type CheckBox}">
+                <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type CheckBox}">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="18" Height="18"
+                                        Background="{DynamicResource SectionBackgroundBrush}"
+                                        BorderBrush="{DynamicResource CyanAccentBrush}"
+                                        BorderThickness="2"
+                                        CornerRadius="2"
+                                        Margin="0,0,6,0">
+                                    <Path x:Name="CheckMark"
+                                          Data="M0,3 L3,6 L8,1"
+                                          Stroke="{DynamicResource CyanAccentBrush}"
+                                          StrokeThickness="2"
+                                          Visibility="Collapsed"
+                                          Margin="3" />
+                                </Border>
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="ToggleButton.IsChecked" Value="True">
+                                    <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- Template pour l'état "En attente de combat" - avec message "en attente d'un combat..." mais sans nom, DPT et icône de classe -->
+            <DataTemplate x:Key="PlayerStatsWaitingTemplate">
+                <Border BorderThickness="0" 
+                        Padding="0,0,0,0"
+                        Margin="0,0,0,4"
+                        CornerRadius="0"
+                        VerticalAlignment="Top"
+                        ClipToBounds="False"
+                        HorizontalAlignment="{Binding DataContext.PlayerModuleHorizontalAlignment, RelativeSource={RelativeSource AncestorType=Window}}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Width" Value="{Binding DataContext.PlayerModuleWidth, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                            <Setter Property="Margin" Value="0,0,0,4"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.PlayerModuleWidth, RelativeSource={RelativeSource AncestorType=Window}}" Value="{x:Static sys:Double.NaN}">
+                                    <Setter Property="Width" Value="235"/>
+                                    <Setter Property="ClipToBounds" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Margin="-10,1,0,1" VerticalAlignment="Top" UseLayoutRounding="True">
+                        <!-- Image de croix de déplacement au-dessus de breed_nom_dpt -->
+                        <Grid HorizontalAlignment="Left" Margin="0,0,0,0" Width="25" Height="25">
+                            <Image Source="/GameOverlay.Kikimeter;component/Resources/Assets/kikimeter/croix_deplacement.png" 
+                                   VerticalAlignment="Center" 
+                                   HorizontalAlignment="Center"
+                                   Width="25"
+                                   Height="25"
+                                   Stretch="Uniform"
+                                   Opacity="1.0"
+                                   Cursor="Hand"/>
+                        </Grid>
+
+                        <!-- Nom du joueur avec icône de classe -->
+                        <Grid x:Name="breed_nom_dpt" Margin="0,0,0,0" Width="190" HorizontalAlignment="Left" MinHeight="28" Visibility="Visible">
+                            <Grid.Background>
+                                <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/EndTurnWidgetBackground.png"/>
+                            </Grid.Background>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="221.11"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Icône de classe - masquée -->
+                            <Border Grid.Column="0"
+                                    Height="28"
+                                    Margin="0,0,194,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <Image x:Name="breed" Source="{Binding ClassIconImage}"
+                                       Stretch="UniformToFill"
+                                       SnapsToDevicePixels="True"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       RenderOptions.EdgeMode="Aliased"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" 
+                                       Height="22" 
+                                       Width="22" Margin="1,-2,0,0"/>
+                            </Border>
+                            <!-- Message d'attente -->
+                            <TextBlock x:Name="nom_du_joueur"
+                                       Grid.Column="0"
+                                       Text="en attente d'un combat..."
+                                       FontWeight="Bold" 
+                                       FontSize="12"
+                                       Foreground="#FFA07C58"
+                                       VerticalAlignment="Center" 
+                                       Margin="25,-7,0,-11" 
+                                       Height="22"
+                                       HorizontalAlignment="Left"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <!-- DPT - masqué -->
+                            <TextBlock x:Name="DPT" 
+                                       Grid.Column="0"
+                                       Text="{Binding DamagePerTurn, StringFormat=DPT: {0}}" 
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="#FFFF7979" 
+                                       Margin="114,5,32,3"
+                                       Visibility="Collapsed"/>
+                        </Grid>
+
+                        <!-- Grille pour gérer toutes les progress bars -->
+                        <Grid x:Name="StatsGrid" Margin="0,-5,0,0" Height="100" Width="234" HorizontalAlignment="Left">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.IsCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="35"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Canvas pour les images et les Grid de progress bars -->
+                            <Canvas x:Name="kikimeter" Grid.Column="0" 
+                                        Grid.ColumnSpan="2"
+                                        Grid.Row="0"
+                                        ClipToBounds="False" Margin="-1,0,119,4" Width="235" Height="95">
+                                <Canvas.Background>
+                                    <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/EndTurnWidgetBackground.png"/>
+                                </Canvas.Background>
+
+                                <!-- Dégâts infligés -->
+                                <Grid x:Name="progressbar_dégat" Canvas.Left="35"
+                                      Canvas.Top="3"
+                                      Width="200"
+                                      Height="9" 
+                                      Margin="-6.5,5,0,0"
+                                      Panel.ZIndex="0">
+                                    <Grid.Background>
+                                        <SolidColorBrush Color="#FFA6906F" Opacity="0.53"/>
+                                    </Grid.Background>
+                                    <ProgressBar 
+                                         Value="{Binding DamageDealtRatio, Mode=OneWay}" 
+                                         Maximum="1" 
+                                         Foreground="#FFF16000"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                         RenderOptions.BitmapScalingMode="HighQuality"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center" 
+                                         Height="12"
+                                         Panel.ZIndex="0">
+                                        <ProgressBar.BorderBrush>
+                                            <SolidColorBrush Color="#FF7D775B" Opacity="0.535"/>
+                                        </ProgressBar.BorderBrush>
+                                    </ProgressBar>
+                                    <TextBlock Text="{Binding DamageDealt}" 
+                                               FontSize="10"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="White"
+                                               FontWeight="Bold"
+                                               Panel.ZIndex="1"/>
+                                    <Image x:Name="overlay_dégat"
+                                           Margin="-4,-6,-2.2,-7"
+                                           Source="/GameOverlay.Kikimeter;component/Views/xp_progress_bar.png"
+                                           Stretch="Fill"
+                                           Panel.ZIndex="2"
+                                           Tag="progressbar_dégat"/>
+                                </Grid>
+
+                                <!-- Dégâts subis -->
+                                <Grid x:Name="progressbar_dégat_reçut" Canvas.Left="35"
+                                      Canvas.Top="26"
+                                      Width="200"
+                                      Height="11" 
+                                      Margin="-6.5,4,0,0"
+                                      Panel.ZIndex="0">
+                                    <ProgressBar 
+                                         Value="{Binding DamageTakenRatio, Mode=OneWay}" 
+                                         Maximum="1"
+                                         Height="12" 
+                                         Foreground="#FFC01B01"
+                                         CacheMode="BitmapCache"
+                                         RenderOptions.BitmapScalingMode="HighQuality"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center"
+                                         Panel.ZIndex="0">
+                                        <ProgressBar.BorderBrush>
+                                            <SolidColorBrush Color="#FFA6906F" Opacity="0.5"/>
+                                        </ProgressBar.BorderBrush>
+                                        <ProgressBar.Background>
+                                            <SolidColorBrush Color="#40000000" Opacity="0.5"/>
+                                        </ProgressBar.Background>
+                                    </ProgressBar>
+                                    <TextBlock Text="{Binding DamageTaken}" 
+                                               FontSize="10"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="White"
+                                               FontWeight="Bold"
+                                               Panel.ZIndex="1"/>
+                                    <Image x:Name="overlay_dégat_reçut"
+                                           Margin="-10,-5,-2.4,-5"
+                                           Source="/GameOverlay.Kikimeter;component/Views/xp_progress_bar.png"
+                                           Stretch="Fill"
+                                           Panel.ZIndex="2"
+                                           Tag="progressbar_dégat_reçut"/>
+                                </Grid>
+
+                                <!-- Image Dégâts subis -->
+                                <Image x:Name="dégats_reçut"
+                                       Source="/GameOverlay.Kikimeter;component/Views/StatSlots11.png"
+                                       Width="45"
+                                       Height="45"
+                                       Canvas.Left="-5"
+                                       Canvas.Top="8.5"
+                                       RenderTransformOrigin="0.5,0.5" 
+                                       Margin="0,7,0,0"
+                                       Panel.ZIndex="3"
+                                       Tag="progressbar_dégat_reçut"/>
+
+                                <!-- Image Dégâts infligés -->
+                                <Image x:Name="dégats"
+                                       Source="/GameOverlay.Kikimeter;component/Views/StatSlots08.png"
+                                       Width="45"
+                                       Height="45"
+                                       Canvas.Left="-5"
+                                       Canvas.Top="-15.5"
+                                       RenderTransformOrigin="0.5,0.5" 
+                                       Margin="0,9,0,0"
+                                       Panel.ZIndex="4"
+                                       Tag="progressbar_dégat"/>
+
+                                <!-- Bouclier donné -->
+                                <Grid x:Name="progressbar_bouclier" Canvas.Left="35"
+                                      Canvas.Top="49"
+                                      Width="200"
+                                      Height="10" 
+                                      Margin="-6.5,4,0,0"
+                                      Panel.ZIndex="0">
+                                    <ProgressBar 
+                                         Value="{Binding ShieldGivenRatio, Mode=OneWay}" 
+                                         Maximum="1"
+                                         Height="12" 
+                                         Foreground="#FF2CCA85"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                         RenderOptions.BitmapScalingMode="HighQuality"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center"
+                                         Panel.ZIndex="0">
+                                        <ProgressBar.BorderBrush>
+                                            <SolidColorBrush Color="#FFA6906F" Opacity="0.5"/>
+                                        </ProgressBar.BorderBrush>
+                                    </ProgressBar>
+                                    <TextBlock Text="{Binding ShieldGiven}" 
+                                               FontSize="10"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="White"
+                                               FontWeight="Bold"
+                                               Panel.ZIndex="1"/>
+                                    <Image x:Name="overlay_bouclier"
+                                           Margin="-4,-6,-2.4,-6"
+                                           Source="/GameOverlay.Kikimeter;component/Views/xp_progress_bar.png"
+                                           Stretch="Fill"
+                                           Panel.ZIndex="2"
+                                           Tag="progressbar_bouclier"/>
+                                </Grid>
+
+                                <!-- Image Bouclier donné -->
+                                <Image x:Name="bouclier"
+                                       Source="/GameOverlay.Kikimeter;component/Views/StatSlots01.png"
+                                       Width="45"
+                                       Height="45"
+                                       Canvas.Left="-5"
+                                       Canvas.Top="22.5"
+                                       RenderTransformOrigin="0.5,0.5" 
+                                       Margin="0,15,0,0"
+                                       Panel.ZIndex="3"
+                                       Tag="progressbar_bouclier"/>
+
+                                <!-- Soins prodigués -->
+                                <Grid x:Name="progressbar_soins" Canvas.Left="35"
+                                      Canvas.Top="72"
+                                      Width="201"
+                                      Height="10" 
+                                      Margin="-7,3,0,0"
+                                      Panel.ZIndex="0">
+                                    <ProgressBar 
+                                         Value="{Binding HealingDoneRatio, Mode=OneWay}" 
+                                         Maximum="1"
+                                         Height="13" 
+                                         Foreground="#FFFB5F5D"
+                                         Background="#40000000"
+                                         CacheMode="BitmapCache"
+                                         RenderOptions.BitmapScalingMode="HighQuality"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center"
+                                         Panel.ZIndex="0">
+                                        <ProgressBar.BorderBrush>
+                                            <SolidColorBrush Color="#FFB5B385" Opacity="0.5"/>
+                                        </ProgressBar.BorderBrush>
+                                    </ProgressBar>
+                                    <TextBlock Text="{Binding HealingDone}" 
+                                               FontSize="10"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="White"
+                                               FontWeight="Bold"
+                                               Panel.ZIndex="1"/>
+                                    <Image x:Name="overlay_soins"
+                                           Margin="-4,-6,-2.4,-6"
+                                           Source="/GameOverlay.Kikimeter;component/Views/xp_progress_bar.png"
+                                           Stretch="Fill"
+                                           Panel.ZIndex="2"
+                                           Tag="progressbar_soins"/>
+                                </Grid>
+
+                                <!-- Image Soins prodigués -->
+                                <Image x:Name="Soins"
+                                       Source="/GameOverlay.Kikimeter;component/Views/StatSlots07.png"
+                                       Width="45"
+                                       Height="45"
+                                       Canvas.Left="-5"
+                                       Canvas.Top="32.5"
+                                       RenderTransformOrigin="0.5,0.5" 
+                                       Margin="0,27,0,0"
+                                       Panel.ZIndex="3"
+                                       Tag="progressbar_soins"/>
+                            </Canvas>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </DataTemplate>
+        </ResourceDictionary>
+    </FrameworkElement.Resources>
+    <Border x:Name="MainBorder"
+            BorderThickness="0"
+            CornerRadius="0"
+            RenderOptions.BitmapScalingMode="HighQuality"
+            UseLayoutRounding="True" Margin="0,0,0,-473" Padding="13,0,0,0" Height="1073" Width="285">
+        <Grid x:Name="MainGrid" UseLayoutRounding="True"
+              RenderOptions.BitmapScalingMode="HighQuality" Margin="0,0,-1,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Grid.LayoutTransform>
+                <ScaleTransform x:Name="WindowScale" ScaleX="1" ScaleY="1"/>
+            </Grid.LayoutTransform>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1073" />
+                <RowDefinition x:Name="StatusBarRow" Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="-15,0,262,1047" 
+                  ClipToBounds="False" Width="26" Cursor="SizeAll">
+                <!-- Image de croix de déplacement - seule zone de déplacement -->
+                <Image x:Name="croix_deplacement" Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png" 
+                       VerticalAlignment="Center" 
+                          HorizontalAlignment="Center"
+                       Width="26"
+                       Height="26"
+                       Stretch="Uniform"
+                       Opacity="1.0"
+                       Cursor="SizeAll"
+                       IsHitTestVisible="True"
+                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+                       Panel.ZIndex="1"/>
+
+                <!-- Flèche de rétractation/extensions - placée à côté de la croix de déplacement -->
+            </Grid>
+            <Grid Width="288" Margin="-15,26,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Canvas pour positionner le Border rouge devant tout -->
+                <Canvas Grid.Row="0" Grid.RowSpan="2" 
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Margin="0,0,0,0"
+                        Panel.ZIndex="1000"
+                        IsHitTestVisible="False">
+                    <!-- Border représentant la zone des stats des joueurs -->
+                    <Border x:Name="StatsZoneBorder" 
+                            BorderThickness="3"
+                            Width="287"
+                            Height="500"
+                            Canvas.Left="0"
+                            Canvas.Top="0"
+                            Visibility="Visible" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="1,0,0,0"/>
+                </Canvas>
+
+
+                <!-- Aperçu d'un joueur (en attente de combat) - utilise le template spécifique sans nom, DPT et icône -->
+                <!-- En mode design, cet aperçu sera visible pour voir le mode "en attente" -->
+                <ContentControl x:Name="PreviewPlayerBorder"
+                           Grid.Row="0"
+                                   ContentTemplate="{StaticResource PlayerStatsWaitingTemplate}"
+                                   Visibility="Collapsed"
+                                   d:Visibility="Visible"
+                                   ClipToBounds="False"
+                                   HorizontalAlignment="Center"
+                                   Width="277" Cursor="" Margin="11,-26,0,0">
+                    <!-- Données de design pour le mode "en attente" -->
+                    <d:ContentControl.Content>
+                        <local:PlayerStats Name="En attente" />
+                    </d:ContentControl.Content>
+                </ContentControl>
+
+                <ScrollViewer x:Name="PlayersScrollViewer"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Auto"
+                              ClipToBounds="False"
+                              d:Visibility="Visible" Grid.RowSpan="2">
+                    <ItemsControl x:Name="PlayersItemsControl"
+                                  ItemsPanel="{StaticResource VerticalPlayersItemsPanelTemplate}"
+                                  ItemTemplate="{StaticResource PlayerStatsDataTemplate}"
+                                  HorizontalAlignment="Left"
+                                  Width="276"
+                                  d:Visibility="Visible" Margin="11,0,0,0" Cursor="">
+                        <!-- Données de design pour l'aperçu -->
+                        <d:ItemsControl.ItemsSource>
+                            <x:Array Type="{x:Type local:PlayerStats}">
+                                <local:PlayerStats Name="JoueurExemple1" 
+                                                   DamageDealt="7500" 
+                                                   DamageTaken="2500" 
+                                                   HealingDone="1200" 
+                                                   ShieldGiven="800" 
+                                                   DamageThisTurn="1500"
+                                                   ClassName="Cra"/>
+                                <local:PlayerStats Name="JoueurExemple2" 
+                                                   DamageDealt="5200" 
+                                                   DamageTaken="1800" 
+                                                   HealingDone="2000" 
+                                                   ShieldGiven="600" 
+                                                   DamageThisTurn="1300"
+                                                   ClassName="Eniripsa"/>
+                                <local:PlayerStats Name="JoueurExemple3" 
+                                                   DamageDealt="6800" 
+                                                   DamageTaken="3200" 
+                                                   HealingDone="800" 
+                                                   ShieldGiven="400" 
+                                                   DamageThisTurn="1400"
+                                                   ClassName="Iop"/>
+                            </x:Array>
+                        </d:ItemsControl.ItemsSource>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="{x:Type ContentPresenter}">
+                                <!-- Marge négative de -25px pour rapprocher très fortement les stats des joueurs -->
+                                <Setter Property="Margin" Value="0,-25,0,0"/>
+                                <Setter Property="VerticalAlignment" Value="Top"/>
+                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                <Setter Property="Height" Value="Auto"/>
+                                <Setter Property="UseLayoutRounding" Value="True"/>
+                                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <!-- Template chargé depuis PlayerStatsTemplate.xaml - Le DataTemplate est défini dans le ResourceDictionary externe -->
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Canvas pour positionner les flèches - au-dessus de tout -->
+            <Canvas x:Name="Fleche_reductions" Grid.Row="0"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Panel.ZIndex="100000"
+                    IsHitTestVisible="True" Cursor="">
+                <!-- Flèche en position développée (à droite de la barre de dégâts + 3px) -->
+                <!-- Position: -10 (marge StackPanel) + 35 (Canvas.Left barre) + 200 (largeur barre) + 3 (espace) = 228 -->
+                <Border x:Name="MainCollapseArrowExpandedBorder"
+                        Canvas.Left="108"
+                        Canvas.Top="42"
+                        Width="38"
+                        Height="37"
+                        d:Visibility="Visible"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="MainCollapseArrow_Click" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-57,-22,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.IsCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Image x:Name="MainCollapseArrowExpanded"
+                           Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/deploiement.png"
+                           Width="20"
+                           Height="20"
+                           Stretch="Fill"
+                           RenderTransformOrigin="0.5,0.5" Cursor="Hand" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Image.RenderTransform>
+                            <RotateTransform Angle="180"/>
+                        </Image.RenderTransform>
+                    </Image>
+                </Border>
+
+                <!-- Flèche en position réduite (à côté de breed_nom_dpt) -->
+                <!-- Position: -10 (marge StackPanel) + 190 (largeur breed_nom_dpt) + 5 (espace) = 185 -->
+                <Border x:Name="MainCollapseArrowCollapsedBorder"
+                        Canvas.Left="185"
+                        Canvas.Top="31"
+                        Width="20"
+                        Height="20"
+                        d:Visibility="Visible"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="MainCollapseArrow_Click" Margin="-230,-3,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.IsCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Image x:Name="MainCollapseArrowCollapsed"
+                           Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/deploiement.png"
+                           Width="20"
+                           Height="20"
+                           Stretch="Fill"
+                           Opacity="1.0"
+                           RenderTransformOrigin="0.5,0.5" Cursor="Hand" VerticalAlignment="Bottom" HorizontalAlignment="Left">
+                        <Image.RenderTransform>
+                            <RotateTransform Angle="0"/>
+                        </Image.RenderTransform>
+                    </Image>
+                </Border>
+            </Canvas>
+
+            <!-- Statut du combat en bas -->
+            <Border Grid.Row="3" 
+                   BorderThickness="0,1,0,0"
+                   Padding="0"
+                   Visibility="Collapsed">
+                <TextBlock x:Name="CombatStatusText"
+                          Text="En attente de combat..."
+                          FontSize="11"
+                          FontWeight="Normal"
+                          HorizontalAlignment="Left"
+                           VerticalAlignment="Center" Foreground="{x:Null}"/>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

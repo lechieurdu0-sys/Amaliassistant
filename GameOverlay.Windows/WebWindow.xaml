@@ -1,0 +1,146 @@
+<Window x:Class="GameOverlay.Windows.WebWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        WindowStyle="ToolWindow"
+        ResizeMode="CanResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        MinWidth="400"
+        MinHeight="300"
+        Background="#FF1A1A1A">
+    <Window.Resources>
+        <!-- AccentBrush utilisera la couleur du thème (comme SettingsWindow: #FF6E5C2A) -->
+        <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A"/>
+        <SolidColorBrush x:Key="DarkBackgroundBrush" Color="#FF1A1A1A"/>
+        <SolidColorBrush x:Key="TitleBarBrush" Color="#FF2A2A2A"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#FF6E5C2A"/>
+        
+        <!-- Style pour les boutons de navigation (inspiré de WebOverlayWindow) -->
+        <Style TargetType="Button" x:Key="NavigationButtonStyle">
+            <Setter Property="Background" Value="{DynamicResource TitleBarBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="Width" Value="35"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="0">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#FF505050"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#FF707070"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="#FF1A1A1A">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Barre de navigation avec contrôles (exactement comme WebOverlayWindow) -->
+        <Border x:Name="NavigationBar" 
+                Grid.Row="0" 
+                Background="{DynamicResource TitleBarBrush}" 
+                BorderBrush="{DynamicResource CyanAccentBrush}" 
+                BorderThickness="0,0,0,2" 
+                Height="40"
+                MouseLeftButtonDown="NavigationBar_MouseLeftButtonDown">
+            <StackPanel Orientation="Horizontal" Margin="5,5,5,5">
+                <Button x:Name="BackButton" 
+                       Content="←" 
+                       Click="BackButton_Click" 
+                       ToolTip="Page précédente"
+                       Style="{StaticResource NavigationButtonStyle}"/>
+                <Button x:Name="ForwardButton" 
+                       Content="→" 
+                       Click="ForwardButton_Click" 
+                       ToolTip="Page suivante"
+                       Style="{StaticResource NavigationButtonStyle}"/>
+                <Button x:Name="RefreshButton" 
+                       Content="⟳" 
+                       Click="RefreshButton_Click" 
+                       ToolTip="Actualiser"
+                       Style="{StaticResource NavigationButtonStyle}"/>
+                <Button x:Name="PipButton" 
+                       Content="📺" 
+                       Click="PipButton_Click" 
+                       ToolTip="Activer Picture-in-Picture (YouTube)"
+                       Style="{StaticResource NavigationButtonStyle}"
+                       Visibility="Collapsed"/>
+                
+                <!-- Zone de recherche/URL -->
+                <TextBox x:Name="UrlTextBox"
+                        Text="https://www.google.com" 
+                        Foreground="#FFCEA83E"
+                        Background="#FF333333"
+                        BorderBrush="{DynamicResource CyanAccentBrush}"
+                        BorderThickness="1"
+                        VerticalAlignment="Center" 
+                        VerticalContentAlignment="Center"
+                        Margin="10,0,10,0"
+                        Padding="5,0,5,0"
+                        FontSize="12"
+                        KeyDown="UrlTextBox_KeyDown"
+                        GotFocus="UrlTextBox_GotFocus"
+                        LostFocus="UrlTextBox_LostFocus" Width="254" SelectionBrush="{x:Null}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- WebView2 -->
+        <Border Grid.Row="1" 
+                Background="#FF1A1A1A" 
+                BorderBrush="{DynamicResource CyanAccentBrush}" 
+                BorderThickness="0" 
+                Margin="0,0,0,0">
+            <Grid x:Name="WebViewContainer" Background="White">
+                <wv2:WebView2 x:Name="WebView2Control"
+                             CoreWebView2InitializationCompleted="WebView2Control_CoreWebView2InitializationCompleted"
+                             NavigationStarting="WebView2Control_NavigationStarting"
+                             NavigationCompleted="WebView2Control_NavigationCompleted"
+                             DefaultBackgroundColor="White"/>
+            </Grid>
+        </Border>
+    </Grid>
+
+    <!-- Menu contextuel pour opacité et style -->
+    <Window.ContextMenu>
+        <ContextMenu x:Name="StyleContextMenu">
+            <MenuItem Header="Opacité fenêtre: 100%" Click="Opacity100_Click"/>
+            <MenuItem Header="Opacité fenêtre: 80%" Click="Opacity80_Click"/>
+            <MenuItem Header="Opacité fenêtre: 60%" Click="Opacity60_Click"/>
+            <Separator/>
+            <MenuItem Header="Opacité contenu: 100%" Click="ContentOpacity100_Click"/>
+            <MenuItem Header="Opacité contenu: 80%" Click="ContentOpacity80_Click"/>
+            <MenuItem Header="Opacité contenu: 60%" Click="ContentOpacity60_Click"/>
+            <Separator/>
+            <MenuItem Header="Style..." Click="StyleSettings_Click"/>
+        </ContextMenu>
+    </Window.ContextMenu>
+</Window>

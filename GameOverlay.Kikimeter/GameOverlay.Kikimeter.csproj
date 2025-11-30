@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <AssemblyName>GameOverlay.Kikimeter</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableXamlDesigner>true</EnableXamlDesigner>
+  </PropertyGroup>
+
+  <!-- Configuration Release : désactiver les optimisations pour comportement identique à Debug -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>false</Optimize>
+    <!-- Désactiver les optimisations pour garantir un comportement identique à Debug -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
+    <ProjectReference Include="..\GameOverlay.XpTracker\GameOverlay.XpTracker.csproj" />
+    <ProjectReference Include="..\GameOverlay.Themes\GameOverlay.Themes.csproj" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Resources\SortsPA.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Assets\Classes\**\*.png" />
+    <Resource Include="Resources\Assets\kikimeter\**\*.png" />
+    <Resource Include="Views\Assets\kikimeter\**\*.png" />
+    <Resource Include="Views\Assets\loot\**\*.png" />
+    <Resource Include="Views\Assets\utilities\**\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="deploiement.png" />
+    <None Remove="Views\0.png" />
+    <None Remove="Views\croix_deplacement.png" />
+    <None Remove="Views\EndTurnWidgetBackground.png" />
+    <None Remove="Views\kikimeter_empty.png" />
+    <None Remove="Views\loot.png" />
+    <None Remove="Views\loot_watcher_checked.png" />
+    <None Remove="Views\menu_mono.png" />
+    <None Remove="Views\NP-BG-3.png" />
+    <None Remove="Views\NP-SearchBar-1.png" />
+    <None Remove="Views\parameter.png" />
+    <None Remove="Views\reduire.png" />
+    <None Remove="Views\StatSlots01.png" />
+    <None Remove="Views\StatSlots07.png" />
+    <None Remove="Views\StatSlots08.png" />
+    <None Remove="Views\StatSlots11.png" />
+    <None Remove="Views\xp_progress_bar.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="deploiement.png" />
+    <Resource Include="Views\0.png" />
+    <Resource Include="Views\croix_deplacement.png" />
+    <Resource Include="Views\EndTurnWidgetBackground.png" />
+    <Resource Include="Views\kikimeter_empty.png" />
+    <Resource Include="Views\loot.png" />
+    <Resource Include="Views\loot_watcher_checked.png" />
+    <Resource Include="Views\menu_mono.png" />
+    <Resource Include="Views\NP-BG-3.png" />
+    <Resource Include="Views\NP-SearchBar-1.png" />
+    <Resource Include="Views\parameter.png" />
+    <Resource Include="Views\reduire.png" />
+    <Resource Include="Views\StatSlots01.png" />
+    <Resource Include="Views\StatSlots07.png" />
+    <Resource Include="Views\StatSlots08.png" />
+    <Resource Include="Views\StatSlots11.png" />
+    <Resource Include="Views\xp_progress_bar.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Resources\Assets\Classes\README.txt" />
+  </ItemGroup>
+
+</Project>
+

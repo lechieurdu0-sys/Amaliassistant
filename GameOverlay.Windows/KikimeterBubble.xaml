@@ -1,0 +1,168 @@
+<UserControl x:Class="GameOverlay.Windows.KikimeterBubble"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="176" d:DesignWidth="70"
+             Width="70" Height="176"
+             Loaded="UserControl_Loaded"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A"/>
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#FFF6E7A9"/>
+            <Setter Property="Foreground" Value="#FF6E5C2A"/>
+            <Setter Property="BorderBrush" Value="#FF6E5C2A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid x:Name="BubbleGrid">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="40"/>
+            <ColumnDefinition Width="30"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="4"/>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="4"/>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="4"/>
+            <RowDefinition Height="40"/>
+        </Grid.RowDefinitions>
+
+        <!-- Carré Kikimeter -->
+        <Grid Grid.Row="0" Grid.Column="0" Width="40" Height="40" Background="Transparent">
+            <Border x:Name="TopSquare"
+                    Width="40"
+                    Height="40"
+                    BorderThickness="0"
+                    CornerRadius="4,4,0,0"
+                    Cursor="Hand"
+                    MouseLeftButtonDown="TopSquare_MouseLeftButtonDown"
+                    MouseLeftButtonUp="TopSquare_MouseLeftButtonUp"
+                    ToolTip="Clic pour ouvrir/fermer"
+                    UseLayoutRounding="True"
+                    RenderOptions.BitmapScalingMode="HighQuality">
+                <Border.Background>
+                    <ImageBrush ImageSource="/GameOverlay.Windows;component/NP-SearchBar-1.png" 
+                                Stretch="Fill"/>
+                </Border.Background>
+            </Border>
+            <Image Source="/GameOverlay.Windows;component/kikimeter_logo.png" 
+                   VerticalAlignment="Center" 
+                   HorizontalAlignment="Center"
+                   Stretch="Uniform"
+                   Width="38"
+                   Height="38"
+                   IsHitTestVisible="False"/>
+        </Grid>
+
+        <!-- CROIX DE DÉPLACEMENT (25x25px à droite du carré Kikimeter, alignée coin haut avec 5px d'espace) -->
+        <Grid Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="5,0,0,0" Width="25" Height="25" Cursor="Hand">
+            <Image x:Name="DragHandle"
+                   Source="/GameOverlay.Windows;component/croix_deplacement.png" 
+                   VerticalAlignment="Center" 
+                   HorizontalAlignment="Center"
+                   Width="25"
+                   Height="25"
+                   Stretch="Uniform"
+                   Opacity="1.0"
+                   Cursor="Hand"
+                   MouseLeftButtonDown="DragHandle_MouseLeftButtonDown"
+                   MouseMove="DragHandle_MouseMove"
+                   MouseLeftButtonUp="DragHandle_MouseLeftButtonUp"
+                   ToolTip="Maintenir pour déplacer"/>
+        </Grid>
+
+        <!-- Carré Loot -->
+        <Grid Grid.Row="2" Grid.Column="0" Width="40" Height="40" Background="Transparent">
+            <Border x:Name="MiddleSquare"
+                    Width="40"
+                    Height="40"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    MouseLeftButtonDown="MiddleSquare_MouseLeftButtonDown"
+                    MouseLeftButtonUp="MiddleSquare_MouseLeftButtonUp"
+                    ToolTip="Clic pour ouvrir/fermer Loot"
+                    UseLayoutRounding="True"
+                    RenderOptions.BitmapScalingMode="HighQuality">
+                <Border.Background>
+                    <ImageBrush ImageSource="/GameOverlay.Windows;component/NP-SearchBar-1.png" 
+                                Stretch="Fill"/>
+                </Border.Background>
+            </Border>
+            <Image Source="/GameOverlay.Windows;component/logo_loot.png" 
+                   VerticalAlignment="Center" 
+                   HorizontalAlignment="Center"
+                   Stretch="Uniform"
+                   Width="38"
+                   Height="38"
+                   IsHitTestVisible="False"/>
+        </Grid>
+
+        <!-- Carré Web -->
+        <Grid Grid.Row="4" Grid.Column="0" Width="40" Height="40" Background="Transparent">
+            <Border x:Name="WebSquare"
+                    Width="40"
+                    Height="40"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    MouseLeftButtonDown="WebSquare_MouseLeftButtonDown"
+                    MouseLeftButtonUp="WebSquare_MouseLeftButtonUp"
+                    ToolTip="Clic pour ouvrir/fermer le navigateur web"
+                    UseLayoutRounding="True"
+                    RenderOptions.BitmapScalingMode="HighQuality">
+                <Border.Background>
+                    <ImageBrush ImageSource="/GameOverlay.Windows;component/NP-SearchBar-1.png" 
+                                Stretch="Fill"/>
+                </Border.Background>
+            </Border>
+            <Image x:Name="WebIcon"
+                   Source="/GameOverlay.Windows;component/Paysage.png" 
+                   VerticalAlignment="Center" 
+                   HorizontalAlignment="Center"
+                   Stretch="UniformToFill"
+                   Width="53"
+                   Height="63"
+                   IsHitTestVisible="False">
+                <Image.OpacityMask>
+                    <ImageBrush Stretch="Fill" ImageSource="/GameOverlay.Windows;component/Paysage.png"/>
+                </Image.OpacityMask>
+            </Image>
+        </Grid>
+
+        <!-- Carré Paramètres -->
+        <Grid Grid.Row="6" Grid.Column="0" Width="40" Height="40" Background="Transparent">
+            <Border x:Name="BottomSquare"
+                    Width="40"
+                    Height="40"
+                    BorderThickness="0"
+                    CornerRadius="0,0,4,4"
+                    Cursor="Hand"
+                    MouseLeftButtonDown="BottomSquare_MouseLeftButtonDown"
+                    MouseLeftButtonUp="BottomSquare_MouseLeftButtonUp"
+                    ToolTip="Clic pour ouvrir les paramètres"
+                    UseLayoutRounding="True"
+                    RenderOptions.BitmapScalingMode="HighQuality">
+                <Border.Background>
+                    <ImageBrush ImageSource="/GameOverlay.Windows;component/NP-SearchBar-1.png" 
+                                Stretch="Fill"/>
+                </Border.Background>
+            </Border>
+            <Image Source="/GameOverlay.Windows;component/parameter.png" 
+                   VerticalAlignment="Center" 
+                   HorizontalAlignment="Center"
+                   Stretch="Uniform"
+                   Width="38"
+                   Height="38"
+                   Cursor="Hand"
+                   IsHitTestVisible="False"/>
+        </Grid>
+
+    </Grid>
+</UserControl>
