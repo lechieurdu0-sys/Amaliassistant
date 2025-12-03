@@ -1,0 +1,58 @@
+╔═══════════════════════════════════════════════════════════════╗
+║         GUIDE RAPIDE DE RELEASE - Amaliassistant             ║
+╚═══════════════════════════════════════════════════════════════╝
+
+🚀 CRÉER UNE RELEASE COMPLÈTE (RECOMMANDÉ)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Double-cliquez simplement sur : Release.bat
+
+Ou dans PowerShell :
+    .\Release-Full.ps1
+
+Cette commande fait TOUT automatiquement :
+    ✅ Nettoie les anciens builds
+    ✅ Restaure les packages
+    ✅ Publie l'application en Release
+    ✅ Nettoie les fichiers inutiles
+    ✅ Crée l'installateur Inno Setup
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 ÉTAPES SÉPARÉES (si vous préférez)
+
+1. Publier seulement :
+    .\Build-Release.ps1
+
+2. Créer l'installateur seulement :
+    .\Build-Installer.ps1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 RÉSULTAT
+
+Après la release, vous trouverez :
+
+    InstallerAppData\Amaliassistant_Setup.exe
+        ↑
+    C'est votre installateur prêt à distribuer !
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ PRÉREQUIS
+
+Assurez-vous d'avoir :
+    ✓ .NET SDK 8.0 installé
+    ✓ Inno Setup 6 installé
+    ✓ Tous les fichiers dans Prerequisites\
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 POUR PLUS DE DÉTAILS
+
+Consultez le fichier : README-RELEASE.md
+
+╚═══════════════════════════════════════════════════════════════╝
+
+
+

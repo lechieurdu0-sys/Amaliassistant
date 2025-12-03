@@ -86,7 +86,6 @@
                           Margin="0,0,0,0"
                           HorizontalAlignment="Left"
                           MinWidth="190"
-                          MaxWidth="400"
                           Width="Auto">
                         <Grid.Background>
                             <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/EndTurnWidgetBackground.png"/>

@@ -453,12 +453,22 @@
                 <RowDefinition Height="1073" />
                 <RowDefinition x:Name="StatusBarRow" Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid Grid.Row="0" Margin="-15,0,262,1047" 
-                  ClipToBounds="False" Width="26" Cursor="SizeAll">
+            <Grid Grid.Row="0" Margin="-15,0,0,0" 
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top"
+                  ClipToBounds="False" Width="51" Height="26" Cursor="SizeAll">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="20"/>
+                </Grid.ColumnDefinitions>
+                
                 <!-- Image de croix de déplacement - seule zone de déplacement -->
-                <Image x:Name="croix_deplacement" Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png" 
+                <Image x:Name="croix_deplacement" 
+                       Grid.Column="0"
+                       Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png" 
                        VerticalAlignment="Center" 
-                          HorizontalAlignment="Center"
+                       HorizontalAlignment="Center"
                        Width="26"
                        Height="26"
                        Stretch="Uniform"
@@ -468,7 +478,57 @@
                        MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
                        Panel.ZIndex="1"/>
 
-                <!-- Flèche de rétractation/extensions - placée à côté de la croix de déplacement -->
+                <!-- Flèche en mode développé (pointe vers la gauche) -->
+                <Border x:Name="MainCollapseArrowExpandedBorderInline"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Left"
+                        Width="20"
+                        Height="20"
+                        Visibility="Visible"
+                        Panel.ZIndex="100"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="MainCollapseArrow_Click"
+                        Background="Transparent">
+                    <Image x:Name="MainCollapseArrowExpandedInline"
+                           Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/deploiement.png"
+                           Width="20"
+                           Height="20"
+                           Stretch="Fill"
+                           Opacity="1.0"
+                           RenderTransformOrigin="0.5,0.5"
+                           Cursor="Hand">
+                        <Image.RenderTransform>
+                            <RotateTransform Angle="180"/>
+                        </Image.RenderTransform>
+                    </Image>
+                </Border>
+
+                <!-- Flèche en mode réduit (pointe vers la droite) -->
+                <Border x:Name="MainCollapseArrowCollapsedBorderInline"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Left"
+                        Width="20"
+                        Height="20"
+                        Visibility="Collapsed"
+                        Panel.ZIndex="100"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="MainCollapseArrow_Click"
+                        Background="Transparent">
+                    <Image x:Name="MainCollapseArrowCollapsedInline"
+                           Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/deploiement.png"
+                           Width="20"
+                           Height="20"
+                           Stretch="Fill"
+                           Opacity="1.0"
+                           RenderTransformOrigin="0.5,0.5"
+                           Cursor="Hand">
+                        <Image.RenderTransform>
+                            <RotateTransform Angle="0"/>
+                        </Image.RenderTransform>
+                    </Image>
+                </Border>
             </Grid>
             <Grid Width="288" Margin="-15,26,0,0">
                 <Grid.RowDefinitions>
@@ -563,76 +623,14 @@
                 </ScrollViewer>
             </Grid>
 
-            <!-- Canvas pour positionner les flèches - au-dessus de tout -->
+            <!-- Canvas pour positionner les flèches - maintenant les flèches sont dans le Grid avec la croix -->
             <Canvas x:Name="Fleche_reductions" Grid.Row="0"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
                     Panel.ZIndex="100000"
-                    IsHitTestVisible="True" Cursor="">
-                <!-- Flèche en position développée (à droite de la barre de dégâts + 3px) -->
-                <!-- Position: -10 (marge StackPanel) + 35 (Canvas.Left barre) + 200 (largeur barre) + 3 (espace) = 228 -->
-                <Border x:Name="MainCollapseArrowExpandedBorder"
-                        Canvas.Left="108"
-                        Canvas.Top="42"
-                        Width="38"
-                        Height="37"
-                        d:Visibility="Visible"
-                        Cursor="Hand"
-                        MouseLeftButtonDown="MainCollapseArrow_Click" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-57,-22,0,0">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Visibility" Value="Visible"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding DataContext.IsCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <Image x:Name="MainCollapseArrowExpanded"
-                           Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/deploiement.png"
-                           Width="20"
-                           Height="20"
-                           Stretch="Fill"
-                           RenderTransformOrigin="0.5,0.5" Cursor="Hand" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Image.RenderTransform>
-                            <RotateTransform Angle="180"/>
-                        </Image.RenderTransform>
-                    </Image>
-                </Border>
-
-                <!-- Flèche en position réduite (à côté de breed_nom_dpt) -->
-                <!-- Position: -10 (marge StackPanel) + 190 (largeur breed_nom_dpt) + 5 (espace) = 185 -->
-                <Border x:Name="MainCollapseArrowCollapsedBorder"
-                        Canvas.Left="185"
-                        Canvas.Top="31"
-                        Width="20"
-                        Height="20"
-                        d:Visibility="Visible"
-                        Cursor="Hand"
-                        MouseLeftButtonDown="MainCollapseArrow_Click" Margin="-230,-3,0,0">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding DataContext.IsCollapsed, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <Image x:Name="MainCollapseArrowCollapsed"
-                           Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/deploiement.png"
-                           Width="20"
-                           Height="20"
-                           Stretch="Fill"
-                           Opacity="1.0"
-                           RenderTransformOrigin="0.5,0.5" Cursor="Hand" VerticalAlignment="Bottom" HorizontalAlignment="Left">
-                        <Image.RenderTransform>
-                            <RotateTransform Angle="0"/>
-                        </Image.RenderTransform>
-                    </Image>
-                </Border>
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed">
+                <!-- Les flèches sont maintenant dans le Grid avec la croix de déplacement -->
             </Canvas>
 
             <!-- Statut du combat en bas -->

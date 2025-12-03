@@ -288,6 +288,9 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 
                 UpdateFirstPlayerFlag();
                 UpdateWindowHeight();
+                
+                // Ne pas mettre à jour la position de la flèche lors du changement de template
+                // La flèche reste au même endroit, seule la visibilité change
             }
         }
         catch (Exception ex)
@@ -409,12 +412,12 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             // Utiliser plusieurs tentatives pour s'assurer que les containers sont générés
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                UpdateStatsVisibility();
-                // Réessayer après un court délai pour s'assurer que tout est généré
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
                     UpdateStatsVisibility();
-                }), DispatcherPriority.Render);
+                    // Réessayer après un court délai pour s'assurer que tout est généré
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        UpdateStatsVisibility();
+                    }), DispatcherPriority.Render);
             }), DispatcherPriority.Loaded);
             
             e.Handled = true;
@@ -430,8 +433,18 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     {
         // Méthode dédiée pour forcer la visibilité des flèches
         // Les flèches sont maintenant dans des Border pour faciliter le positionnement
-        var expandedBorder = this.FindName("MainCollapseArrowExpandedBorder") as System.Windows.Controls.Border;
-        var collapsedBorder = this.FindName("MainCollapseArrowCollapsedBorder") as System.Windows.Controls.Border;
+        var expandedBorder = this.FindName("MainCollapseArrowExpandedBorderInline") as System.Windows.Controls.Border;
+        var collapsedBorder = this.FindName("MainCollapseArrowCollapsedBorderInline") as System.Windows.Controls.Border;
+        
+        if (expandedBorder == null)
+        {
+            Logger.Warning("KikimeterWindow", "MainCollapseArrowExpandedBorderInline est null!");
+        }
+        
+        if (collapsedBorder == null)
+        {
+            Logger.Warning("KikimeterWindow", "MainCollapseArrowCollapsedBorderInline est null!");
+        }
         
         if (expandedBorder != null && collapsedBorder != null)
         {
@@ -440,11 +453,13 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             {
                 expandedBorder.Visibility = Visibility.Collapsed;
                 collapsedBorder.Visibility = Visibility.Visible;
+                Logger.Info("KikimeterWindow", $"Flèches mises à jour: collapsed visible (état: collapsed)");
             }
             else
             {
                 expandedBorder.Visibility = Visibility.Visible;
                 collapsedBorder.Visibility = Visibility.Collapsed;
+                Logger.Info("KikimeterWindow", $"Flèches mises à jour: expanded visible (état: expanded)");
             }
             
             // Forcer le rendu de manière très agressive
@@ -453,17 +468,21 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             expandedBorder.UpdateLayout();
             collapsedBorder.UpdateLayout();
             
-            // Forcer le rendu du Canvas parent
-            var canvas = expandedBorder.Parent as System.Windows.Controls.Canvas;
-            if (canvas != null)
+            // Forcer le rendu du Grid parent
+            var gridParent = expandedBorder.Parent as System.Windows.Controls.Grid;
+            if (gridParent != null)
             {
-                canvas.InvalidateVisual();
-                canvas.UpdateLayout();
+                gridParent.InvalidateVisual();
+                gridParent.UpdateLayout();
             }
+            
+            // Forcer la mise à jour de la fenêtre
+            this.InvalidateVisual();
+            this.UpdateLayout();
         }
         else
         {
-            Logger.Warning("KikimeterWindow", $"Flèches non trouvées - ExpandedBorder: {expandedBorder != null}, CollapsedBorder: {collapsedBorder != null}");
+            Logger.Error("KikimeterWindow", $"Impossible de trouver les flèches! Expanded: {expandedBorder != null}, Collapsed: {collapsedBorder != null}");
         }
         
         // Forcer la mise à jour du layout de la fenêtre
@@ -474,8 +493,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private void UpdateVisualState()
     {
         // Forcer la mise à jour des éléments visuels
-        var expandedBorder = this.FindName("MainCollapseArrowExpandedBorder") as System.Windows.Controls.Border;
-        var collapsedBorder = this.FindName("MainCollapseArrowCollapsedBorder") as System.Windows.Controls.Border;
+        var expandedBorder = this.FindName("MainCollapseArrowExpandedBorderInline") as System.Windows.Controls.Border;
+        var collapsedBorder = this.FindName("MainCollapseArrowCollapsedBorderInline") as System.Windows.Controls.Border;
         
         if (expandedBorder != null)
         {
@@ -671,6 +690,9 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             Logger.Error("KikimeterWindow", $"Erreur dans UpdateWindowHeight: {ex.Message}");
         }
     }
+    
+    // La flèche collapse est maintenant positionnée à côté de la croix de déplacement
+    // Plus besoin de calcul dynamique complexe - position fixe simple
     
     private void MainBorder_MouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -1394,22 +1416,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         try
         {
             // Les gestionnaires sont déjà attachés dans InitializeComponent
-            // Vérifier que les Border sont bien initialisés
-            var expandedBorder = this.FindName("MainCollapseArrowExpandedBorder") as System.Windows.Controls.Border;
-            var collapsedBorder = this.FindName("MainCollapseArrowCollapsedBorder") as System.Windows.Controls.Border;
+            // Vérifier que les Border sont bien initialisés et forcer leur visibilité
+            ForceArrowVisibility();
             
-            if (expandedBorder == null)
-            {
-                Logger.Warning("KikimeterWindow", "MainCollapseArrowExpandedBorder est null au chargement!");
-            }
-            
-            if (collapsedBorder == null)
-            {
-                Logger.Warning("KikimeterWindow", "MainCollapseArrowCollapsedBorder est null au chargement!");
-            }
-            
-            // Mettre à jour la visibilité des flèches selon l'état initial
-            // Les DataTriggers dans le XAML gèrent la visibilité automatiquement
+            // Mettre à jour la rotation des flèches selon l'état initial
             UpdateMainArrowRotation();
             
             // Ajouter des gestionnaires d'événements pour retourner le focus au jeu après chaque interaction
@@ -2204,6 +2214,15 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         _logWatcher.Parser.CombatStarted += OnCombatStarted;
         _logWatcher.Parser.CombatEnded += OnCombatEnded;
         
+        Logger.Info("KikimeterWindow", $"Événements du parser abonnés. ItemsControl null? {PlayersItemsControl == null}, ItemsSource null? {PlayersItemsControl?.ItemsSource == null}");
+        
+        // S'assurer que l'ItemsSource est bien assigné
+        if (PlayersItemsControl != null && PlayersItemsControl.ItemsSource != _playersCollection)
+        {
+            Logger.Warning("KikimeterWindow", "ItemsSource n'était pas correctement assigné, correction...");
+            PlayersItemsControl.ItemsSource = _playersCollection;
+        }
+        
         // Mettre à jour la liste des joueurs du combat dans LootWindow (déjà fait dans OnPlayerAdded)
         
         // S'abonner aux lignes de log pour détecter les kikis (méthode principale pour cette version)
@@ -2265,38 +2284,74 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     
     private void OnPlayerAdded(object sender, PlayerStats player)
     {
+        if (player == null)
+        {
+            Logger.Warning("KikimeterWindow", "OnPlayerAdded appelé avec un joueur null");
+            return;
+        }
+        
+        Logger.Info("KikimeterWindow", $"OnPlayerAdded appelé pour: {player.Name}");
+        
         Dispatcher.Invoke(() =>
         {
-            var existing = _playersCollection.FirstOrDefault(p => string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase));
-            if (existing == null)
+            try
             {
-                _playersCollection.Add(player);
-                player.PropertyChanged += Player_PropertyChanged;
-                // IndividualModeCheckbox supprimé - mode individuel désactivé
-                if (false) // IndividualModeCheckbox != null && IndividualModeCheckbox.IsChecked.GetValueOrDefault()
+                var existing = _playersCollection.FirstOrDefault(p => string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
                 {
-                    CreateIndividualPlayerWindow(player);
+                    Logger.Info("KikimeterWindow", $"Ajout du nouveau joueur: {player.Name} (Total avant: {_playersCollection.Count})");
+                    _playersCollection.Add(player);
+                    Logger.Info("KikimeterWindow", $"Joueur ajouté avec succès. Total maintenant: {_playersCollection.Count}");
+                    player.PropertyChanged += Player_PropertyChanged;
+                    
+                    // Vérifier que l'ItemsControl est bien lié
+                    if (PlayersItemsControl != null && PlayersItemsControl.ItemsSource != _playersCollection)
+                    {
+                        Logger.Warning("KikimeterWindow", "ItemsSource n'est pas correctement lié, correction en cours...");
+                        PlayersItemsControl.ItemsSource = _playersCollection;
+                    }
+                    
+                    // IndividualModeCheckbox supprimé - mode individuel désactivé
+                    if (false) // IndividualModeCheckbox != null && IndividualModeCheckbox.IsChecked.GetValueOrDefault()
+                    {
+                        CreateIndividualPlayerWindow(player);
+                    }
+                    
+                    if (_useManualOrder)
+                    {
+                        ApplyManualOrderIfNeeded();
+                    }
+                    UpdateLootWindowCombatPlayers();
+                    UpdatePreviewVisibility();
+                    UpdateWindowHeight();
+                }
+                else if (!ReferenceEquals(existing, player))
+                {
+                    Logger.Info("KikimeterWindow", $"Mise à jour du joueur existant: {player.Name}");
+                    int index = _playersCollection.IndexOf(existing);
+                    existing.PropertyChanged -= Player_PropertyChanged;
+                    player.ManualOrder = existing.ManualOrder;
+                    _manualOrderMap[player.Name] = player.ManualOrder;
+                    _playersCollection[index] = player;
+                    player.PropertyChanged += Player_PropertyChanged;
+                    if (_useManualOrder)
+                    {
+                        ApplyManualOrderIfNeeded();
+                    }
+                    UpdateLootWindowCombatPlayers();
+                    UpdatePreviewVisibility();
+                    UpdateWindowHeight();
+                }
+                else
+                {
+                    Logger.Debug("KikimeterWindow", $"Joueur {player.Name} déjà présent (même référence)");
                 }
                 
-                if (_useManualOrder)
-                {
-                    ApplyManualOrderIfNeeded();
-                }
-                UpdateLootWindowCombatPlayers();
+                // La flèche est maintenant en position fixe à côté de la croix, plus besoin de mise à jour
             }
-            else if (!ReferenceEquals(existing, player))
+            catch (Exception ex)
             {
-                int index = _playersCollection.IndexOf(existing);
-                existing.PropertyChanged -= Player_PropertyChanged;
-                player.ManualOrder = existing.ManualOrder;
-                _manualOrderMap[player.Name] = player.ManualOrder;
-                _playersCollection[index] = player;
-                player.PropertyChanged += Player_PropertyChanged;
-                if (_useManualOrder)
-                {
-                    ApplyManualOrderIfNeeded();
-                }
-                UpdateLootWindowCombatPlayers();
+                Logger.Error("KikimeterWindow", $"Erreur dans OnPlayerAdded pour {player.Name}: {ex.Message}\n{ex.StackTrace}");
             }
         });
     }
@@ -2925,6 +2980,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         // Mise à jour des valeurs max si nécessaire
     }
     
+    private DateTime _lastArrowUpdateTime = DateTime.MinValue;
+    
     private void UpdateTimer_Tick(object sender, EventArgs e)
     {
         try
@@ -2943,6 +3000,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                     }
                 });
             }
+            
+            // Mettre à jour la position de la flèche collapse périodiquement (toutes les 500ms)
+            // pour s'adapter aux changements de taille de la barre (ex: DPT qui change)
+            // La flèche est maintenant en position fixe, plus besoin de mise à jour périodique
         }
         catch (Exception ex)
         {
