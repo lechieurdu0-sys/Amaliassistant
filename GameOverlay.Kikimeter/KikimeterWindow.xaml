@@ -468,7 +468,7 @@
                        Grid.Column="0"
                        Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png" 
                        VerticalAlignment="Center" 
-                       HorizontalAlignment="Center"
+                          HorizontalAlignment="Center"
                        Width="26"
                        Height="26"
                        Stretch="Uniform"

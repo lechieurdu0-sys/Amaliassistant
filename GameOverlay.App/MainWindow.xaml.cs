@@ -61,6 +61,10 @@ namespace GameOverlay.App
         
         // Web System
         private GameOverlay.Windows.WebWindow? webWindow;
+        
+        // Sale Notification System
+        private GameOverlay.Kikimeter.Services.SaleTracker? _saleTracker;
+        private readonly List<GameOverlay.Kikimeter.Views.SaleNotificationWindow> _saleNotificationWindows = new();
 
         private int _openContextMenus;
         private bool _focusReturnPending;
@@ -115,6 +119,14 @@ namespace GameOverlay.App
                     try
                     {
                         Logger.Info("MainWindow", "Closed event déclenché");
+                        
+                        // Libérer le SaleTracker
+                        if (_saleTracker != null)
+                        {
+                            _saleTracker.SaleDetected -= SaleTracker_SaleDetected;
+                            _saleTracker.Dispose();
+                            _saleTracker = null;
+                        }
                         
                         // Nettoyer le NotifyIcon
                         if (notifyIcon != null)
@@ -1285,6 +1297,9 @@ namespace GameOverlay.App
                         {
                             lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
                             Logger.Info("MainWindow", "LootWindow.StartWatching appelé dès la création de la fenêtre");
+                            
+                            // Initialiser le suivi des ventes
+                            InitializeSaleTracker();
                         }
                         else
                         {
@@ -1410,6 +1425,15 @@ namespace GameOverlay.App
             {
                 var label = string.IsNullOrWhiteSpace(e.ServerName) ? "déconnexion" : e.ServerName;
                 Logger.Info("MainWindow", $"Changement de serveur détecté ({label}), réinitialisation des affichages.");
+                
+                // Si c'est une connexion (pas une déconnexion), afficher la notification de vente depuis la première ligne
+                if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
+                {
+                    ShowSaleNotificationFromFirstLine();
+                }
+                
+                // Réinitialiser le SaleTracker pour surveiller les nouvelles ventes
+                InitializeSaleTracker();
                 
                 // Réinitialiser le fichier de configuration des personnages
                 LootWindow_ResetButton_ExtraHandler(sender, new RoutedEventArgs());
@@ -1812,6 +1836,9 @@ namespace GameOverlay.App
                         {
                             lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
                             Logger.Info("MainWindow", "LootWindow créée en arrière-plan - StartWatching démarré");
+                            
+                            // Initialiser le suivi des ventes
+                            InitializeSaleTracker();
                         }
                     }
                     catch (Exception ex)
@@ -1934,6 +1961,11 @@ namespace GameOverlay.App
         public void HideOverlay_Click(object sender, RoutedEventArgs e)
         {
             ToggleOverlay();
+        }
+        
+        public void TestSaleNotification_Click(object sender, RoutedEventArgs e)
+        {
+            TestSaleNotification();
         }
 
         public void Exit_Click(object sender, RoutedEventArgs e)
@@ -2241,6 +2273,205 @@ namespace GameOverlay.App
                 bubble.ReleaseMouseCapture();
             ScheduleFocusReturn();
             };
+        }
+
+        /// <summary>
+        /// Affiche une notification avec les informations de vente
+        /// </summary>
+        /// <param name="saleInfo">Informations de vente</param>
+        /// <param name="showAbsenceMessage">Si true, ajoute "pendant votre absence" au message</param>
+        private void ShowSaleNotification(SaleInfo saleInfo, bool showAbsenceMessage = false)
+        {
+            try
+            {
+                // Afficher la notification sur le thread UI
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        var notificationWindow = new GameOverlay.Kikimeter.Views.SaleNotificationWindow(saleInfo, showAbsenceMessage);
+                        
+                        // Nettoyer les fenêtres fermées de la liste
+                        _saleNotificationWindows.RemoveAll(w => w == null || !w.IsLoaded);
+                        
+                        // Positionner la nouvelle fenêtre à la même position que les autres (superposition)
+                        var screenWidth = SystemParameters.PrimaryScreenWidth;
+                        const double topPosition = 20; // Position fixe pour toutes les fenêtres
+                        
+                        // La position sera chargée depuis la sauvegarde dans SaleNotificationWindow
+                        // Si aucune position sauvegardée, utiliser la position par défaut
+                        notificationWindow.Loaded += (s, e) =>
+                        {
+                            // Si la position n'a pas été chargée depuis la sauvegarde, utiliser la position par défaut
+                            if (notificationWindow.Left == 0 && notificationWindow.Top == 0)
+                            {
+                                notificationWindow.Left = screenWidth - notificationWindow.ActualWidth - 20;
+                                notificationWindow.Top = topPosition;
+                            }
+                        };
+                        
+                        // Gérer la fermeture
+                        notificationWindow.Closed += (s, e) =>
+                        {
+                            _saleNotificationWindows.Remove(notificationWindow);
+                            // Réorganiser les fenêtres restantes (le timer de la nouvelle notification au-dessus démarrera)
+                            ReorganizeSaleNotifications();
+                        };
+                        
+                        // Ajouter en début de liste (première = la plus récente = au-dessus)
+                        _saleNotificationWindows.Insert(0, notificationWindow);
+                        
+                        // S'assurer que la nouvelle fenêtre est au-dessus
+                        notificationWindow.Show();
+                        notificationWindow.Topmost = true;
+                        notificationWindow.Topmost = false;
+                        notificationWindow.Topmost = true;
+                        
+                        // Réorganiser le z-order de toutes les fenêtres (la plus récente au-dessus)
+                        ReorganizeSaleNotificationsZOrder();
+                        
+                        Logger.Info("MainWindow", $"Notification de vente affichée: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors de l'affichage de la notification de vente: {ex.Message}");
+                    }
+                }), DispatcherPriority.Normal);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de l'affichage de la notification de vente: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Réorganise la position des notifications après la fermeture d'une fenêtre
+        /// </summary>
+        private void ReorganizeSaleNotifications()
+        {
+            // Les fenêtres restent à la même position (superposition)
+            // On réorganise juste le z-order
+            ReorganizeSaleNotificationsZOrder();
+        }
+        
+        /// <summary>
+        /// Réorganise le z-order des fenêtres de notification (la plus récente au-dessus)
+        /// </summary>
+        private void ReorganizeSaleNotificationsZOrder()
+        {
+            // Arrêter tous les timers de fermeture
+            foreach (var window in _saleNotificationWindows)
+            {
+                if (window != null && window.IsLoaded)
+                {
+                    window.StopAutoCloseTimer();
+                    window.Topmost = false;
+                }
+            }
+            
+            // Puis remettre en Topmost=true dans l'ordre inverse (première = au-dessus)
+            // Et démarrer le timer seulement pour la notification visible (la première)
+            for (int i = _saleNotificationWindows.Count - 1; i >= 0; i--)
+            {
+                var window = _saleNotificationWindows[i];
+                if (window != null && window.IsLoaded)
+                {
+                    window.Topmost = true;
+                    // Démarrer le timer seulement pour la notification au-dessus (la première dans l'ordre inverse)
+                    if (i == _saleNotificationWindows.Count - 1)
+                    {
+                        window.StartAutoCloseTimer();
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Affiche une notification avec les informations de vente depuis la première ligne du log de chat (lors de la connexion)
+        /// </summary>
+        private void ShowSaleNotificationFromFirstLine()
+        {
+            try
+            {
+                string? chatLogPath = config.LootChatLogPath;
+                if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
+                {
+                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré ou fichier inexistant, notification de vente ignorée");
+                    return;
+                }
+                
+                // Lire les informations de vente depuis la première ligne du log
+                var saleInfo = SaleNotificationService.ReadSaleInfoFromFirstLine(chatLogPath);
+                if (saleInfo == null)
+                {
+                    Logger.Debug("MainWindow", "Aucune information de vente trouvée dans la première ligne du log");
+                    return;
+                }
+                
+                // Pour la connexion, afficher "pendant votre absence"
+                ShowSaleNotification(saleInfo, showAbsenceMessage: true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de la récupération des informations de vente: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Initialise le service de suivi des ventes en temps réel
+        /// </summary>
+        private void InitializeSaleTracker()
+        {
+            try
+            {
+                // Désactiver l'ancien tracker s'il existe
+                if (_saleTracker != null)
+                {
+                    _saleTracker.SaleDetected -= SaleTracker_SaleDetected;
+                    _saleTracker.Dispose();
+                    _saleTracker = null;
+                }
+                
+                string? chatLogPath = config.LootChatLogPath;
+                if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
+                {
+                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré ou fichier inexistant, SaleTracker non initialisé");
+                    return;
+                }
+                
+                _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(chatLogPath);
+                _saleTracker.SaleDetected += SaleTracker_SaleDetected;
+                Logger.Info("MainWindow", "SaleTracker initialisé pour la détection des ventes en temps réel");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de l'initialisation du SaleTracker: {ex.Message}");
+            }
+        }
+        
+        private void SaleTracker_SaleDetected(object? sender, SaleInfo saleInfo)
+        {
+            ShowSaleNotification(saleInfo);
+        }
+        
+        /// <summary>
+        /// Teste l'affichage d'une notification de vente avec des données fictives
+        /// </summary>
+        private void TestSaleNotification()
+        {
+            try
+            {
+                var testSaleInfo = new SaleInfo(
+                    itemCount: new Random().Next(1, 10),
+                    totalKamas: new Random().Next(1000, 100000)
+                );
+                ShowSaleNotification(testSaleInfo, showAbsenceMessage: false);
+                Logger.Info("MainWindow", "Notification de vente de test affichée");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors du test de notification: {ex.Message}");
+            }
         }
 
         // Méthodes supprimées : Toutes les méthodes liées aux sites web et enfants ont été supprimées - fonctionnalité sites web retirée

@@ -412,12 +412,12 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             // Utiliser plusieurs tentatives pour s'assurer que les containers sont générés
             Dispatcher.BeginInvoke(new Action(() =>
             {
+                UpdateStatsVisibility();
+                // Réessayer après un court délai pour s'assurer que tout est généré
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
                     UpdateStatsVisibility();
-                    // Réessayer après un court délai pour s'assurer que tout est généré
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        UpdateStatsVisibility();
-                    }), DispatcherPriority.Render);
+                }), DispatcherPriority.Render);
             }), DispatcherPriority.Loaded);
             
             e.Handled = true;
@@ -2295,14 +2295,14 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         Dispatcher.Invoke(() =>
         {
             try
+        {
+            var existing = _playersCollection.FirstOrDefault(p => string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
             {
-                var existing = _playersCollection.FirstOrDefault(p => string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase));
-                if (existing == null)
-                {
                     Logger.Info("KikimeterWindow", $"Ajout du nouveau joueur: {player.Name} (Total avant: {_playersCollection.Count})");
-                    _playersCollection.Add(player);
+                _playersCollection.Add(player);
                     Logger.Info("KikimeterWindow", $"Joueur ajouté avec succès. Total maintenant: {_playersCollection.Count}");
-                    player.PropertyChanged += Player_PropertyChanged;
+                player.PropertyChanged += Player_PropertyChanged;
                     
                     // Vérifier que l'ItemsControl est bien lié
                     if (PlayersItemsControl != null && PlayersItemsControl.ItemsSource != _playersCollection)
@@ -2311,34 +2311,34 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                         PlayersItemsControl.ItemsSource = _playersCollection;
                     }
                     
-                    // IndividualModeCheckbox supprimé - mode individuel désactivé
-                    if (false) // IndividualModeCheckbox != null && IndividualModeCheckbox.IsChecked.GetValueOrDefault()
-                    {
-                        CreateIndividualPlayerWindow(player);
-                    }
-                    
-                    if (_useManualOrder)
-                    {
-                        ApplyManualOrderIfNeeded();
-                    }
-                    UpdateLootWindowCombatPlayers();
+                // IndividualModeCheckbox supprimé - mode individuel désactivé
+                if (false) // IndividualModeCheckbox != null && IndividualModeCheckbox.IsChecked.GetValueOrDefault()
+                {
+                    CreateIndividualPlayerWindow(player);
+                }
+                
+                if (_useManualOrder)
+                {
+                    ApplyManualOrderIfNeeded();
+                }
+                UpdateLootWindowCombatPlayers();
                     UpdatePreviewVisibility();
                     UpdateWindowHeight();
-                }
-                else if (!ReferenceEquals(existing, player))
-                {
+            }
+            else if (!ReferenceEquals(existing, player))
+            {
                     Logger.Info("KikimeterWindow", $"Mise à jour du joueur existant: {player.Name}");
-                    int index = _playersCollection.IndexOf(existing);
-                    existing.PropertyChanged -= Player_PropertyChanged;
-                    player.ManualOrder = existing.ManualOrder;
-                    _manualOrderMap[player.Name] = player.ManualOrder;
-                    _playersCollection[index] = player;
-                    player.PropertyChanged += Player_PropertyChanged;
-                    if (_useManualOrder)
-                    {
-                        ApplyManualOrderIfNeeded();
-                    }
-                    UpdateLootWindowCombatPlayers();
+                int index = _playersCollection.IndexOf(existing);
+                existing.PropertyChanged -= Player_PropertyChanged;
+                player.ManualOrder = existing.ManualOrder;
+                _manualOrderMap[player.Name] = player.ManualOrder;
+                _playersCollection[index] = player;
+                player.PropertyChanged += Player_PropertyChanged;
+                if (_useManualOrder)
+                {
+                    ApplyManualOrderIfNeeded();
+                }
+                UpdateLootWindowCombatPlayers();
                     UpdatePreviewVisibility();
                     UpdateWindowHeight();
                 }

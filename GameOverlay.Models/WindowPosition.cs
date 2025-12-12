@@ -30,6 +30,9 @@ public class WindowPositions
 
     [JsonProperty("LootWindow")]
     public WindowPosition? LootWindow { get; set; }
+    
+    [JsonProperty("SaleNotificationWindow")]
+    public WindowPosition? SaleNotificationWindow { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, object>? AdditionalWindows { get; set; }

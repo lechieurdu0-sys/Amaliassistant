@@ -1,0 +1,49 @@
+<Window x:Class="GameOverlay.Kikimeter.Views.SaleNotificationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        Title="Ventes" 
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual" Width="350" Height="45" Cursor="Hand"
+        Focusable="False"
+        MouseRightButtonDown="Window_MouseRightButtonDown">
+
+    <Border x:Name="MainBorder" 
+            CornerRadius="8" 
+            Padding="20,25,20,0"
+            BorderBrush="#FF6E5C2A" 
+            BorderThickness="2"
+            Cursor="Hand"
+            MouseLeftButtonDown="MainBorder_MouseLeftButtonDown" Height="45">
+        <Border.Background>
+            <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/EndTurnWidgetBackground.png"/>
+        </Border.Background>
+        <TextBlock x:Name="MessageTextBlock"
+                  TextWrapping="Wrap"
+                  FontSize="14" 
+                  Foreground="#FFC5B48F"
+                  HorizontalAlignment="Center"
+                  TextAlignment="Center" Cursor="Hand" Margin="0,-15,0,10">
+            <Run x:Name="MessageTextRun"/>
+            <InlineUIContainer>
+                <Image x:Name="KamasImageInline"
+                       Source="/GameOverlay.Kikimeter;component/Views/Sans titre.png"
+                       Width="16"
+                       Height="16"
+                       VerticalAlignment="Center"
+                       Margin="3,0,0,0"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+            </InlineUIContainer>
+            <Run x:Name="AbsenceTextRun"/>
+        </TextBlock>
+    </Border>
+</Window>
+

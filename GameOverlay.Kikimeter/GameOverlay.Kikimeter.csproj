@@ -36,6 +36,7 @@
   <ItemGroup>
     <Resource Include="Resources\Assets\Classes\**\*.png" />
     <Resource Include="Resources\Assets\kikimeter\**\*.png" />
+    <Resource Include="Resources\Assets\sales\**\*.png" />
     <Resource Include="Views\Assets\kikimeter\**\*.png" />
     <Resource Include="Views\Assets\loot\**\*.png" />
     <Resource Include="Views\Assets\utilities\**\*.png" />
@@ -44,6 +45,7 @@
   <ItemGroup>
     <None Remove="deploiement.png" />
     <None Remove="Views\0.png" />
+    <None Remove="Views\button_scrollbar.png" />
     <None Remove="Views\croix_deplacement.png" />
     <None Remove="Views\EndTurnWidgetBackground.png" />
     <None Remove="Views\kikimeter_empty.png" />
@@ -54,6 +56,7 @@
     <None Remove="Views\NP-SearchBar-1.png" />
     <None Remove="Views\parameter.png" />
     <None Remove="Views\reduire.png" />
+    <None Remove="Views\Sans titre.png" />
     <None Remove="Views\StatSlots01.png" />
     <None Remove="Views\StatSlots07.png" />
     <None Remove="Views\StatSlots08.png" />
@@ -64,6 +67,7 @@
   <ItemGroup>
     <Resource Include="deploiement.png" />
     <Resource Include="Views\0.png" />
+    <Resource Include="Views\button_scrollbar.png" />
     <Resource Include="Views\croix_deplacement.png" />
     <Resource Include="Views\EndTurnWidgetBackground.png" />
     <Resource Include="Views\kikimeter_empty.png" />
@@ -74,6 +78,7 @@
     <Resource Include="Views\NP-SearchBar-1.png" />
     <Resource Include="Views\parameter.png" />
     <Resource Include="Views\reduire.png" />
+    <Resource Include="Views\Sans titre.png" />
     <Resource Include="Views\StatSlots01.png" />
     <Resource Include="Views\StatSlots07.png" />
     <Resource Include="Views\StatSlots08.png" />
