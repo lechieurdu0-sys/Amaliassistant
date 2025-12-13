@@ -18,6 +18,8 @@ Filtrage par personnage
 
 Statistiques détaillées
 
+Notification d'objets vendu hors connexion et meme pendant la session de jeu avec le prix total de celles ci
+
 ### 🌐 Navigateur Web Intégré
 
 Navigation web complète avec WebView2
