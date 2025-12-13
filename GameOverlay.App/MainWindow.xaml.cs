@@ -65,6 +65,7 @@ namespace GameOverlay.App
         // Sale Notification System
         private GameOverlay.Kikimeter.Services.SaleTracker? _saleTracker;
         private readonly List<GameOverlay.Kikimeter.Views.SaleNotificationWindow> _saleNotificationWindows = new();
+        private System.Windows.Threading.DispatcherTimer? _saleTrackerTimer;
 
         private int _openContextMenus;
         private bool _focusReturnPending;
@@ -126,6 +127,14 @@ namespace GameOverlay.App
                             _saleTracker.SaleDetected -= SaleTracker_SaleDetected;
                             _saleTracker.Dispose();
                             _saleTracker = null;
+                        }
+                        
+                        // Arrêter le timer du SaleTracker
+                        if (_saleTrackerTimer != null)
+                        {
+                            _saleTrackerTimer.Stop();
+                            _saleTrackerTimer.Tick -= SaleTrackerTimer_Tick;
+                            _saleTrackerTimer = null;
                         }
                         
                         // Nettoyer le NotifyIcon
@@ -2509,6 +2518,14 @@ namespace GameOverlay.App
                     _saleTracker = null;
                 }
                 
+                // Arrêter l'ancien timer s'il existe
+                if (_saleTrackerTimer != null)
+                {
+                    _saleTrackerTimer.Stop();
+                    _saleTrackerTimer.Tick -= SaleTrackerTimer_Tick;
+                    _saleTrackerTimer = null;
+                }
+                
                 string? chatLogPath = config.LootChatLogPath;
                 if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
                 {
@@ -2518,11 +2535,45 @@ namespace GameOverlay.App
                 
                 _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(chatLogPath);
                 _saleTracker.SaleDetected += SaleTracker_SaleDetected;
+                
+                // Créer et démarrer le timer pour la lecture périodique (comme le Kikimeter)
+                _saleTrackerTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(50)
+                };
+                _saleTrackerTimer.Tick += SaleTrackerTimer_Tick;
+                _saleTrackerTimer.Start();
+                
                 Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath})");
             }
             catch (Exception ex)
             {
                 Logger.Error("MainWindow", $"Erreur lors de l'initialisation du SaleTracker: {ex.Message}");
+            }
+        }
+        
+        private void SaleTrackerTimer_Tick(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (_saleTracker != null)
+                {
+                    System.Threading.Tasks.Task.Run(() =>
+                    {
+                        try
+                        {
+                            _saleTracker.ManualRead();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("MainWindow", $"Erreur lors de ManualRead du SaleTracker: {ex.Message}");
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur dans SaleTrackerTimer_Tick: {ex.Message}");
             }
         }
         
