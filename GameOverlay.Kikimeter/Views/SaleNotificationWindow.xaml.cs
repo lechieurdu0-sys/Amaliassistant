@@ -44,7 +44,7 @@ public partial class SaleNotificationWindow : Window
         _timerStarted = true;
         _autoCloseTimer = new System.Windows.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(10)
+            Interval = TimeSpan.FromSeconds(15)
         };
         _autoCloseTimer.Tick += (s, e) =>
         {

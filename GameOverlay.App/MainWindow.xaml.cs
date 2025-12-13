@@ -1426,10 +1426,41 @@ namespace GameOverlay.App
                 var label = string.IsNullOrWhiteSpace(e.ServerName) ? "déconnexion" : e.ServerName;
                 Logger.Info("MainWindow", $"Changement de serveur détecté ({label}), réinitialisation des affichages.");
                 
-                // Si c'est une connexion (pas une déconnexion), afficher la notification de vente depuis la première ligne
+                // Si c'est une connexion (pas une déconnexion), vider le fichier de log du chat
+                // pour ne garder que les nouvelles ventes de cette session
                 if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
                 {
-                    ShowSaleNotificationFromFirstLine();
+                    try
+                    {
+                        string? chatLogPath = config.LootChatLogPath;
+                        if (!string.IsNullOrEmpty(chatLogPath) && File.Exists(chatLogPath))
+                        {
+                            // Tronquer le fichier en le vidant
+                            File.WriteAllText(chatLogPath, string.Empty);
+                            Logger.Info("MainWindow", $"Fichier de log du chat tronqué pour nouvelle session: {chatLogPath}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        GameOverlay.Models.Logger.Warning("MainWindow", $"Erreur lors du tronquage du fichier de log du chat: {ex.Message}");
+                    }
+                    
+                    // Attendre 2 secondes avant de lire le log pour laisser le jeu écrire l'information
+                }
+                
+                // Si c'est une connexion (pas une déconnexion), afficher la notification de vente
+                // On attend un délai pour laisser le jeu écrire l'information dans le log
+                if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
+                {
+                    // Attendre 2 secondes avant de lire le log pour laisser le jeu écrire l'information
+                    System.Threading.Tasks.Task.Delay(2000).ContinueWith(_ =>
+                    {
+                        // S'assurer que l'appel se fait sur le thread UI
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            ShowSaleNotificationFromRecentLines();
+                        }), DispatcherPriority.Normal);
+                    });
                 }
                 
                 // Réinitialiser le SaleTracker pour surveiller les nouvelles ventes
@@ -1844,6 +1875,20 @@ namespace GameOverlay.App
                     catch (Exception ex)
                     {
                         Logger.Error("MainWindow", $"Erreur lors de l'initialisation de LootWindow en arrière-plan: {ex.Message}");
+                    }
+                }
+                
+                // Initialiser le SaleTracker même si la LootWindow n'est pas créée (si le chemin du log est configuré)
+                if (_saleTracker == null && !string.IsNullOrEmpty(config.LootChatLogPath) && File.Exists(config.LootChatLogPath))
+                {
+                    try
+                    {
+                        InitializeSaleTracker();
+                        Logger.Info("MainWindow", "SaleTracker initialisé en arrière-plan (sans LootWindow)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors de l'initialisation du SaleTracker en arrière-plan: {ex.Message}");
                     }
                 }
             }
@@ -2418,6 +2463,38 @@ namespace GameOverlay.App
         }
         
         /// <summary>
+        /// Affiche une notification de vente basée sur les dernières lignes du log de chat
+        /// Utile pour détecter les ventes qui apparaissent lors de la connexion
+        /// </summary>
+        private void ShowSaleNotificationFromRecentLines()
+        {
+            try
+            {
+                string? chatLogPath = config.LootChatLogPath;
+                if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
+                {
+                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré ou fichier inexistant, notification de vente ignorée");
+                    return;
+                }
+                
+                // Lire les informations de vente depuis les dernières lignes du log (plus récentes)
+                var saleInfo = SaleNotificationService.ReadSaleInfoFromRecentLines(chatLogPath, maxLinesToRead: 50);
+                if (saleInfo == null)
+                {
+                    Logger.Debug("MainWindow", "Aucune information de vente trouvée dans les dernières lignes du log");
+                    return;
+                }
+                
+                // Pour la connexion, afficher "pendant votre absence"
+                ShowSaleNotification(saleInfo, showAbsenceMessage: true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de la récupération des informations de vente: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
         /// Initialise le service de suivi des ventes en temps réel
         /// </summary>
         private void InitializeSaleTracker()
@@ -2441,7 +2518,7 @@ namespace GameOverlay.App
                 
                 _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(chatLogPath);
                 _saleTracker.SaleDetected += SaleTracker_SaleDetected;
-                Logger.Info("MainWindow", "SaleTracker initialisé pour la détection des ventes en temps réel");
+                Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath})");
             }
             catch (Exception ex)
             {

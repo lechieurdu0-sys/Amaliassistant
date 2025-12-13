@@ -18,24 +18,39 @@ public class SaleTracker : IDisposable
     // Regex pour détecter les informations de vente dans les nouvelles lignes
     private static readonly Regex[] SaleInfoPatterns = new[]
     {
-        // Pattern 1: "Vous avez vendu X items pour un total de Y kamas"
+        // Pattern 1: "Vous avez vendu X objets pour un prix total de Y§" (peut avoir du texte après le §)
         new Regex(
-            @"Vous\s+avez\s+vendu\s+(\d+)\s+items?\s+(?:pour\s+un\s+total\s+de\s+)?(\d+(?:\s+\d+)*)\s+kamas?",
+            @"Vous\s+avez\s+vendu\s+(\d+)\s+(?:objets?|items?)\s+pour\s+(?:un\s+)?(?:prix\s+)?total\s+de\s+(\d+(?:\s+\d+)*)\s*§",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
         
-        // Pattern 2: "X items vendus pour Y kamas"
+        // Pattern 2: "Vous avez vendu X items pour un total de Y kamas"
         new Regex(
-            @"(\d+)\s+items?\s+vendus?\s+(?:pour\s+)?(?:un\s+total\s+de\s+)?(\d+(?:\s+\d+)*)\s+kamas?",
+            @"Vous\s+avez\s+vendu\s+(\d+)\s+(?:objets?|items?)\s+(?:pour\s+un\s+total\s+de\s+)?(\d+(?:\s+\d+)*)\s+(?:§|kamas?)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
         
-        // Pattern 3: "X items vendus. Total : Y kamas" ou "X items vendus, total Y kamas"
+        // Pattern 3: "X items vendus pour Y kamas" ou "X objets vendus pour Y§"
         new Regex(
-            @"(\d+)\s+items?\s+vendus?[.,]\s*(?:Total\s*[:]?\s*)?(\d+(?:\s+\d+)*)\s+kamas?",
+            @"(\d+)\s+(?:objets?|items?)\s+vendus?\s+(?:pour\s+)?(?:un\s+)?(?:prix\s+)?total\s+de\s+?(\d+(?:\s+\d+)*)\s*(?:§|kamas?)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
         
-        // Pattern 4: Recherche séparée des nombres (items et kamas dans n'importe quel ordre)
+        // Pattern 4: "X items vendus. Total : Y kamas" ou "X items vendus, total Y kamas"
         new Regex(
-            @"(\d+)\s+items?.*?(\d+(?:\s+\d+)*)\s+kamas?|(\d+(?:\s+\d+)*)\s+kamas?.*?(\d+)\s+items?",
+            @"(\d+)\s+(?:objets?|items?)\s+vendus?[.,]\s*(?:Total\s*[:]?\s*)?(\d+(?:\s+\d+)*)\s*(?:§|kamas?)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
+        
+        // Pattern 5: Recherche séparée des nombres (objets/items et kamas/§ dans n'importe quel ordre)
+        new Regex(
+            @"(\d+)\s+(?:objets?|items?).*?(\d+(?:\s+\d+)*)\s*(?:§|kamas?)|(\d+(?:\s+\d+)*)\s*(?:§|kamas?).*?(\d+)\s+(?:objets?|items?)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
+        
+        // Pattern 6: Plus flexible - cherche "vendu" + nombre + "objets/items" + nombre + "§/kamas" dans n'importe quel ordre
+        new Regex(
+            @".*vendu.*?(\d+).*?(?:objets?|items?).*?(\d+(?:\s+\d+)*)\s*(?:§|kamas?)|.*vendu.*?(\d+(?:\s+\d+)*)\s*(?:§|kamas?).*?(\d+).*?(?:objets?|items?)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
+        
+        // Pattern 7: Très flexible - cherche simplement un nombre, "objets/items", un autre nombre, "§/kamas" dans une ligne contenant "vendu"
+        new Regex(
+            @"(?=.*vendu)(?=.*(?:objets?|items?))(?=.*(?:§|kamas?)).*?(\d+).*?(?:objets?|items?).*?(\d+(?:\s+\d+)*)\s*(?:§|kamas?)|(?=.*vendu)(?=.*(?:objets?|items?))(?=.*(?:§|kamas?)).*?(\d+(?:\s+\d+)*)\s*(?:§|kamas?).*?(\d+).*?(?:objets?|items?)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
     };
     
@@ -160,6 +175,16 @@ public class SaleTracker : IDisposable
             }
         }
         
+        // Log de debug pour les lignes contenant des mots-clés de vente
+        if (cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
+            cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("kamas", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("§", StringComparison.Ordinal))
+        {
+            Logger.Debug("SaleTracker", $"Ligne analysée: {cleanLine}");
+        }
+        
         // Chercher des informations de vente dans la ligne
         var saleInfo = ParseSaleInfo(cleanLine);
         if (saleInfo != null)
@@ -174,17 +199,21 @@ public class SaleTracker : IDisposable
     /// </summary>
     private static SaleInfo? ParseSaleInfo(string cleanLine)
     {
+        Logger.Debug("SaleTracker", $"Ligne nettoyée pour parsing: {cleanLine}");
         // Essayer chaque pattern jusqu'à trouver une correspondance
+        int patternIndex = 0;
         foreach (var pattern in SaleInfoPatterns)
         {
             var match = pattern.Match(cleanLine);
+            Logger.Debug("SaleTracker", $"Pattern {patternIndex}: match = {match.Success}");
             if (match.Success)
             {
+                Logger.Debug("SaleTracker", $"Pattern {patternIndex} a matché! Groups.Count = {match.Groups.Count}");
                 int itemCount = 0;
                 long totalKamas = 0;
                 
-                // Pour le pattern 4, les groupes peuvent être dans un ordre différent
-                if (pattern == SaleInfoPatterns[3])
+                // Pour les patterns avec ordre variable (4, 5, 6, 7 - indices 4, 5, 6 car 0-indexed), les groupes peuvent être dans un ordre différent
+                if (patternIndex >= 4)
                 {
                     // Pattern avec ordre variable : items puis kamas OU kamas puis items
                     if (match.Groups[1].Success && match.Groups[2].Success)
@@ -192,17 +221,30 @@ public class SaleTracker : IDisposable
                         // Ordre: items puis kamas
                         if (int.TryParse(match.Groups[1].Value, out itemCount))
                         {
-                            string kamasStr = match.Groups[2].Value.Replace(" ", "").Replace("\u00A0", "");
-                            long.TryParse(kamasStr, out totalKamas);
+                            string kamasStr = match.Groups[2].Value;
+                            Logger.Debug("SaleTracker", $"Kamas string brut (ordre variable): '{kamasStr}'");
+                            kamasStr = kamasStr.Replace(" ", "").Replace("\u00A0", "").Replace("\u2009", "").Replace("\u202F", "");
+                            Logger.Debug("SaleTracker", $"Kamas string nettoyé (ordre variable): '{kamasStr}'");
+                            if (!long.TryParse(kamasStr, out totalKamas))
+                            {
+                                Logger.Warning("SaleTracker", $"Échec du parsing de kamas (ordre variable): '{kamasStr}'");
+                            }
                         }
                     }
                     else if (match.Groups[3].Success && match.Groups[4].Success)
                     {
                         // Ordre: kamas puis items
-                        string kamasStr = match.Groups[3].Value.Replace(" ", "").Replace("\u00A0", "");
+                        string kamasStr = match.Groups[3].Value;
+                        Logger.Debug("SaleTracker", $"Kamas string brut (ordre inversé): '{kamasStr}'");
+                        kamasStr = kamasStr.Replace(" ", "").Replace("\u00A0", "").Replace("\u2009", "").Replace("\u202F", "");
+                        Logger.Debug("SaleTracker", $"Kamas string nettoyé (ordre inversé): '{kamasStr}'");
                         if (long.TryParse(kamasStr, out totalKamas))
                         {
                             int.TryParse(match.Groups[4].Value, out itemCount);
+                        }
+                        else
+                        {
+                            Logger.Warning("SaleTracker", $"Échec du parsing de kamas (ordre inversé): '{kamasStr}'");
                         }
                     }
                 }
@@ -214,8 +256,15 @@ public class SaleTracker : IDisposable
                         if (int.TryParse(match.Groups[1].Value, out itemCount))
                         {
                             // Parser le montant en kamas (peut contenir des espaces comme séparateurs de milliers)
-                            string kamasStr = match.Groups[2].Value.Replace(" ", "").Replace("\u00A0", "");
-                            long.TryParse(kamasStr, out totalKamas);
+                            string kamasStr = match.Groups[2].Value;
+                            Logger.Debug("SaleTracker", $"Kamas string brut: '{kamasStr}'");
+                            // Enlever tous les types d'espaces (normaux, insécables, etc.)
+                            kamasStr = kamasStr.Replace(" ", "").Replace("\u00A0", "").Replace("\u2009", "").Replace("\u202F", "");
+                            Logger.Debug("SaleTracker", $"Kamas string nettoyé: '{kamasStr}'");
+                            if (!long.TryParse(kamasStr, out totalKamas))
+                            {
+                                Logger.Warning("SaleTracker", $"Échec du parsing de kamas: '{kamasStr}'");
+                            }
                         }
                     }
                 }
@@ -224,9 +273,15 @@ public class SaleTracker : IDisposable
                 {
                     return new SaleInfo(itemCount, totalKamas);
                 }
+                else
+                {
+                    Logger.Warning("SaleTracker", $"Pattern {patternIndex} a matché mais parsing échoué: itemCount={itemCount}, totalKamas={totalKamas}");
+                }
             }
+            patternIndex++;
         }
         
+        Logger.Debug("SaleTracker", "Aucun pattern n'a matché la ligne nettoyée");
         return null;
     }
     
@@ -243,4 +298,5 @@ public class SaleTracker : IDisposable
         _fileWatcher?.Dispose();
     }
 }
+
 
