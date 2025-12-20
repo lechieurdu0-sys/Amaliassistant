@@ -736,6 +736,39 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             
             Logger.Info("SettingsWindow", $"Config chargée: MainCharacter={mainCharacter}, MyCharacters={myCharacters.Count}, ManualCharacters={manualCharacters.Count}, Characters={config.Characters.Count}");
             
+            // Si aucun personnage principal n'est défini, définir automatiquement le premier personnage disponible
+            if (string.IsNullOrEmpty(mainCharacter))
+            {
+                // Déterminer le premier personnage qui sera affiché
+                string? firstCharacter = null;
+                
+                // Priorité 1: Premier personnage de myCharacters
+                if (myCharacters.Count > 0)
+                {
+                    firstCharacter = myCharacters[0];
+                }
+                // Priorité 2: Premier personnage manuel
+                else if (manualCharacters.Count > 0)
+                {
+                    firstCharacter = manualCharacters.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
+                }
+                // Priorité 3: Premier personnage de config.Characters (trié par ordre alphabétique)
+                else if (config.Characters.Count > 0)
+                {
+                    firstCharacter = config.Characters.Keys.OrderBy(name => name).FirstOrDefault();
+                }
+                
+                // Si un premier personnage a été trouvé, le définir comme personnage principal
+                if (!string.IsNullOrEmpty(firstCharacter))
+                {
+                    if (TrySetMainCharacter(firstCharacter))
+                    {
+                        mainCharacter = firstCharacter;
+                        Logger.Info("SettingsWindow", $"Premier personnage '{firstCharacter}' automatiquement défini comme personnage principal");
+                    }
+                }
+            }
+            
             // Créer un set de tous les personnages déjà ajoutés pour éviter les doublons
             var addedCharacters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

@@ -72,6 +72,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private bool _suspendFocusReturn;
     private bool _isCollapsed = false;
     private DateTime _lastClickTime = DateTime.MinValue;
+    private bool _firstTurnComplete = false; // Indique si le premier tour complet est terminé
 
     private static bool _bindingDiagnosticsEnabled;
     private static readonly object _bindingDiagnosticsLock = new();
@@ -2860,6 +2861,9 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 player.ResetTurnDamage();
             }
             
+            // Réinitialiser le flag du premier tour complet
+            _firstTurnComplete = false;
+            
             // Réinitialiser les compteurs de kikis
             _playerKikis.Clear();
             
@@ -2978,6 +2982,54 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private void Player_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         // Mise à jour des valeurs max si nécessaire
+        
+        // Si le premier tour complet est terminé, ne plus trier (le tri automatique au premier tour a la priorité sur l'ordre manuel)
+        if (_firstTurnComplete)
+            return;
+        
+        // Si la propriété NumberOfTurns change, vérifier si c'est le premier tour d'un joueur
+        if (e.PropertyName == nameof(PlayerStats.NumberOfTurns) && sender is PlayerStats player)
+        {
+            // Si le joueur vient de jouer son premier tour (NumberOfTurns passe de 0 à 1)
+            if (player.NumberOfTurns == 1)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        // Compter combien de joueurs ont déjà joué au moins une fois
+                        int playersWhoPlayedCount = _playersCollection.Count(p => p.NumberOfTurns >= 1);
+                        
+                        // Trouver la position actuelle du joueur
+                        int currentIndex = _playersCollection.IndexOf(player);
+                        
+                        // Si le joueur n'est pas déjà à la bonne position, le déplacer
+                        // La position doit être juste après le dernier joueur qui a déjà joué
+                        int targetIndex = playersWhoPlayedCount - 1; // -1 car on compte à partir de 0
+                        
+                        if (currentIndex != targetIndex && targetIndex >= 0)
+                        {
+                            _playersCollection.Move(currentIndex, targetIndex);
+                            Logger.Info("KikimeterWindow", $"Joueur {player.Name} déplacé à la position {targetIndex} (premier tour)");
+                        }
+                        
+                        // Vérifier si tous les joueurs ont joué au moins une fois
+                        bool allPlayersPlayed = _playersCollection.All(p => p.NumberOfTurns >= 1);
+                        if (allPlayersPlayed && !_firstTurnComplete)
+                        {
+                            _firstTurnComplete = true;
+                            Logger.Info("KikimeterWindow", "Premier tour complet terminé - ordre des joueurs figé");
+                        }
+                        
+                        UpdateFirstPlayerFlag();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("KikimeterWindow", $"Erreur lors du tri automatique au premier tour: {ex.Message}");
+                    }
+                }), DispatcherPriority.Normal);
+            }
+        }
     }
     
     private DateTime _lastArrowUpdateTime = DateTime.MinValue;
