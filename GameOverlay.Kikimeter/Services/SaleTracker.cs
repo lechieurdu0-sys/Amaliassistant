@@ -105,6 +105,94 @@ public class SaleTracker : IDisposable
         }
         
         Logger.Info("SaleTracker", $"SaleTracker initialisé pour: {_logFilePath}");
+        
+        // Lire les dernières lignes au démarrage pour détecter les ventes récentes
+        System.Threading.Tasks.Task.Delay(500).ContinueWith(_ => ReadRecentLines(50));
+    }
+    
+    /// <summary>
+    /// Lit les dernières lignes du fichier pour détecter les ventes récentes au démarrage
+    /// </summary>
+    private void ReadRecentLines(int maxLines = 50)
+    {
+        if (!File.Exists(_logFilePath))
+            return;
+        
+        lock (_lockObject)
+        {
+            try
+            {
+                var lines = new System.Collections.Generic.List<string>();
+                using (var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
+                {
+                    string? line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        lines.Add(line);
+                        // Garder seulement les N dernières lignes en mémoire
+                        if (lines.Count > maxLines)
+                        {
+                            lines.RemoveAt(0);
+                        }
+                    }
+                }
+                
+                if (lines.Count == 0)
+                {
+                    Logger.Debug("SaleTracker", "Aucune ligne à lire dans le fichier de log");
+                    return;
+                }
+                
+                Logger.Info("SaleTracker", $"Lecture des {lines.Count} dernières lignes au démarrage pour détecter les ventes récentes");
+                
+                // Parcourir les lignes de la plus récente à la plus ancienne
+                // pour trouver la première occurrence d'une vente
+                bool saleFound = false;
+                for (int i = lines.Count - 1; i >= 0; i--)
+                {
+                    var saleInfo = ParseSaleInfo(ProcessLineForParsing(lines[i]));
+                    if (saleInfo != null)
+                    {
+                        Logger.Info("SaleTracker", $"Vente récente détectée au démarrage: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
+                        SaleDetected?.Invoke(this, saleInfo);
+                        saleFound = true;
+                        break; // Ne traiter que la vente la plus récente
+                    }
+                }
+                
+                if (!saleFound)
+                {
+                    Logger.Debug("SaleTracker", $"Aucune vente trouvée dans les {lines.Count} dernières lignes");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SaleTracker", $"Erreur lors de la lecture des lignes récentes: {ex.Message}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Nettoie une ligne pour le parsing (extrait le texte sans les préfixes)
+    /// </summary>
+    private static string ProcessLineForParsing(string line)
+    {
+        string cleanLine = line;
+        const string infoMarker = "[Information (jeu)] ";
+        int infoIndex = line.IndexOf(infoMarker, StringComparison.OrdinalIgnoreCase);
+        if (infoIndex >= 0)
+        {
+            cleanLine = line[(infoIndex + infoMarker.Length)..].Trim();
+        }
+        else
+        {
+            int fallbackIndex = line.LastIndexOf("] ", StringComparison.Ordinal);
+            if (fallbackIndex >= 0)
+            {
+                cleanLine = line[(fallbackIndex + 2)..].Trim();
+            }
+        }
+        return cleanLine;
     }
     
     private void OnFileChanged(object sender, FileSystemEventArgs e)
