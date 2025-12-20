@@ -107,16 +107,24 @@ public class SaleTracker : IDisposable
         Logger.Info("SaleTracker", $"SaleTracker initialisé pour: {_logFilePath}");
         
         // Lire les dernières lignes au démarrage pour détecter les ventes récentes
-        System.Threading.Tasks.Task.Delay(500).ContinueWith(_ => ReadRecentLines(50));
+        // Délai augmenté pour laisser le temps au fichier de se stabiliser
+        System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ => 
+        {
+            Logger.Info("SaleTracker", "Démarrage de la lecture des lignes récentes...");
+            ReadRecentLines(100);
+        });
     }
     
     /// <summary>
     /// Lit les dernières lignes du fichier pour détecter les ventes récentes au démarrage
     /// </summary>
-    private void ReadRecentLines(int maxLines = 50)
+    private void ReadRecentLines(int maxLines = 100)
     {
         if (!File.Exists(_logFilePath))
+        {
+            Logger.Warning("SaleTracker", $"Fichier de log non trouvé pour ReadRecentLines: {_logFilePath}");
             return;
+        }
         
         lock (_lockObject)
         {
@@ -139,7 +147,7 @@ public class SaleTracker : IDisposable
                 
                 if (lines.Count == 0)
                 {
-                    Logger.Debug("SaleTracker", "Aucune ligne à lire dans le fichier de log");
+                    Logger.Warning("SaleTracker", "Aucune ligne à lire dans le fichier de log");
                     return;
                 }
                 
@@ -148,9 +156,25 @@ public class SaleTracker : IDisposable
                 // Parcourir les lignes de la plus récente à la plus ancienne
                 // pour trouver la première occurrence d'une vente
                 bool saleFound = false;
+                int linesWithKeywords = 0;
                 for (int i = lines.Count - 1; i >= 0; i--)
                 {
-                    var saleInfo = ParseSaleInfo(ProcessLineForParsing(lines[i]));
+                    string rawLine = lines[i];
+                    string cleanLine = ProcessLineForParsing(rawLine);
+                    
+                    // Log toutes les lignes contenant des mots-clés de vente
+                    if (cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
+                        cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
+                        cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
+                        cleanLine.Contains("kamas", StringComparison.OrdinalIgnoreCase) ||
+                        cleanLine.Contains("§", StringComparison.Ordinal))
+                    {
+                        linesWithKeywords++;
+                        Logger.Info("SaleTracker", $"Ligne analysée ({i+1}/{lines.Count}): {rawLine}");
+                        Logger.Info("SaleTracker", $"Ligne nettoyée: {cleanLine}");
+                    }
+                    
+                    var saleInfo = ParseSaleInfo(cleanLine);
                     if (saleInfo != null)
                     {
                         Logger.Info("SaleTracker", $"Vente récente détectée au démarrage: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
@@ -162,12 +186,12 @@ public class SaleTracker : IDisposable
                 
                 if (!saleFound)
                 {
-                    Logger.Debug("SaleTracker", $"Aucune vente trouvée dans les {lines.Count} dernières lignes");
+                    Logger.Warning("SaleTracker", $"Aucune vente trouvée dans les {lines.Count} dernières lignes (lignes avec mots-clés: {linesWithKeywords})");
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error("SaleTracker", $"Erreur lors de la lecture des lignes récentes: {ex.Message}");
+                Logger.Error("SaleTracker", $"Erreur lors de la lecture des lignes récentes: {ex.Message}\n{ex.StackTrace}");
             }
         }
     }
@@ -287,16 +311,14 @@ public class SaleTracker : IDisposable
     /// </summary>
     private static SaleInfo? ParseSaleInfo(string cleanLine)
     {
-        Logger.Debug("SaleTracker", $"Ligne nettoyée pour parsing: {cleanLine}");
         // Essayer chaque pattern jusqu'à trouver une correspondance
         int patternIndex = 0;
         foreach (var pattern in SaleInfoPatterns)
         {
             var match = pattern.Match(cleanLine);
-            Logger.Debug("SaleTracker", $"Pattern {patternIndex}: match = {match.Success}");
             if (match.Success)
             {
-                Logger.Debug("SaleTracker", $"Pattern {patternIndex} a matché! Groups.Count = {match.Groups.Count}");
+                Logger.Info("SaleTracker", $"Pattern {patternIndex} a matché! Groups.Count = {match.Groups.Count}");
                 int itemCount = 0;
                 long totalKamas = 0;
                 
@@ -369,7 +391,15 @@ public class SaleTracker : IDisposable
             patternIndex++;
         }
         
-        Logger.Debug("SaleTracker", "Aucun pattern n'a matché la ligne nettoyée");
+        // Log seulement si la ligne contient des mots-clés de vente
+        if (cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
+            cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("kamas", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("§", StringComparison.Ordinal))
+        {
+            Logger.Warning("SaleTracker", $"Aucun pattern n'a matché la ligne nettoyée: '{cleanLine}'");
+        }
         return null;
     }
     
