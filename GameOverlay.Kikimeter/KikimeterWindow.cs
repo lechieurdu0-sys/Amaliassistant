@@ -72,6 +72,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private bool _suspendFocusReturn;
     private bool _isCollapsed = false;
     private DateTime _lastClickTime = DateTime.MinValue;
+    private double? _initialTopPosition = null; // Position Top initiale (celle du premier joueur qui positionne le tout)
+    private bool _turnOrderLocked = false; // Verrouille l'ordre des joueurs après le premier tour complet
 
     private static bool _bindingDiagnosticsEnabled;
     private static readonly object _bindingDiagnosticsLock = new();
@@ -395,6 +397,15 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             
             Logger.Info("KikimeterWindow", $"MainCollapseArrow_Click appelé! _isCollapsed avant: {_isCollapsed}");
             
+            // Si on est en mode développé et qu'on va passer en mode réduit,
+            // sauvegarder la position Top actuelle comme position initiale
+            // (c'est la position du premier joueur qui positionne le tout)
+            if (!_isCollapsed)
+            {
+                _initialTopPosition = Top;
+                Logger.Info("KikimeterWindow", $"Position Top initiale sauvegardée avant réduction: {_initialTopPosition}");
+            }
+            
             // Changer l'état
             _isCollapsed = !_isCollapsed;
             OnPropertyChanged(nameof(IsCollapsed));
@@ -404,6 +415,14 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             // Mettre à jour le template et la hauteur
             UpdateTemplate();
             UpdateWindowHeight();
+            
+            // Si on passe en mode réduit et qu'on a une position Top initiale, la restaurer
+            // Cela garantit que la fenêtre reste visible même avec 6 joueurs
+            if (_isCollapsed && _initialTopPosition.HasValue)
+            {
+                Top = _initialTopPosition.Value;
+                Logger.Info("KikimeterWindow", $"Position Top initiale restaurée en mode réduit: {_initialTopPosition.Value}");
+            }
             
             // Forcer la visibilité - logique spécifique pour Release
             ForceArrowVisibility();
@@ -1659,10 +1678,23 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private void InitializeWindow()
     {
         LoadWindowPositions();
+        
+        // Initialiser la position Top initiale avec la position chargée
+        if (_initialTopPosition == null)
+        {
+            _initialTopPosition = Top;
+            Logger.Info("KikimeterWindow", $"Position Top initiale initialisée au chargement: {_initialTopPosition}");
+        }
+        
         ApplySectionColor();
         
         LocationChanged += (s, e) => 
         {
+            // Sauvegarder la position Top initiale quand la fenêtre est déplacée en mode développé
+            if (!_isCollapsed)
+            {
+                _initialTopPosition = Top;
+            }
             SaveWindowPositions();
             ReturnFocusToGame();
         };
@@ -2065,6 +2097,14 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             {
                 Left = targetPosition.Left;
                 Top = targetPosition.Top;
+                
+                // Initialiser la position Top initiale avec la position chargée si elle n'a pas encore été définie
+                if (_initialTopPosition == null)
+                {
+                    _initialTopPosition = Top;
+                    Logger.Info("KikimeterWindow", $"Position Top initiale initialisée depuis LoadWindowPositions: {_initialTopPosition}");
+                }
+                
                 if (targetPosition.Width > 0)
                 {
                     Width = Math.Max(Math.Min(targetPosition.Width, MaxWidth), MinWidth);
@@ -2213,6 +2253,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         _logWatcher.Parser.PlayerAdded += OnPlayerAdded;
         _logWatcher.Parser.CombatStarted += OnCombatStarted;
         _logWatcher.Parser.CombatEnded += OnCombatEnded;
+        _logWatcher.Parser.TurnDetected += OnTurnDetected;
         
         Logger.Info("KikimeterWindow", $"Événements du parser abonnés. ItemsControl null? {PlayersItemsControl == null}, ItemsSource null? {PlayersItemsControl?.ItemsSource == null}");
         
@@ -2828,6 +2869,9 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     {
         Dispatcher.Invoke(() =>
         {
+            // Réinitialiser le verrouillage de l'ordre pour le nouveau combat
+            _turnOrderLocked = false;
+            
             // Fermer toutes les fenêtres individuelles du combat précédent
             foreach (var window in _playerWindows.Values.ToList())
             {
@@ -2973,6 +3017,147 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 CombatStatusText.Text = "Combat terminé - Statistiques finales";
             }
         });
+    }
+    
+    /// <summary>
+    /// Gère la détection d'un nouveau tour et réorganise automatiquement les joueurs selon l'ordre de passage
+    /// UNIQUEMENT pendant le premier tour du combat
+    /// </summary>
+    private void OnTurnDetected(object sender, string playerName)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                // Ne pas réorganiser si l'ordre manuel est activé
+                if (_useManualOrder)
+                {
+                    Logger.Debug("KikimeterWindow", $"Ordre manuel activé, pas de réorganisation automatique pour {playerName}");
+                    return;
+                }
+                
+                // Ne pas réorganiser si l'ordre est déjà verrouillé (après le premier tour)
+                if (_turnOrderLocked)
+                {
+                    Logger.Debug("KikimeterWindow", $"Ordre verrouillé, pas de réorganisation pour {playerName}");
+                    return;
+                }
+                
+                // Récupérer l'ordre des tours depuis le parser
+                if (_logWatcher?.Parser?.CombatContext?.TurnOrder == null)
+                {
+                    return;
+                }
+                
+                var turnOrder = _logWatcher.Parser.CombatContext.TurnOrder;
+                if (turnOrder.Count == 0)
+                {
+                    return;
+                }
+                
+                Logger.Info("KikimeterWindow", $"Tour détecté pour {playerName}. Ordre actuel: {string.Join(", ", turnOrder)}");
+                
+                // Réorganiser les joueurs selon l'ordre des tours
+                ApplyTurnOrder(turnOrder);
+                
+                // Vérifier si tous les joueurs ont joué leur premier tour
+                // Si oui, verrouiller l'ordre pour le reste du combat
+                CheckAndLockTurnOrder();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("KikimeterWindow", $"Erreur lors de la réorganisation selon l'ordre des tours: {ex.Message}");
+            }
+        });
+    }
+    
+    /// <summary>
+    /// Vérifie si tous les joueurs ont joué leur premier tour et verrouille l'ordre si c'est le cas
+    /// </summary>
+    private void CheckAndLockTurnOrder()
+    {
+        try
+        {
+            if (_logWatcher?.Parser?.CombatContext?.TurnOrder == null)
+            {
+                return;
+            }
+            
+            var turnOrder = _logWatcher.Parser.CombatContext.TurnOrder;
+            var playersInCombat = _playersCollection
+                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+                .Select(p => p.Name)
+                .ToList();
+            
+            // Vérifier si tous les joueurs du combat ont joué au moins une fois
+            bool allPlayersPlayed = playersInCombat.All(playerName => 
+                turnOrder.Contains(playerName, StringComparer.OrdinalIgnoreCase));
+            
+            if (allPlayersPlayed && playersInCombat.Count > 0)
+            {
+                _turnOrderLocked = true;
+                Logger.Info("KikimeterWindow", $"Tous les joueurs ont joué leur premier tour. Ordre verrouillé: {string.Join(", ", turnOrder)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("KikimeterWindow", $"Erreur lors de la vérification du verrouillage de l'ordre: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Applique l'ordre des tours pour réorganiser les joueurs dans le kikimeter
+    /// </summary>
+    private void ApplyTurnOrder(List<string> turnOrder)
+    {
+        try
+        {
+            // Créer un dictionnaire pour mapper l'ordre des tours
+            var orderMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < turnOrder.Count; i++)
+            {
+                orderMap[turnOrder[i]] = i;
+            }
+            
+            // Trier les joueurs selon l'ordre des tours
+            // Les joueurs qui n'ont pas encore joué restent à la fin
+            var orderedPlayers = _playersCollection
+                .OrderBy(p => orderMap.TryGetValue(p.Name, out var order) ? order : int.MaxValue)
+                .ToList();
+            
+            // Réorganiser la collection si nécessaire
+            bool needsReordering = false;
+            for (int i = 0; i < orderedPlayers.Count; i++)
+            {
+                var player = orderedPlayers[i];
+                int currentIndex = _playersCollection.IndexOf(player);
+                if (currentIndex != i)
+                {
+                    needsReordering = true;
+                    break;
+                }
+            }
+            
+            if (needsReordering)
+            {
+                // Réorganiser en utilisant Move pour préserver les bindings
+                for (int i = 0; i < orderedPlayers.Count; i++)
+                {
+                    var player = orderedPlayers[i];
+                    int currentIndex = _playersCollection.IndexOf(player);
+                    if (currentIndex != i && currentIndex >= 0)
+                    {
+                        _playersCollection.Move(currentIndex, i);
+                    }
+                }
+                
+                Logger.Info("KikimeterWindow", $"Joueurs réorganisés selon l'ordre des tours: {string.Join(", ", _playersCollection.Select(p => p.Name))}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("KikimeterWindow", $"Erreur dans ApplyTurnOrder: {ex.Message}");
+        }
     }
     
     private void Player_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -3189,6 +3374,15 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         {
             _isDragging = false;
             ReleaseMouseCapture();
+            
+            // Sauvegarder la position Top initiale quand la fenêtre est déplacée en mode développé
+            // C'est la position du premier joueur qui positionne le tout
+            if (!_isCollapsed)
+            {
+                _initialTopPosition = Top;
+                Logger.Info("KikimeterWindow", $"Position Top initiale mise à jour après déplacement: {_initialTopPosition}");
+            }
+            
             ReturnFocusToGame();
         }
     }

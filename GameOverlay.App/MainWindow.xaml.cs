@@ -2558,17 +2558,16 @@ namespace GameOverlay.App
             {
                 if (_saleTracker != null)
                 {
-                    System.Threading.Tasks.Task.Run(() =>
+                    // Appeler directement ManualRead (qui gère déjà la synchronisation interne)
+                    // Ne pas utiliser Task.Run pour éviter les problèmes de concurrence
+                    try
                     {
-                        try
-                        {
-                            _saleTracker.ManualRead();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error("MainWindow", $"Erreur lors de ManualRead du SaleTracker: {ex.Message}");
-                        }
-                    });
+                        _saleTracker.ManualRead();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors de ManualRead du SaleTracker: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)

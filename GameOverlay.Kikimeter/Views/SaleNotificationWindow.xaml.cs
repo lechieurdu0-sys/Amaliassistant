@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
@@ -97,8 +98,42 @@ public partial class SaleNotificationWindow : Window
         // Charger la position sauvegardée
         LoadSavedPosition();
         
+        // Jouer un son lors de l'affichage de la notification
+        PlayNotificationSound();
+        
         // Le timer sera démarré seulement quand la notification devient visible (au-dessus)
         // Voir MainWindow.ReorganizeSaleNotificationsZOrder()
+    }
+    
+    /// <summary>
+    /// Joue un son de notification pour alerter l'utilisateur d'une vente
+    /// </summary>
+    private void PlayNotificationSound()
+    {
+        try
+        {
+            // Essayer d'abord un fichier son personnalisé dans le dossier de l'application
+            string customSoundPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sounds", "sale_notification.wav");
+            if (File.Exists(customSoundPath))
+            {
+                using (var player = new System.Media.SoundPlayer(customSoundPath))
+                {
+                    player.Play(); // Play() est asynchrone et non bloquant
+                }
+                Logger.Debug("SaleNotificationWindow", $"Son personnalisé joué: {customSoundPath}");
+                return;
+            }
+            
+            // Sinon, utiliser un son système Windows par défaut
+            // SystemSounds.Asterisk est un son d'alerte discret
+            System.Media.SystemSounds.Asterisk.Play();
+            Logger.Debug("SaleNotificationWindow", "Son système par défaut joué (Asterisk)");
+        }
+        catch (Exception ex)
+        {
+            // Ne pas bloquer l'affichage de la notification si le son échoue
+            Logger.Warning("SaleNotificationWindow", $"Erreur lors de la lecture du son: {ex.Message}");
+        }
     }
     
     private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)

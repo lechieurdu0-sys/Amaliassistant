@@ -110,7 +110,8 @@ public class SaleTracker : IDisposable
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
         // Délai pour éviter les lectures multiples lors d'une écriture en cours
-        System.Threading.Tasks.Task.Delay(50).ContinueWith(_ => ReadNewLines());
+        // Augmenter le délai pour s'assurer que le fichier est complètement écrit
+        System.Threading.Tasks.Task.Delay(100).ContinueWith(_ => ReadNewLines());
     }
     
     private void ReadNewLines()
@@ -118,41 +119,85 @@ public class SaleTracker : IDisposable
         if (!File.Exists(_logFilePath))
             return;
         
-        lock (_lockObject)
+        // Utiliser TryEnter pour éviter les blocages si une autre lecture est en cours
+        if (!System.Threading.Monitor.TryEnter(_lockObject, 100))
         {
-            try
+            Logger.Debug("SaleTracker", "Lecture déjà en cours, skip de cette itération");
+            return;
+        }
+        
+        try
+        {
+            // Réessayer plusieurs fois si le fichier est verrouillé
+            int retries = 3;
+            for (int retry = 0; retry < retries; retry++)
             {
-                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-
-                if (_lastPosition > reader.BaseStream.Length)
+                try
                 {
-                    _lastPosition = 0;
-                    Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
-                }
+                    using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
 
-                reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
-                
-                if (reader.BaseStream.Position >= reader.BaseStream.Length)
-                    return; // Pas de nouvelles lignes
-                
-                string? line;
-                while (true)
-                {
-                    line = reader.ReadLine();
-                    if (line == null)
+                    if (_lastPosition > reader.BaseStream.Length)
                     {
-                        break;
+                        _lastPosition = 0;
+                        Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
                     }
 
-                    ProcessLine(line);
+                    reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
+                    
+                    if (reader.BaseStream.Position >= reader.BaseStream.Length)
+                    {
+                        Logger.Debug("SaleTracker", "Pas de nouvelles lignes à lire");
+                        return; // Pas de nouvelles lignes
+                    }
+                    
+                    long startPosition = reader.BaseStream.Position;
+                    int linesRead = 0;
+                    string? line;
+                    while (true)
+                    {
+                        line = reader.ReadLine();
+                        if (line == null)
+                        {
+                            break;
+                        }
+
+                        linesRead++;
+                        ProcessLine(line);
+                    }
+                    
+                    _lastPosition = reader.BaseStream.Position;
+                    
+                    if (linesRead > 0)
+                    {
+                        Logger.Debug("SaleTracker", $"Lu {linesRead} nouvelle(s) ligne(s) depuis la position {startPosition}");
+                    }
+                    
+                    return; // Succès, sortir de la boucle de retry
                 }
-                
-                _lastPosition = reader.BaseStream.Position;
+                catch (IOException ioEx) when (ioEx.Message.Contains("partage") || ioEx.Message.Contains("share") || ioEx.Message.Contains("being used"))
+                {
+                    // Fichier verrouillé, réessayer après un court délai
+                    if (retry < retries - 1)
+                    {
+                        Logger.Debug("SaleTracker", $"Fichier verrouillé, nouvelle tentative dans 50ms (tentative {retry + 1}/{retries})");
+                        System.Threading.Thread.Sleep(50);
+                        continue;
+                    }
+                    else
+                    {
+                        Logger.Warning("SaleTracker", $"Fichier toujours verrouillé après {retries} tentatives: {ioEx.Message}");
+                        throw;
+                    }
+                }
             }
-            catch (Exception ex)
-            {
-                Logger.Error("SaleTracker", $"Erreur lors de la lecture: {ex.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SaleTracker", $"Erreur lors de la lecture: {ex.Message}\n{ex.StackTrace}");
+        }
+        finally
+        {
+            System.Threading.Monitor.Exit(_lockObject);
         }
     }
     
@@ -176,21 +221,28 @@ public class SaleTracker : IDisposable
         }
         
         // Log de debug pour les lignes contenant des mots-clés de vente
-        if (cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
+        bool containsSaleKeywords = cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
             cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
             cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
             cleanLine.Contains("kamas", StringComparison.OrdinalIgnoreCase) ||
-            cleanLine.Contains("§", StringComparison.Ordinal))
+            cleanLine.Contains("§", StringComparison.Ordinal);
+            
+        if (containsSaleKeywords)
         {
-            Logger.Debug("SaleTracker", $"Ligne analysée: {cleanLine}");
+            Logger.Debug("SaleTracker", $"Ligne analysée (contient mots-clés): {cleanLine}");
         }
         
         // Chercher des informations de vente dans la ligne
         var saleInfo = ParseSaleInfo(cleanLine);
         if (saleInfo != null)
         {
-            Logger.Info("SaleTracker", $"Vente détectée: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
+            Logger.Info("SaleTracker", $"✅ VENTE DÉTECTÉE: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas (ligne: {cleanLine.Substring(0, Math.Min(100, cleanLine.Length))})");
             SaleDetected?.Invoke(this, saleInfo);
+        }
+        else if (containsSaleKeywords)
+        {
+            // Log si on a des mots-clés mais qu'aucun pattern n'a matché
+            Logger.Debug("SaleTracker", $"⚠️ Ligne contient des mots-clés de vente mais aucun pattern n'a matché: {cleanLine}");
         }
     }
     
@@ -290,7 +342,9 @@ public class SaleTracker : IDisposable
     /// </summary>
     public void ManualRead()
     {
-        System.Threading.Tasks.Task.Run(() => ReadNewLines());
+        // Ne pas créer une nouvelle tâche si une lecture est déjà en cours
+        // Le timer appelle déjà cette méthode de manière asynchrone
+        ReadNewLines();
     }
     
     public void Dispose()

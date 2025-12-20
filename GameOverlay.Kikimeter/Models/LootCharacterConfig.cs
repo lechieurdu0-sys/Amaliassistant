@@ -41,5 +41,12 @@ public class LootCharacterConfig
     /// </summary>
     [JsonProperty("lastUpdate")]
     public string LastUpdate { get; set; } = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    
+    /// <summary>
+    /// Timestamp de la dernière exécution de l'application
+    /// Utilisé pour détecter si les logs sont anciens (réinstallation) ou récents (déconnexion)
+    /// </summary>
+    [JsonProperty("lastAppRun")]
+    public string? LastAppRun { get; set; }
 }
 
