@@ -1203,9 +1203,31 @@ namespace GameOverlay.App
                     // Si la fenêtre Kikimeter est ouverte, la redémarrer avec le nouveau chemin
                     if (kikimeterWindow != null)
                     {
-                        kikimeterWindow.Hide();
+                        try
+                        {
+                            kikimeterWindow.Hide();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning("MainWindow", $"Erreur lors du masquage de la fenêtre Kikimeter: {ex.Message}");
+                        }
+                        
                         kikimeterWindow = null;
-                        ShowKikimeter();
+                        
+                        try
+                        {
+                            ShowKikimeter();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("MainWindow", $"Erreur lors de la réouverture de la fenêtre Kikimeter: {ex.Message}");
+                            System.Windows.MessageBox.Show(
+                                $"Le chemin a été sauvegardé, mais une erreur est survenue lors de la réouverture de la fenêtre Kikimeter: {ex.Message}",
+                                "Avertissement",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Warning);
+                            return;
+                        }
                     }
                     
                     System.Windows.MessageBox.Show(
@@ -1240,7 +1262,20 @@ namespace GameOverlay.App
                 if (dialog.ShowDialog() == true)
                 {
                     config.LootChatLogPath = dialog.LogPath;
-                    SaveConfiguration();
+                    try
+                    {
+                        SaveConfiguration();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors de la sauvegarde de la configuration: {ex.Message}");
+                        System.Windows.MessageBox.Show(
+                            $"Erreur lors de la sauvegarde: {ex.Message}",
+                            "Erreur",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return;
+                    }
                     
                     System.Windows.MessageBox.Show(
                         "Le chemin a été configuré avec succès.",

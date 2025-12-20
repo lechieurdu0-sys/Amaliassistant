@@ -662,26 +662,11 @@ public class LootCharacterDetector : IDisposable
             }
         }
 
-        // Déterminer les personnages à retirer (uniquement ceux détectés automatiquement auparavant)
-        // NE JAMAIS retirer les personnages manuels, le personnage principal, ou ceux dans MyCharacters
-        var detectedSet = new HashSet<string>(sortedCharacters, StringComparer.OrdinalIgnoreCase);
-        var myCharactersSet = new HashSet<string>(config.MyCharacters ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
-        var keysToRemove = config.Characters.Keys
-            .Where(k => !detectedSet.Contains(k)
-                        && !manualCharacters.Contains(k)
-                        && !string.Equals(k, config.MainCharacter, StringComparison.OrdinalIgnoreCase)
-                        && !myCharactersSet.Contains(k)) // Ne pas retirer les personnages dans MyCharacters
-                .ToList();
-            
-        if (keysToRemove.Count > 0)
-            {
-            Logger.Info("LootCharacterDetector", $"Retrait de {keysToRemove.Count} personnages non récents: {string.Join(", ", keysToRemove)}");
-            foreach (var key in keysToRemove)
-            {
-                config.Characters.Remove(key);
-            }
-            listChanged = true;
-        }
+        // NE PAS retirer les personnages de la config même s'ils ne sont plus dans _recentCharacters
+        // Cela permet de conserver les personnages détectés précédemment pour qu'ils restent visibles
+        // dans les paramètres même après une déconnexion
+        // Les personnages seront seulement retirés s'ils quittent explicitement le groupe ET le combat
+        // (géré par DetectCharacterInChatLogLine et RegisterCombatPlayers)
 
         if (listChanged)
         {
@@ -1343,6 +1328,19 @@ public class LootCharacterDetector : IDisposable
     {
         bool changed = false;
 
+        // D'abord, recharger les personnages depuis la config existante pour les rendre visibles
+        var config = LoadConfig();
+        foreach (var character in config.Characters.Keys)
+        {
+            if (!_recentCharacters.ContainsKey(character))
+            {
+                _recentCharacters[character] = DateTime.Now;
+                changed = true;
+                Logger.Debug("LootCharacterDetector", $"Personnage rechargé depuis la config: {character}");
+            }
+        }
+
+        // Ensuite, scanner les logs pour détecter de nouveaux personnages
         if (!string.IsNullOrEmpty(_kikimeterLogPath) && File.Exists(_kikimeterLogPath))
         {
             changed |= ScanRecentSegment(_kikimeterLogPath, true);
@@ -1360,7 +1358,9 @@ public class LootCharacterDetector : IDisposable
         }
         else
         {
-            Logger.Debug("LootCharacterDetector", "Aucun personnage récent détecté après reset.");
+            // Même si aucun nouveau personnage n'a été détecté, mettre à jour pour notifier les UI
+            UpdateRecentCharacters();
+            Logger.Debug("LootCharacterDetector", "Aucun nouveau personnage détecté après reset, mais personnages existants rechargés.");
         }
 
         return changed;
@@ -1519,50 +1519,21 @@ public class LootCharacterDetector : IDisposable
     
     /// <summary>
     /// Réinitialise les personnages à la déconnexion (fermeture du jeu)
+    /// On conserve TOUS les personnages de la config, on vide seulement les listes en mémoire
     /// </summary>
     private void ResetCharactersOnDisconnect()
     {
         try
         {
-            _recentCharacters.Clear();
+            // Vider seulement les listes en mémoire (groupe et combat)
+            // Mais CONSERVER tous les personnages dans la config pour qu'ils restent visibles dans les paramètres
             _playersInGroup.Clear();
             _playersInCombat.Clear();
             
-            // Réinitialiser la configuration (garder seulement les personnages manuels et le personnage principal)
-            var config = LoadConfig();
-            var manualCharacters = config.ManualCharacters ?? new List<string>();
-            var mainCharacter = config.MainCharacter;
+            // Ne PAS vider _recentCharacters car ils sont utilisés pour l'affichage
+            // Ne PAS modifier la config, on veut garder tous les personnages détectés
             
-            // Créer une nouvelle config avec seulement les personnages manuels et le principal
-            var newConfig = new LootCharacterConfig
-            {
-                LastUpdate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                LastAppRun = config.LastAppRun, // Préserver LastAppRun
-                MainCharacter = mainCharacter,
-                ManualCharacters = new List<string>(manualCharacters)
-            };
-            
-            // Ajouter les personnages manuels et le principal à la liste
-            foreach (var manualChar in manualCharacters)
-            {
-                if (!string.IsNullOrWhiteSpace(manualChar))
-                {
-                    newConfig.Characters[manualChar] = true;
-                }
-            }
-            
-            if (!string.IsNullOrWhiteSpace(mainCharacter))
-            {
-                newConfig.Characters[mainCharacter] = true;
-            }
-            
-            SaveConfig(newConfig);
-            
-            // Notifier le changement
-            var characterList = newConfig.Characters.Keys.ToList();
-            CharactersChanged?.Invoke(this, characterList);
-            
-            Logger.Info("LootCharacterDetector", $"Personnages réinitialisés à la déconnexion (conservé: {characterList.Count} personnages)");
+            Logger.Info("LootCharacterDetector", "Listes de groupe et combat réinitialisées à la déconnexion (personnages conservés dans la config)");
         }
         catch (Exception ex)
         {
@@ -1577,8 +1548,8 @@ public class LootCharacterDetector : IDisposable
     {
         try
         {
-            // Réinitialiser les listes en mémoire
-            _recentCharacters.Clear();
+            // Réinitialiser seulement les listes de groupe et combat
+            // CONSERVER _recentCharacters pour garder les personnages visibles
             _playersInGroup.Clear();
             _playersInCombat.Clear();
             

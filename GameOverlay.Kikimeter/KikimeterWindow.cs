@@ -1690,21 +1690,66 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         
         LocationChanged += (s, e) => 
         {
-            // Sauvegarder la position Top initiale quand la fenêtre est déplacée en mode développé
-            if (!_isCollapsed)
+            try
             {
-                _initialTopPosition = Top;
+                // Sauvegarder la position Top initiale quand la fenêtre est déplacée en mode développé
+                if (!_isCollapsed)
+                {
+                    _initialTopPosition = Top;
+                }
+                SaveWindowPositions();
+                // Utiliser BeginInvoke pour éviter les appels bloquants pendant le déplacement
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        ReturnFocusToGame();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning("KikimeterWindow", $"Erreur dans ReturnFocusToGame (LocationChanged): {ex.Message}");
+                    }
+                }), DispatcherPriority.Background);
             }
-            SaveWindowPositions();
-            ReturnFocusToGame();
+            catch (Exception ex)
+            {
+                Logger.Error("KikimeterWindow", $"Erreur dans LocationChanged: {ex.Message}");
+            }
         };
         SizeChanged += (s, e) => 
         {
-            SaveWindowPositions();
-            // Utiliser un délai pour éviter trop d'appels pendant le redimensionnement
-            Dispatcher.BeginInvoke(new Action(() => ReturnFocusToGame()), DispatcherPriority.Background);
+            try
+            {
+                SaveWindowPositions();
+                // Utiliser un délai pour éviter trop d'appels pendant le redimensionnement
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        ReturnFocusToGame();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning("KikimeterWindow", $"Erreur dans ReturnFocusToGame (SizeChanged): {ex.Message}");
+                    }
+                }), DispatcherPriority.Background);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("KikimeterWindow", $"Erreur dans SizeChanged: {ex.Message}");
+            }
         };
-        Closing += (s, e) => SaveWindowPositions();
+        Closing += (s, e) =>
+        {
+            try
+            {
+                SaveWindowPositions();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("KikimeterWindow", $"Erreur dans Closing: {ex.Message}");
+            }
+        };
         
         // Le timer est maintenant dans StartWatching()
         
@@ -3360,30 +3405,55 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     
     private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_isDragging && e.LeftButton == MouseButtonState.Pressed)
+        try
         {
-            var offset = e.GetPosition(this) - _dragStartPoint;
-            Left += offset.X;
-            Top += offset.Y;
+            if (_isDragging && e.LeftButton == MouseButtonState.Pressed)
+            {
+                var offset = e.GetPosition(this) - _dragStartPoint;
+                Left += offset.X;
+                Top += offset.Y;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("KikimeterWindow", $"Erreur dans Window_MouseMove: {ex.Message}");
         }
     }
     
     private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (_isDragging)
+        try
         {
-            _isDragging = false;
-            ReleaseMouseCapture();
-            
-            // Sauvegarder la position Top initiale quand la fenêtre est déplacée en mode développé
-            // C'est la position du premier joueur qui positionne le tout
-            if (!_isCollapsed)
+            if (_isDragging)
             {
-                _initialTopPosition = Top;
-                Logger.Info("KikimeterWindow", $"Position Top initiale mise à jour après déplacement: {_initialTopPosition}");
+                _isDragging = false;
+                ReleaseMouseCapture();
+                
+                // Sauvegarder la position Top initiale quand la fenêtre est déplacée en mode développé
+                // C'est la position du premier joueur qui positionne le tout
+                if (!_isCollapsed)
+                {
+                    _initialTopPosition = Top;
+                    Logger.Info("KikimeterWindow", $"Position Top initiale mise à jour après déplacement: {_initialTopPosition}");
+                }
+                
+                // Utiliser BeginInvoke pour éviter les appels bloquants
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        ReturnFocusToGame();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning("KikimeterWindow", $"Erreur dans ReturnFocusToGame (MouseLeftButtonUp): {ex.Message}");
+                    }
+                }), DispatcherPriority.Background);
             }
-            
-            ReturnFocusToGame();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("KikimeterWindow", $"Erreur dans Window_MouseLeftButtonUp: {ex.Message}");
         }
     }
     
@@ -3517,34 +3587,37 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     
     private void ReturnFocusToGame()
     {
-        if (_suspendFocusReturn)
+        try
         {
-            return;
-        }
-        DispatcherTimer timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(50)
-        };
-        timer.Tick += (s, e) =>
-        {
-            timer.Stop();
-            try
+            if (_suspendFocusReturn)
             {
-                var wakfuProcesses = System.Diagnostics.Process.GetProcessesByName("Wakfu")
-                    .Where(p => !string.IsNullOrEmpty(p.MainWindowTitle) && p.MainWindowHandle != IntPtr.Zero)
-                    .OrderByDescending(p => p.MainWindowTitle.Contains("Wakfu"))
-                    .ToList();
-                if (wakfuProcesses.Any())
+                return;
+            }
+            
+            DispatcherTimer timer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(50)
+            };
+            timer.Tick += (s, e) =>
+            {
+                timer.Stop();
+                try
                 {
-                    IntPtr hwnd = wakfuProcesses.First().MainWindowHandle;
-                    if (hwnd != IntPtr.Zero)
+                    var wakfuProcesses = System.Diagnostics.Process.GetProcessesByName("Wakfu")
+                        .Where(p => !string.IsNullOrEmpty(p.MainWindowTitle) && p.MainWindowHandle != IntPtr.Zero)
+                        .OrderByDescending(p => p.MainWindowTitle.Contains("Wakfu"))
+                        .ToList();
+                    if (wakfuProcesses.Any())
                     {
-                        ShowWindow(hwnd, 9);
-                        SetForegroundWindow(hwnd);
+                        IntPtr hwnd = wakfuProcesses.First().MainWindowHandle;
+                        if (hwnd != IntPtr.Zero)
+                        {
+                            ShowWindow(hwnd, 9);
+                            SetForegroundWindow(hwnd);
+                        }
                     }
-                }
-                else
-                {
+                    else
+                    {
                     string[] processNames = { "Wakfu.exe", "wakfu", "WAKFU" };
                     foreach (string name in processNames)
                     {
@@ -3563,9 +3636,17 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                     }
                 }
             }
-            catch { }
+            catch (Exception ex2)
+            {
+                Logger.Warning("KikimeterWindow", $"Erreur dans ReturnFocusToGame timer: {ex2.Message}");
+            }
         };
         timer.Start();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning("KikimeterWindow", $"Erreur dans ReturnFocusToGame: {ex.Message}");
+        }
     }
     
     [DllImport("user32.dll")]

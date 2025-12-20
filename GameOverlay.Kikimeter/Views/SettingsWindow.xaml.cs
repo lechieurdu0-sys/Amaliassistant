@@ -569,56 +569,99 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     private void TryInitializeCharacterDetector()
     {
-        if (_characterDetector != null)
-            return;
-            
-        // Utiliser le chemin de log Loot si disponible, sinon Kikimeter
-        var chatLogPath = LootChatLogPath;
-        var kikimeterLogPath = KikimeterLogPath;
-        
-        // Si aucun chemin n'est configuré, essayer la détection automatique
-        if (string.IsNullOrWhiteSpace(chatLogPath))
-        {
-            if (!string.IsNullOrWhiteSpace(kikimeterLogPath))
-            {
-                chatLogPath = WakfuLogFinder.FindChatLogFile(kikimeterLogPath);
-            }
-            
-            if (string.IsNullOrWhiteSpace(chatLogPath))
-            {
-                var mainLogPath = WakfuLogFinder.FindFirstLogFile();
-                if (!string.IsNullOrWhiteSpace(mainLogPath))
-                {
-                    kikimeterLogPath = mainLogPath;
-                    chatLogPath = WakfuLogFinder.FindChatLogFile(mainLogPath);
-                }
-            }
-        }
-        
-        if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
-        {
-            // Pas de fichier de log disponible, ne pas initialiser
-            return;
-        }
-        
         try
         {
-            LootCharacterDetector.EnsureConfigFileExists();
-            _characterDetector = new LootCharacterDetector(chatLogPath, kikimeterLogPath);
-            _characterDetector.CharactersChanged += OnCharactersChanged;
-            _characterDetector.MainCharacterDetected += OnMainCharacterDetected;
-            _characterDetector.ManualScan();
-            UpdateCharactersList();
+            if (_characterDetector != null)
+                return;
+                
+            // Utiliser le chemin de log Loot si disponible, sinon Kikimeter
+            var chatLogPath = LootChatLogPath;
+            var kikimeterLogPath = KikimeterLogPath;
+            
+            // Si aucun chemin n'est configuré, essayer la détection automatique
+            if (string.IsNullOrWhiteSpace(chatLogPath))
+            {
+                if (!string.IsNullOrWhiteSpace(kikimeterLogPath))
+                {
+                    try
+                    {
+                        chatLogPath = WakfuLogFinder.FindChatLogFile(kikimeterLogPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning("SettingsWindow", $"Erreur lors de la recherche du fichier chat log: {ex.Message}");
+                    }
+                }
+                
+                if (string.IsNullOrWhiteSpace(chatLogPath))
+                {
+                    try
+                    {
+                        var mainLogPath = WakfuLogFinder.FindFirstLogFile();
+                        if (!string.IsNullOrWhiteSpace(mainLogPath))
+                        {
+                            kikimeterLogPath = mainLogPath;
+                            chatLogPath = WakfuLogFinder.FindChatLogFile(mainLogPath);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning("SettingsWindow", $"Erreur lors de la recherche automatique des logs: {ex.Message}");
+                    }
+                }
+            }
+            
+            if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
+            {
+                // Pas de fichier de log disponible, ne pas initialiser
+                Logger.Debug("SettingsWindow", "Aucun fichier de log disponible pour initialiser le détecteur");
+                return;
+            }
+            
+            try
+            {
+                LootCharacterDetector.EnsureConfigFileExists();
+                _characterDetector = new LootCharacterDetector(chatLogPath, kikimeterLogPath);
+                _characterDetector.CharactersChanged += OnCharactersChanged;
+                _characterDetector.MainCharacterDetected += OnMainCharacterDetected;
+                _characterDetector.ManualScan();
+                UpdateCharactersList();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors de l'initialisation du détecteur de personnages: {ex.Message}\n{ex.StackTrace}");
+                // Nettoyer en cas d'erreur
+                if (_characterDetector != null)
+                {
+                    try
+                    {
+                        _characterDetector.CharactersChanged -= OnCharactersChanged;
+                        _characterDetector.MainCharacterDetected -= OnMainCharacterDetected;
+                        _characterDetector.Dispose();
+                    }
+                    catch { }
+                    _characterDetector = null;
+                }
+                throw; // Re-lancer pour que l'appelant puisse gérer
+            }
         }
         catch (Exception ex)
         {
-            Logger.Error("SettingsWindow", $"Erreur lors de l'initialisation du détecteur de personnages: {ex.Message}");
+            Logger.Error("SettingsWindow", $"Erreur dans TryInitializeCharacterDetector: {ex.Message}\n{ex.StackTrace}");
+            throw; // Re-lancer pour que l'appelant puisse gérer
         }
     }
     
     private void CleanupCharacterDetector()
     {
-        StopCharacterListRefreshTimer();
+        try
+        {
+            StopCharacterListRefreshTimer();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning("SettingsWindow", $"Erreur lors de l'arrêt du timer: {ex.Message}");
+        }
         
         if (_characterDetector != null)
         {
@@ -626,9 +669,21 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             {
                 _characterDetector.CharactersChanged -= OnCharactersChanged;
                 _characterDetector.MainCharacterDetected -= OnMainCharacterDetected;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning("SettingsWindow", $"Erreur lors de la désinscription des événements: {ex.Message}");
+            }
+            
+            try
+            {
                 _characterDetector.Dispose();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warning("SettingsWindow", $"Erreur lors du dispose du détecteur: {ex.Message}");
+            }
+            
             _characterDetector = null;
         }
     }
@@ -1246,42 +1301,92 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     private void ConfirmLogPaths_Click(object sender, RoutedEventArgs e)
     {
-        // Valider les chemins si remplis
-        if (!string.IsNullOrWhiteSpace(KikimeterLogPath) && !File.Exists(KikimeterLogPath))
+        try
         {
+            // Valider les chemins si remplis
+            if (!string.IsNullOrWhiteSpace(KikimeterLogPath) && !File.Exists(KikimeterLogPath))
+            {
+                MessageBox.Show(
+                    "Le fichier de log Kikimeter spécifié n'existe pas.",
+                    "Fichier introuvable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+            
+            if (!string.IsNullOrWhiteSpace(LootChatLogPath) && !File.Exists(LootChatLogPath))
+            {
+                MessageBox.Show(
+                    "Le fichier de log Loot spécifié n'existe pas.",
+                    "Fichier introuvable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+            
+            // Sauvegarder la configuration
+            _config.KikimeterLogPath = string.IsNullOrWhiteSpace(KikimeterLogPath) ? null : KikimeterLogPath;
+            _config.LootChatLogPath = string.IsNullOrWhiteSpace(LootChatLogPath) ? null : LootChatLogPath;
+            
+            // Appeler _onConfigChanged dans un try-catch pour éviter les crashes
+            try
+            {
+                _onConfigChanged(_config);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors de l'appel à _onConfigChanged: {ex.Message}");
+                // Continuer quand même pour sauvegarder les chemins
+            }
+            
+            // Réinitialiser le détecteur de personnages si nécessaire
+            try
+            {
+                CleanupCharacterDetector();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors du nettoyage du détecteur: {ex.Message}");
+            }
+            
+            try
+            {
+                TryInitializeCharacterDetector();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors de l'initialisation du détecteur: {ex.Message}");
+                MessageBox.Show(
+                    $"Erreur lors de l'initialisation du détecteur de personnages: {ex.Message}",
+                    "Avertissement",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            
+            try
+            {
+                UpdateCharactersList();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors de la mise à jour de la liste: {ex.Message}");
+            }
+            
             MessageBox.Show(
-                "Le fichier de log Kikimeter spécifié n'existe pas.",
-                "Fichier introuvable",
+                "Les chemins de logs ont été sauvegardés.",
+                "Configuration sauvegardée",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SettingsWindow", $"Erreur dans ConfirmLogPaths_Click: {ex.Message}\n{ex.StackTrace}");
+            MessageBox.Show(
+                $"Une erreur est survenue lors de la sauvegarde: {ex.Message}",
+                "Erreur",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-            return;
         }
-        
-        if (!string.IsNullOrWhiteSpace(LootChatLogPath) && !File.Exists(LootChatLogPath))
-        {
-            MessageBox.Show(
-                "Le fichier de log Loot spécifié n'existe pas.",
-                "Fichier introuvable",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            return;
-        }
-        
-        // Sauvegarder la configuration
-        _config.KikimeterLogPath = string.IsNullOrWhiteSpace(KikimeterLogPath) ? null : KikimeterLogPath;
-        _config.LootChatLogPath = string.IsNullOrWhiteSpace(LootChatLogPath) ? null : LootChatLogPath;
-        _onConfigChanged(_config);
-        
-        // Réinitialiser le détecteur de personnages si nécessaire
-        CleanupCharacterDetector();
-        TryInitializeCharacterDetector();
-        UpdateCharactersList();
-        
-        MessageBox.Show(
-            "Les chemins de logs ont été sauvegardés.",
-            "Configuration sauvegardée",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
     }
     
     #endregion
