@@ -7,9 +7,12 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using System.Media;
+using System.Windows.Media;
+using Newtonsoft.Json;
 using GameOverlay.Kikimeter.Models;
 using GameOverlay.Kikimeter.Services;
+using WpfPoint = System.Windows.Point;
+using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
 
 namespace GameOverlay.Kikimeter.Views;
 
@@ -34,6 +37,10 @@ public partial class SaleNotificationWindow : Window
     private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     
     private System.Windows.Threading.DispatcherTimer? _autoCloseTimer;
+    private bool _isDragging = false;
+    private WpfPoint _dragStartPoint;
+    private DateTime _mouseDownTime;
+    private MediaPlayer? _mediaPlayer;
     
     public SaleNotificationWindow()
     {
@@ -76,12 +83,18 @@ public partial class SaleNotificationWindow : Window
     
     private void SaleNotificationWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // Positionner la fenêtre en haut à droite de l'écran
-        var screen = System.Windows.Forms.Screen.PrimaryScreen;
-        if (screen != null)
+        // Charger la position sauvegardée, sinon utiliser la position par défaut
+        LoadWindowPosition();
+        
+        // Si aucune position sauvegardée, positionner la fenêtre en haut à droite de l'écran
+        if (Left == 0 && Top == 0)
         {
-            Left = screen.WorkingArea.Right - Width - 20;
-            Top = 20;
+            var screen = System.Windows.Forms.Screen.PrimaryScreen;
+            if (screen != null)
+            {
+                Left = screen.WorkingArea.Right - Width - 20;
+                Top = 20;
+            }
         }
         
         // Rendre la fenêtre cliquable mais pas transparente aux clics (pour pouvoir la fermer)
@@ -145,10 +158,18 @@ public partial class SaleNotificationWindow : Window
             
             if (soundPath != null)
             {
-                using (var player = new SoundPlayer(soundPath))
+                // Utiliser MediaPlayer pour permettre le contrôle du volume via le mélangeur Windows
+                _mediaPlayer = new MediaPlayer();
+                _mediaPlayer.Open(new Uri(soundPath, UriKind.Absolute));
+                _mediaPlayer.Volume = 1.0; // Volume à 100%, mais peut être contrôlé via le mélangeur Windows
+                _mediaPlayer.Play();
+                
+                // Libérer les ressources après la lecture
+                _mediaPlayer.MediaEnded += (s, e) =>
                 {
-                    player.Play();
-                }
+                    _mediaPlayer?.Close();
+                    _mediaPlayer = null;
+                };
             }
             else
             {
@@ -195,20 +216,137 @@ public partial class SaleNotificationWindow : Window
     
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        // Fermer la notification si on clique dessus
-        CloseNotification();
+        if (e.ChangedButton == MouseButton.Left)
+        {
+            // Démarrer le drag si c'est un clic gauche
+            _isDragging = true;
+            _dragStartPoint = e.GetPosition(this);
+            _mouseDownTime = DateTime.Now;
+            CaptureMouse();
+            e.Handled = true;
+        }
+        else if (e.ChangedButton == MouseButton.Right)
+        {
+            // Fermer la notification si on clique avec le bouton droit
+            CloseNotification();
+        }
+    }
+    
+    private void Window_MouseMove(object sender, WpfMouseEventArgs e)
+    {
+        if (_isDragging && e.LeftButton == MouseButtonState.Pressed)
+        {
+            WpfPoint currentPosition = e.GetPosition(this);
+            Vector offset = currentPosition - _dragStartPoint;
+            
+            Left += offset.X;
+            Top += offset.Y;
+            
+            // Sauvegarder la position après déplacement
+            SaveWindowPosition();
+        }
+    }
+    
+    private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isDragging)
+        {
+            _isDragging = false;
+            ReleaseMouseCapture();
+            
+            // Si c'était un simple clic (pas un drag), fermer la notification
+            var clickDuration = DateTime.Now - _mouseDownTime;
+            var dragDistance = (e.GetPosition(this) - _dragStartPoint).Length;
+            
+            if (clickDuration.TotalMilliseconds < 200 && dragDistance < 5)
+            {
+                // C'était un simple clic, fermer la notification
+                CloseNotification();
+            }
+        }
     }
     
     private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Fermer la notification si on clique dessus avec le bouton droit
+        // Fermer la notification si on clique avec le bouton droit
         CloseNotification();
     }
     
     private void MainBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Fermer la notification si on clique sur la bordure
-        CloseNotification();
+        // Démarrer le drag depuis la bordure aussi
+        if (e.ChangedButton == MouseButton.Left)
+        {
+            _isDragging = true;
+            _dragStartPoint = e.GetPosition(this);
+            _mouseDownTime = DateTime.Now;
+            CaptureMouse();
+            e.Handled = true;
+        }
+    }
+    
+    private void SaveWindowPosition()
+    {
+        try
+        {
+            var configPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Amaliassistant",
+                "sale_notification_position.json"
+            );
+            
+            var configDir = Path.GetDirectoryName(configPath);
+            if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
+            {
+                Directory.CreateDirectory(configDir);
+            }
+            
+            var position = new
+            {
+                Left = Left,
+                Top = Top
+            };
+            
+            File.WriteAllText(configPath, JsonConvert.SerializeObject(position));
+        }
+        catch
+        {
+            // Ignorer les erreurs de sauvegarde
+        }
+    }
+    
+    private void LoadWindowPosition()
+    {
+        try
+        {
+            var configPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Amaliassistant",
+                "sale_notification_position.json"
+            );
+            
+            if (File.Exists(configPath))
+            {
+                var json = File.ReadAllText(configPath);
+                var position = JsonConvert.DeserializeObject<dynamic>(json);
+                
+                if (position != null)
+                {
+                    var leftValue = position.Left;
+                    var topValue = position.Top;
+                    
+                    if (leftValue != null && topValue != null)
+                    {
+                        Left = (double)leftValue;
+                        Top = (double)topValue;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignorer les erreurs de chargement, utiliser la position par défaut
+        }
     }
     
     private void CloseNotification()
@@ -228,6 +366,14 @@ public partial class SaleNotificationWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _autoCloseTimer?.Stop();
+        
+        // Libérer les ressources du MediaPlayer
+        if (_mediaPlayer != null)
+        {
+            _mediaPlayer.Close();
+            _mediaPlayer = null;
+        }
+        
         base.OnClosed(e);
     }
 }

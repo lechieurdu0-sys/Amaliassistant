@@ -14,7 +14,9 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual" Width="350" Height="45" Cursor="Hand"
         Focusable="False"
-        MouseRightButtonDown="Window_MouseRightButtonDown">
+        MouseRightButtonDown="Window_MouseRightButtonDown"
+        MouseMove="Window_MouseMove"
+        MouseLeftButtonUp="Window_MouseLeftButtonUp">
 
     <Border x:Name="MainBorder" 
             CornerRadius="8" 
