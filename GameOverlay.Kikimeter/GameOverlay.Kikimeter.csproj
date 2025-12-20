@@ -23,6 +23,7 @@
     <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
     <ProjectReference Include="..\GameOverlay.XpTracker\GameOverlay.XpTracker.csproj" />
     <ProjectReference Include="..\GameOverlay.Themes\GameOverlay.Themes.csproj" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
   </ItemGroup>

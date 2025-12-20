@@ -7,7 +7,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using System.Windows.Media;
+using NAudio.Wave;
 using Newtonsoft.Json;
 using GameOverlay.Kikimeter.Models;
 using GameOverlay.Kikimeter.Services;
@@ -40,7 +40,7 @@ public partial class SaleNotificationWindow : Window
     private bool _isDragging = false;
     private WpfPoint _dragStartPoint;
     private DateTime _mouseDownTime;
-    private MediaPlayer? _mediaPlayer;
+    private WaveOutEvent? _waveOut;
     
     public SaleNotificationWindow()
     {
@@ -158,18 +158,8 @@ public partial class SaleNotificationWindow : Window
             
             if (soundPath != null)
             {
-                // Utiliser MediaPlayer pour permettre le contrôle du volume via le mélangeur Windows
-                _mediaPlayer = new MediaPlayer();
-                _mediaPlayer.Open(new Uri(soundPath, UriKind.Absolute));
-                _mediaPlayer.Volume = 1.0; // Volume à 100%, mais peut être contrôlé via le mélangeur Windows
-                _mediaPlayer.Play();
-                
-                // Libérer les ressources après la lecture
-                _mediaPlayer.MediaEnded += (s, e) =>
-                {
-                    _mediaPlayer?.Close();
-                    _mediaPlayer = null;
-                };
+                // Utiliser les API Windows waveOut pour permettre le contrôle du volume via le mélangeur Windows
+                PlayWaveFile(soundPath);
             }
             else
             {
@@ -189,6 +179,42 @@ public partial class SaleNotificationWindow : Window
                 // Ignorer les erreurs de lecture de son
             }
         }
+    }
+    
+    private void PlayWaveFile(string filePath)
+    {
+        // Utiliser NAudio pour jouer le son, ce qui garantit l'apparition dans le mélangeur de volume Windows
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                using (var audioFile = new AudioFileReader(filePath))
+                {
+                    _waveOut = new WaveOutEvent();
+                    _waveOut.Init(audioFile);
+                    _waveOut.Play();
+                    
+                    // Attendre la fin de la lecture
+                    while (_waveOut.PlaybackState == PlaybackState.Playing)
+                    {
+                        System.Threading.Thread.Sleep(10);
+                    }
+                    
+                    _waveOut.Stop();
+                    _waveOut.Dispose();
+                    _waveOut = null;
+                }
+            }
+            catch
+            {
+                // En cas d'erreur, utiliser le son système par défaut
+                try
+                {
+                    System.Media.SystemSounds.Exclamation.Play();
+                }
+                catch { }
+            }
+        });
     }
     
     public void StopAutoCloseTimer()
@@ -367,11 +393,16 @@ public partial class SaleNotificationWindow : Window
     {
         _autoCloseTimer?.Stop();
         
-        // Libérer les ressources du MediaPlayer
-        if (_mediaPlayer != null)
+        // Arrêter et libérer les ressources audio
+        if (_waveOut != null)
         {
-            _mediaPlayer.Close();
-            _mediaPlayer = null;
+            try
+            {
+                _waveOut.Stop();
+                _waveOut.Dispose();
+                _waveOut = null;
+            }
+            catch { }
         }
         
         base.OnClosed(e);
