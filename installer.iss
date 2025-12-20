@@ -38,7 +38,9 @@ Name: "startup"; Description: "Lancer au démarrage de Windows"; GroupDescriptio
 
 [Files]
 ; Application principale - exclure les fichiers inutiles
-Source: "{#RootPath}publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,logs\*,Release\*,GameOverlay.Video.*,GameOverlay.ZQSD.*"
+Source: "{#RootPath}publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.deps.json,logs\*,Release\*,GameOverlay.Video.*,GameOverlay.ZQSD.*"
+; Inclure GameOverlay.App.deps.json qui est nécessaire
+Source: "{#RootPath}publish\GameOverlay.App.deps.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RootPath}Amalia.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; Prérequis - copier tous les fichiers dans le dossier temporaire
 Source: "{#RootPath}Prerequisites\windowsdesktop-runtime-8.0.21-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
@@ -51,7 +53,7 @@ Source: "{#RootPath}Prerequisites\MicrosoftEdgeWebView2RuntimeInstallerARM64.exe
 [Icons]
 Name: "{group}\Amaliassistant"; Filename: "{app}\GameOverlay.App.exe"; IconFilename: "{app}\Amalia.ico"
 Name: "{autodesktop}\Amaliassistant"; Filename: "{app}\GameOverlay.App.exe"; IconFilename: "{app}\Amalia.ico"; Tasks: desktopicon
-; Ne pas utiliser {userstartup} car cela peut causer des problèmes - on utilisera le registre à la place
+Name: "{userstartup}\Amaliassistant"; Filename: "{app}\GameOverlay.App.exe"; IconFilename: "{app}\Amalia.ico"; Tasks: startup
 
 [Run]
 Filename: "{app}\GameOverlay.App.exe"; Description: "Lancer Amaliassistant"; Flags: nowait postinstall skipifsilent
@@ -62,55 +64,33 @@ Filename: "{app}\GameOverlay.App.exe"; Description: "Lancer Amaliassistant"; Fla
 function IsDotNetInstalled: Boolean;
 var
   InstalledVer: String;
-  Release: Cardinal;
 begin
   Result := False;
   
-  // Vérifier pour x64 - méthode plus fiable avec la clé Release
-  if RegQueryDWordValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App', '8.0', Release) then
+  // Vérifier pour x64
+  if RegQueryStringValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost', 'Version', InstalledVer) then
   begin
-    Result := True;
-    Exit;
+    if Copy(InstalledVer, 1, 3) = '8.0' then
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
   
   // Vérifier pour x86
-  if RegQueryDWordValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x86\sharedfx\Microsoft.WindowsDesktop.App', '8.0', Release) then
+  if RegQueryStringValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x86\sharedhost', 'Version', InstalledVer) then
   begin
-    Result := True;
-    Exit;
+    if Copy(InstalledVer, 1, 3) = '8.0' then
+    begin
+      Result := True;
+      Exit;
+    end;
   end;
   
   // Vérifier pour ARM64
-  if RegQueryDWordValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\arm64\sharedfx\Microsoft.WindowsDesktop.App', '8.0', Release) then
-  begin
-    Result := True;
-    Exit;
-  end;
-  
-  // Méthode de fallback : vérifier la version du sharedhost
-  if RegQueryStringValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost', 'Version', InstalledVer) then
-  begin
-    if (Length(InstalledVer) >= 3) and (Copy(InstalledVer, 1, 3) = '8.0') then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
-  
-  // Vérifier pour x86 (fallback)
-  if RegQueryStringValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x86\sharedhost', 'Version', InstalledVer) then
-  begin
-    if (Length(InstalledVer) >= 3) and (Copy(InstalledVer, 1, 3) = '8.0') then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
-  
-  // Vérifier pour ARM64 (fallback)
   if RegQueryStringValue(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\arm64\sharedhost', 'Version', InstalledVer) then
   begin
-    if (Length(InstalledVer) >= 3) and (Copy(InstalledVer, 1, 3) = '8.0') then
+    if Copy(InstalledVer, 1, 3) = '8.0' then
     begin
       Result := True;
       Exit;
@@ -200,8 +180,8 @@ var
   DotNetFile: String;
   WebView2File: String;
 begin
-  // Installer les prérequis APRÈS l'installation des fichiers (ssPostInstall) pour éviter les messages d'erreur
-  if CurStep = ssPostInstall then
+  // Installer les prérequis après l'extraction des fichiers mais avant l'installation de l'app
+  if CurStep = ssInstall then
   begin
     Arch := GetArchitecture;
     
@@ -240,20 +220,18 @@ begin
         MsgBox('L''installation de WebView2 Runtime a échoué. L''application pourrait ne pas fonctionner correctement.', mbError, MB_OK);
       end;
     end;
-    
+  end
+  
+  // Configuration après installation
+  else if CurStep = ssPostInstall then
+  begin
     // Créer le dossier de configuration s'il n'existe pas
     ForceDirectories(ExpandConstant('{userappdata}\Amaliassistant'));
     
     // Configuration du lancement au démarrage si demandé
-    // Utiliser le chemin complet avec guillemets pour éviter les problèmes
     if WizardIsTaskSelected('startup') then
     begin
       RegWriteStringValue(HKEY_CURRENT_USER, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'Amaliassistant', ExpandConstant('"{app}\GameOverlay.App.exe"'));
-    end
-    else
-    begin
-      // S'assurer que la clé de démarrage est supprimée si l'option n'est pas cochée
-      RegDeleteValue(HKEY_CURRENT_USER, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'Amaliassistant');
     end;
   end;
 end;
@@ -293,28 +271,10 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  AppDataPath: String;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     // Suppression du lancement au démarrage
     RegDeleteValue(HKEY_CURRENT_USER, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'Amaliassistant');
-    
-    // Supprimer tout le dossier AppData pour une désinstallation complète
-    // Cela inclut les personnages, les configurations, les logs, etc.
-    AppDataPath := ExpandConstant('{userappdata}\Amaliassistant');
-    if DirExists(AppDataPath) then
-    begin
-      // Supprimer récursivement tout le dossier AppData
-      DelTree(AppDataPath, True, True, True);
-    end;
-    
-    // Supprimer aussi le dossier LocalAppData si il existe (pour WebView2)
-    AppDataPath := ExpandConstant('{localappdata}\Amaliassistant');
-    if DirExists(AppDataPath) then
-    begin
-      DelTree(AppDataPath, True, True, True);
-    end;
   end;
 end;

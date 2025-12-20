@@ -104,11 +104,16 @@ Write-Host ""
 # Compiler l'installateur
 Write-Host "[4/4] Compilation de l'installateur..." -ForegroundColor Yellow
 
+$compileArgs = @(
+    "/O$InstallerOutputPath",
+    $IssFile
+)
+
 Write-Host "  Commande: `"$isccPath`" /O`"$InstallerOutputPath`" `"$IssFile`"" -ForegroundColor Gray
 
 try {
     Push-Location $RootPath
-    & "$isccPath" "/O$InstallerOutputPath" "$IssFile"
+    & "$isccPath" /O"$InstallerOutputPath" "$IssFile"
     
     if ($LASTEXITCODE -ne 0) {
         throw "Échec de la compilation"

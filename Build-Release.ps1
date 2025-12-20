@@ -79,16 +79,6 @@ Write-Host ""
 # Étape 3: Publication en Release
 Write-Host "[3/4] Publication de l'application (Release)..." -ForegroundColor Yellow
 
-# Sauvegarder le dossier sounds s'il existe avant la publication
-$soundsBackup = $null
-$soundsPath = Join-Path $PublishDir "sounds"
-if (Test-Path $soundsPath) {
-    $tempBackup = Join-Path $env:TEMP "sounds_backup_$(Get-Date -Format 'yyyyMMddHHmmss')"
-    Copy-Item -Path $soundsPath -Destination $tempBackup -Recurse -Force
-    $soundsBackup = $tempBackup
-    Write-Host "  Sauvegardé: dossier sounds existant" -ForegroundColor Gray
-}
-
 # Créer le dossier de sortie
 if (-not (Test-Path $PublishDir)) {
     New-Item -ItemType Directory -Path $PublishDir -Force | Out-Null
@@ -96,9 +86,9 @@ if (-not (Test-Path $PublishDir)) {
 
 $publishArgs = @(
     "publish",
-    "`"$AppProject`"",
+    $AppProject,
     "-c", "Release",
-    "-o", "`"$PublishDir`"",
+    "-o", $PublishDir,
     "--self-contained", "false",
     "/p:DebugType=None",
     "/p:DebugSymbols=false",
@@ -155,16 +145,6 @@ foreach ($depsFile in $depsFiles) {
         Remove-Item -Path $depsFile.FullName -Force -ErrorAction SilentlyContinue
         Write-Host "  Supprimé: $($depsFile.Name)" -ForegroundColor Gray
     }
-}
-
-# Restaurer le dossier sounds s'il a été sauvegardé
-if ($null -ne $soundsBackup -and (Test-Path $soundsBackup)) {
-    if (-not (Test-Path $soundsPath)) {
-        New-Item -ItemType Directory -Path $soundsPath -Force | Out-Null
-    }
-    Copy-Item -Path "$soundsBackup\*" -Destination $soundsPath -Recurse -Force
-    Remove-Item -Path $soundsBackup -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "  Restauré: dossier sounds" -ForegroundColor Gray
 }
 
 # Calculer la taille du dossier

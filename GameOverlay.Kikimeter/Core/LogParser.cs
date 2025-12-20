@@ -106,7 +106,6 @@ public class LogParser
     public event EventHandler<string>? PlayerRemoved;
     public event EventHandler? CombatStarted;
     public event EventHandler? CombatEnded;
-    public event EventHandler<string>? TurnDetected; // Événement déclenché quand un nouveau tour est détecté (nom du joueur)
     
     public LogParser()
     {
@@ -473,14 +472,6 @@ public class LogParser
                 _playerStats[caster].NumberOfTurns++;
                 _playerStats[caster].ResetTurnDamage(); // Réinitialiser pour le nouveau tour
                 Logger.Info(LogCategory, $"Nouveau tour pour {caster} - tours enregistrés: {_playerStats[caster].NumberOfTurns}");
-                
-                // Enregistrer l'ordre de passage des tours pour l'ordre automatique
-                if (!_combatContext.TurnOrder.Contains(caster, StringComparer.OrdinalIgnoreCase))
-                {
-                    _combatContext.TurnOrder.Add(caster);
-                    Logger.Info(LogCategory, $"Ordre de tour enregistré: {caster} (position {_combatContext.TurnOrder.Count - 1})");
-                    TurnDetected?.Invoke(this, caster);
-                }
             }
             else if (_combatContext.PreviousCaster == null || _combatContext.PreviousCaster == string.Empty)
             {
@@ -488,14 +479,6 @@ public class LogParser
                 _playerStats[caster].NumberOfTurns = 1;
                 _playerStats[caster].ResetTurnDamage(); // Initialiser à 0 pour le premier tour
                 Logger.Info(LogCategory, $"Premier tour pour {caster}");
-                
-                // Enregistrer l'ordre de passage des tours pour l'ordre automatique
-                if (!_combatContext.TurnOrder.Contains(caster, StringComparer.OrdinalIgnoreCase))
-                {
-                    _combatContext.TurnOrder.Add(caster);
-                    Logger.Info(LogCategory, $"Ordre de tour enregistré (premier): {caster} (position {_combatContext.TurnOrder.Count - 1})");
-                    TurnDetected?.Invoke(this, caster);
-                }
             }
             
             // Mettre à jour PreviousCaster pour la prochaine détection

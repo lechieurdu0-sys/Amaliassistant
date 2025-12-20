@@ -75,18 +75,8 @@ public class LootCharacterDetector : IDisposable
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
     
-    // Regex pour détecter quand un joueur quitte le groupe
-    private static readonly Regex LeftGroupRegex = new Regex(
-        @"\[Information \(jeu\)\]\s+(.+?)\s+a quitté le groupe",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase
-    );
-    
     // Les 6 personnages les plus récents détectés (sans "Vous")
     private readonly Dictionary<string, DateTime> _recentCharacters = new(StringComparer.OrdinalIgnoreCase);
-    // Personnages actuellement dans le groupe (pour ne pas les retirer s'ils quittent le combat)
-    private readonly HashSet<string> _playersInGroup = new(StringComparer.OrdinalIgnoreCase);
-    // Personnages actuellement dans le combat
-    private readonly HashSet<string> _playersInCombat = new(StringComparer.OrdinalIgnoreCase);
     private const int MAX_CHARACTERS = 6;
     private const int RECENT_LOG_TAIL_BYTES = 200_000;
     private const int ScanThrottleMilliseconds = 200;
@@ -131,35 +121,16 @@ public class LootCharacterDetector : IDisposable
         
         if (!fileAlreadyExists)
         {
-            // Si le fichier n'existe pas, créer un fichier vide et tronquer les logs (première installation)
-            Logger.Info("LootCharacterDetector", $"Fichier de configuration non trouvé, création d'un nouveau fichier vide (troncature des logs pour éviter les anciens personnages)");
-            ResetStoredCharactersWithLogTruncation();
-            // Marquer la première exécution
-            MarkAppRun();
+            // Si le fichier n'existe pas, créer un fichier vide sans recharger depuis les logs
+            Logger.Info("LootCharacterDetector", $"Fichier de configuration non trouvé, création d'un nouveau fichier vide (sans rechargement depuis les logs)");
+            ResetStoredCharacters();
         }
         else
         {
-            // Si le fichier existe, vérifier si les logs sont récents (déconnexion) ou anciens (réinstallation)
-            var config = LoadConfig();
-            bool shouldTruncate = ShouldTruncateLogs(config);
-            
-            if (shouldTruncate)
-            {
-                // Les logs sont anciens (réinstallation) → tronquer pour éviter les anciens personnages
-                Logger.Info("LootCharacterDetector", $"Logs détectés comme anciens (réinstallation), troncature pour éviter les anciens personnages");
-                ResetStoredCharactersWithLogTruncation();
-            }
-            else
-            {
-                // Les logs sont récents (déconnexion normale) → rehydrater pour ne pas perdre les personnages
-                Logger.Info("LootCharacterDetector", $"Logs détectés comme récents (déconnexion normale), rechargement des personnages depuis les logs");
-                ResetStoredCharacters();
-                InitializeLogPositions(initialLoad: true);
-                RehydrateCharactersAfterReset();
-            }
-            
-            // Marquer cette exécution
-            MarkAppRun();
+            // Si le fichier existe, le charger et recharger depuis les logs si nécessaire
+        ResetStoredCharacters();
+        InitializeLogPositions(initialLoad: true);
+        RehydrateCharactersAfterReset();
         }
         
         // Surveiller le fichier pour les nouveaux personnages
@@ -262,28 +233,15 @@ public class LootCharacterDetector : IDisposable
                 while ((line = reader.ReadLine()) != null)
                 {
                     HandleServerChangeLine(line);
-                    
-                    // Détecter la fin de combat
-                    if (line.Contains("[FIGHT] End fight", StringComparison.Ordinal) || 
-                        line.Contains("Combat terminé", StringComparison.Ordinal) || 
-                        line.Contains("NetInFight Removed", StringComparison.Ordinal))
-                    {
-                        Logger.Info("LootCharacterDetector", "Fin de combat détectée dans PerformInitialScan");
-                        // Appeler RegisterCombatPlayers avec une liste vide pour retirer les joueurs qui ne sont plus dans le combat
-                        RegisterCombatPlayers(Array.Empty<string>());
-                        continue;
-                    }
-                    
                     if (line.Contains("join the fight at") && line.Contains("isControlledByAI=false"))
                     {
                         var match = PlayerJoinRegex.Match(line);
                         if (match.Success)
                         {
-                            string playerName = NormalizeCharacterName(match.Groups[1].Value);
-                            if (!string.IsNullOrEmpty(playerName) && !string.Equals(playerName, "Vous", StringComparison.OrdinalIgnoreCase))
+                            string playerName = match.Groups[1].Value.Trim();
+                            if (!string.IsNullOrEmpty(playerName))
                             {
                                 _recentCharacters[playerName] = DateTime.Now;
-                                _playersInCombat.Add(playerName); // Marquer comme étant dans le combat
                                 Logger.Debug("LootCharacterDetector", $"Détection initiale (wakfu.log): {playerName}");
                                 changed = true;
                             }
@@ -347,29 +305,16 @@ public class LootCharacterDetector : IDisposable
             while ((line = reader.ReadLine()) != null)
             {
                 HandleServerChangeLine(line);
-                
-                // Détecter la fin de combat
-                if (line.Contains("[FIGHT] End fight", StringComparison.Ordinal) || 
-                    line.Contains("Combat terminé", StringComparison.Ordinal) || 
-                    line.Contains("NetInFight Removed", StringComparison.Ordinal))
-                {
-                    Logger.Info("LootCharacterDetector", "Fin de combat détectée dans ScanPlayersFromKikimeterLog");
-                    // Appeler RegisterCombatPlayers avec une liste vide pour retirer les joueurs qui ne sont plus dans le combat
-                    RegisterCombatPlayers(Array.Empty<string>());
-                    continue;
-                }
-                
                 // Utiliser la même logique que LogParser du Kikimeter
                 if (line.Contains("join the fight at") && line.Contains("isControlledByAI=false"))
                 {
                     var match = PlayerJoinRegex.Match(line);
                     if (match.Success)
                     {
-                        string playerName = NormalizeCharacterName(match.Groups[1].Value);
-                        if (!string.IsNullOrEmpty(playerName) && !string.Equals(playerName, "Vous", StringComparison.OrdinalIgnoreCase))
+                        string playerName = match.Groups[1].Value.Trim();
+                        if (!string.IsNullOrEmpty(playerName))
                         {
                             _recentCharacters[playerName] = DateTime.Now;
-                            _playersInCombat.Add(playerName); // Marquer comme étant dans le combat
                             Logger.Debug("LootCharacterDetector", $"Détection wakfu.log: {playerName}");
                         }
                     }
@@ -427,29 +372,16 @@ public class LootCharacterDetector : IDisposable
                         while ((line = reader.ReadLine()) != null)
                         {
                             HandleServerChangeLine(line);
-                            
-                            // Détecter la fin de combat
-                            if (line.Contains("[FIGHT] End fight", StringComparison.Ordinal) || 
-                                line.Contains("Combat terminé", StringComparison.Ordinal) || 
-                                line.Contains("NetInFight Removed", StringComparison.Ordinal))
-                            {
-                                Logger.Info("LootCharacterDetector", "Fin de combat détectée, nettoyage des joueurs qui ne sont plus dans le combat");
-                                // Appeler RegisterCombatPlayers avec une liste vide pour retirer les joueurs qui ne sont plus dans le combat
-                                RegisterCombatPlayers(Array.Empty<string>());
-                                continue;
-                            }
-                            
                             if (line.Contains("join the fight at") && line.Contains("isControlledByAI=false"))
                             {
                                 var match = PlayerJoinRegex.Match(line);
                                 if (match.Success)
                                 {
-                                    string playerName = NormalizeCharacterName(match.Groups[1].Value);
-                                    if (!string.IsNullOrEmpty(playerName) && !string.Equals(playerName, "Vous", StringComparison.OrdinalIgnoreCase))
+                                    string playerName = match.Groups[1].Value.Trim();
+                                    if (!string.IsNullOrEmpty(playerName) && !_recentCharacters.ContainsKey(playerName))
                                     {
                                         _recentCharacters[playerName] = DateTime.Now;
-                                        _playersInCombat.Add(playerName); // Marquer comme étant dans le combat
-                                        Logger.Debug("LootCharacterDetector", $"Nouveau joueur détecté dans le combat (wakfu.log): {playerName}");
+                                        Logger.Debug("LootCharacterDetector", $"Nouveau joueur détecté (wakfu.log): {playerName}");
                                     }
                                 }
                             }
@@ -557,34 +489,11 @@ public class LootCharacterDetector : IDisposable
         var match = JoinedGroupRegex.Match(line);
         if (match.Success)
         {
-            string characterName = NormalizeCharacterName(match.Groups[1].Value);
-            if (!string.IsNullOrEmpty(characterName) && !string.Equals(characterName, "Vous", StringComparison.OrdinalIgnoreCase))
+            string characterName = match.Groups[1].Value.Trim();
+            if (!string.Equals(characterName, "Vous", StringComparison.OrdinalIgnoreCase))
             {
                 _recentCharacters[characterName] = timestamp;
-                _playersInGroup.Add(characterName); // Marquer comme étant dans le groupe
-                Logger.Debug("LootCharacterDetector", $"Personnage a rejoint le groupe: {characterName}");
-                found = true;
-            }
-            return found;
-        }
-        
-        // 2. "a quitté le groupe"
-        match = LeftGroupRegex.Match(line);
-        if (match.Success)
-        {
-            string characterName = NormalizeCharacterName(match.Groups[1].Value);
-            if (!string.IsNullOrEmpty(characterName) && !string.Equals(characterName, "Vous", StringComparison.OrdinalIgnoreCase))
-            {
-                _playersInGroup.Remove(characterName); // Retirer du groupe
-                Logger.Debug("LootCharacterDetector", $"Personnage a quitté le groupe: {characterName}");
-                
-                // Si le joueur n'est pas dans le combat, le retirer aussi de la liste
-                if (!_playersInCombat.Contains(characterName))
-                {
-                    _recentCharacters.Remove(characterName);
-                    Logger.Info("LootCharacterDetector", $"Personnage retiré (pas dans le groupe ni le combat): {characterName}");
-                    UpdateRecentCharacters(); // Mettre à jour la liste
-                }
+                Logger.Debug("LootCharacterDetector", $"Détection chat: {characterName}");
                 found = true;
             }
         }
@@ -662,11 +571,26 @@ public class LootCharacterDetector : IDisposable
             }
         }
 
-        // NE PAS retirer les personnages de la config même s'ils ne sont plus dans _recentCharacters
-        // Cela permet de conserver les personnages détectés précédemment pour qu'ils restent visibles
-        // dans les paramètres même après une déconnexion
-        // Les personnages seront seulement retirés s'ils quittent explicitement le groupe ET le combat
-        // (géré par DetectCharacterInChatLogLine et RegisterCombatPlayers)
+        // Déterminer les personnages à retirer (uniquement ceux détectés automatiquement auparavant)
+        // NE JAMAIS retirer les personnages manuels, le personnage principal, ou ceux dans MyCharacters
+        var detectedSet = new HashSet<string>(sortedCharacters, StringComparer.OrdinalIgnoreCase);
+        var myCharactersSet = new HashSet<string>(config.MyCharacters ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+        var keysToRemove = config.Characters.Keys
+            .Where(k => !detectedSet.Contains(k)
+                        && !manualCharacters.Contains(k)
+                        && !string.Equals(k, config.MainCharacter, StringComparison.OrdinalIgnoreCase)
+                        && !myCharactersSet.Contains(k)) // Ne pas retirer les personnages dans MyCharacters
+                .ToList();
+            
+        if (keysToRemove.Count > 0)
+            {
+            Logger.Info("LootCharacterDetector", $"Retrait de {keysToRemove.Count} personnages non récents: {string.Join(", ", keysToRemove)}");
+            foreach (var key in keysToRemove)
+            {
+                config.Characters.Remove(key);
+            }
+            listChanged = true;
+        }
 
         if (listChanged)
         {
@@ -797,98 +721,6 @@ public class LootCharacterDetector : IDisposable
     {
         return LoadConfig();
     }
-    
-    /// <summary>
-    /// Détermine si les logs doivent être tronqués en comparant leur date de modification avec la dernière exécution
-    /// </summary>
-    private bool ShouldTruncateLogs(LootCharacterConfig config)
-    {
-        try
-        {
-            // Si pas de timestamp de dernière exécution, considérer comme réinstallation
-            if (string.IsNullOrWhiteSpace(config.LastAppRun))
-            {
-                Logger.Info("LootCharacterDetector", "Pas de timestamp LastAppRun trouvé, considéré comme réinstallation");
-                return true;
-            }
-            
-            // Parser le timestamp de dernière exécution
-            if (!DateTime.TryParse(config.LastAppRun, out DateTime lastAppRun))
-            {
-                Logger.Warning("LootCharacterDetector", $"Impossible de parser LastAppRun: {config.LastAppRun}");
-                return true; // En cas de doute, tronquer pour sécurité
-            }
-            
-            // Vérifier la date de modification des logs
-            DateTime? oldestLogDate = null;
-            
-            // Vérifier wakfu_chat.log
-            if (File.Exists(_logFilePath))
-            {
-                var chatLogInfo = new FileInfo(_logFilePath);
-                if (!oldestLogDate.HasValue || chatLogInfo.LastWriteTime < oldestLogDate.Value)
-                {
-                    oldestLogDate = chatLogInfo.LastWriteTime;
-                }
-            }
-            
-            // Vérifier wakfu.log
-            if (!string.IsNullOrEmpty(_kikimeterLogPath) && File.Exists(_kikimeterLogPath))
-            {
-                var kikimeterLogInfo = new FileInfo(_kikimeterLogPath);
-                if (!oldestLogDate.HasValue || kikimeterLogInfo.LastWriteTime < oldestLogDate.Value)
-                {
-                    oldestLogDate = kikimeterLogInfo.LastWriteTime;
-                }
-            }
-            
-            // Si aucun log trouvé, ne pas tronquer
-            if (!oldestLogDate.HasValue)
-            {
-                Logger.Debug("LootCharacterDetector", "Aucun log trouvé, pas de troncature");
-                return false;
-            }
-            
-            // Si les logs sont plus anciens que la dernière exécution, c'est une réinstallation
-            // On ajoute une marge de 1 heure pour gérer les cas limites (décalage horaire, etc.)
-            bool shouldTruncate = oldestLogDate.Value < lastAppRun.AddHours(-1);
-            
-            if (shouldTruncate)
-            {
-                Logger.Info("LootCharacterDetector", $"Logs détectés comme anciens: dernière modif={oldestLogDate.Value:yyyy-MM-dd HH:mm:ss}, dernière exécution={lastAppRun:yyyy-MM-dd HH:mm:ss}");
-            }
-            else
-            {
-                Logger.Debug("LootCharacterDetector", $"Logs détectés comme récents: dernière modif={oldestLogDate.Value:yyyy-MM-dd HH:mm:ss}, dernière exécution={lastAppRun:yyyy-MM-dd HH:mm:ss}");
-            }
-            
-            return shouldTruncate;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("LootCharacterDetector", $"Erreur lors de la vérification des logs: {ex.Message}");
-            // En cas d'erreur, ne pas tronquer pour éviter de perdre des données
-            return false;
-        }
-    }
-    
-    /// <summary>
-    /// Marque la date de cette exécution dans la configuration
-    /// </summary>
-    private void MarkAppRun()
-    {
-        try
-        {
-            var config = LoadConfig();
-            config.LastAppRun = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            SaveConfig(config);
-            Logger.Debug("LootCharacterDetector", $"Date d'exécution marquée: {config.LastAppRun}");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning("LootCharacterDetector", $"Erreur lors du marquage de l'exécution: {ex.Message}");
-        }
-    }
 
     public void ResetCharacterStorage(bool rehydrateAfterReset = false, bool suppressServerEvents = false)
     {
@@ -984,10 +816,7 @@ public class LootCharacterDetector : IDisposable
 
         bool updated = false;
         var now = DateTime.Now;
-        
-        // Créer un set des joueurs actuels dans le combat
-        var currentCombatPlayers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        
+
         foreach (var playerName in playerNames)
         {
             var normalized = NormalizeCharacterName(playerName);
@@ -1002,26 +831,12 @@ public class LootCharacterDetector : IDisposable
             }
 
             _recentCharacters[normalized] = now;
-            _playersInCombat.Add(normalized); // Marquer comme étant dans le combat
-            currentCombatPlayers.Add(normalized);
             updated = true;
         }
-        
-        // Retirer les joueurs qui ne sont plus dans le combat ET qui ne sont pas dans le groupe
-        var playersToRemove = _playersInCombat
-            .Where(p => !currentCombatPlayers.Contains(p) && !_playersInGroup.Contains(p))
-            .ToList();
-            
-        foreach (var playerToRemove in playersToRemove)
-        {
-            _playersInCombat.Remove(playerToRemove);
-            _recentCharacters.Remove(playerToRemove);
-            Logger.Info("LootCharacterDetector", $"Joueur retiré (a quitté le combat et n'est pas dans le groupe): {playerToRemove}");
-        }
 
-        if (updated || playersToRemove.Count > 0)
+        if (updated)
         {
-            Logger.Info("LootCharacterDetector", $"RegisterCombatPlayers: {currentCombatPlayers.Count} dans le combat, {_playersInGroup.Count} dans le groupe");
+            Logger.Info("LootCharacterDetector", $"RegisterCombatPlayers appelé avec {playerNames.Count()} personnages: {string.Join(", ", playerNames)}");
             UpdateRecentCharacters();
         }
         else
@@ -1033,8 +848,6 @@ public class LootCharacterDetector : IDisposable
     private void ResetStoredCharacters()
     {
         _recentCharacters.Clear();
-        _playersInGroup.Clear();
-        _playersInCombat.Clear();
         try
         {
             var directory = Path.GetDirectoryName(_configFilePath);
@@ -1065,23 +878,6 @@ public class LootCharacterDetector : IDisposable
     private void ResetStoredCharactersWithLogTruncation()
     {
         _recentCharacters.Clear();
-        _playersInGroup.Clear();
-        _playersInCombat.Clear();
-        
-        // Sauvegarder LastAppRun avant de réinitialiser la config
-        string? savedLastAppRun = null;
-        try
-        {
-            if (File.Exists(_configFilePath))
-            {
-                var existingConfig = LoadConfig();
-                savedLastAppRun = existingConfig.LastAppRun;
-            }
-        }
-        catch
-        {
-            // Ignorer les erreurs de chargement
-        }
         
         // Tronquer les fichiers de logs pour éviter de recharger les anciens personnages
         TryTruncateLogFile(_logFilePath, "wakfu_chat.log");
@@ -1101,8 +897,7 @@ public class LootCharacterDetector : IDisposable
 
             var emptyConfig = new LootCharacterConfig
             {
-                LastUpdate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                LastAppRun = savedLastAppRun // Préserver LastAppRun si disponible
+                LastUpdate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
 
             var json = JsonConvert.SerializeObject(emptyConfig, Formatting.Indented);
@@ -1328,19 +1123,6 @@ public class LootCharacterDetector : IDisposable
     {
         bool changed = false;
 
-        // D'abord, recharger les personnages depuis la config existante pour les rendre visibles
-        var config = LoadConfig();
-        foreach (var character in config.Characters.Keys)
-        {
-            if (!_recentCharacters.ContainsKey(character))
-            {
-                _recentCharacters[character] = DateTime.Now;
-                changed = true;
-                Logger.Debug("LootCharacterDetector", $"Personnage rechargé depuis la config: {character}");
-            }
-        }
-
-        // Ensuite, scanner les logs pour détecter de nouveaux personnages
         if (!string.IsNullOrEmpty(_kikimeterLogPath) && File.Exists(_kikimeterLogPath))
         {
             changed |= ScanRecentSegment(_kikimeterLogPath, true);
@@ -1358,9 +1140,7 @@ public class LootCharacterDetector : IDisposable
         }
         else
         {
-            // Même si aucun nouveau personnage n'a été détecté, mettre à jour pour notifier les UI
-            UpdateRecentCharacters();
-            Logger.Debug("LootCharacterDetector", "Aucun nouveau personnage détecté après reset, mais personnages existants rechargés.");
+            Logger.Debug("LootCharacterDetector", "Aucun personnage récent détecté après reset.");
         }
 
         return changed;
@@ -1395,11 +1175,10 @@ public class LootCharacterDetector : IDisposable
                         var match = PlayerJoinRegex.Match(line);
                         if (match.Success)
                         {
-                            string playerName = NormalizeCharacterName(match.Groups[1].Value);
-                            if (!string.IsNullOrEmpty(playerName) && !string.Equals(playerName, "Vous", StringComparison.OrdinalIgnoreCase))
+                            string playerName = match.Groups[1].Value.Trim();
+                            if (!string.IsNullOrEmpty(playerName))
                             {
                                 _recentCharacters[playerName] = DateTime.Now;
-                                _playersInCombat.Add(playerName); // Marquer comme étant dans le combat
                                 changed = true;
                                 Logger.Debug("LootCharacterDetector", $"Rehydratation (wakfu.log): {playerName}");
                             }
@@ -1467,14 +1246,11 @@ public class LootCharacterDetector : IDisposable
             }
 
             bool shouldRaise = false;
-            bool isNewConnection = false;
 
             lock (_serverLock)
             {
                 if (!string.Equals(_currentServer, serverName, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Si on passe d'un serveur vide à un nouveau serveur, c'est une nouvelle connexion
-                    isNewConnection = string.IsNullOrEmpty(_currentServer);
                     _currentServer = serverName;
                     shouldRaise = true;
                 }
@@ -1483,14 +1259,6 @@ public class LootCharacterDetector : IDisposable
             if (shouldRaise && !_suppressServerNotifications)
             {
                 Logger.Info("LootCharacterDetector", $"Changement de serveur détecté: {serverName}");
-                
-                // Si c'est une nouvelle connexion (après déconnexion), réinitialiser et relecture des logs
-                if (isNewConnection)
-                {
-                    Logger.Info("LootCharacterDetector", "Nouvelle connexion détectée, réinitialisation des personnages et relecture des logs");
-                    ResetCharactersForNewConnection();
-                }
-                
                 ServerChanged?.Invoke(this, new ServerChangeDetectedEventArgs(serverName, line, false));
             }
 
@@ -1510,63 +1278,8 @@ public class LootCharacterDetector : IDisposable
 
             if (hadServer)
             {
-                Logger.Info("LootCharacterDetector", "Déconnexion détectée, réinitialisation des personnages");
-                // Réinitialiser les personnages à la déconnexion (fermeture du jeu)
-                ResetCharactersOnDisconnect();
+                Logger.Info("LootCharacterDetector", "Déconnexion détectée, serveur courant remis à zéro.");
             }
-        }
-    }
-    
-    /// <summary>
-    /// Réinitialise les personnages à la déconnexion (fermeture du jeu)
-    /// On conserve TOUS les personnages de la config, on vide seulement les listes en mémoire
-    /// </summary>
-    private void ResetCharactersOnDisconnect()
-    {
-        try
-        {
-            // Vider seulement les listes en mémoire (groupe et combat)
-            // Mais CONSERVER tous les personnages dans la config pour qu'ils restent visibles dans les paramètres
-            _playersInGroup.Clear();
-            _playersInCombat.Clear();
-            
-            // Ne PAS vider _recentCharacters car ils sont utilisés pour l'affichage
-            // Ne PAS modifier la config, on veut garder tous les personnages détectés
-            
-            Logger.Info("LootCharacterDetector", "Listes de groupe et combat réinitialisées à la déconnexion (personnages conservés dans la config)");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("LootCharacterDetector", $"Erreur lors de la réinitialisation à la déconnexion: {ex.Message}");
-        }
-    }
-    
-    /// <summary>
-    /// Réinitialise et relit les logs à la connexion au serveur
-    /// </summary>
-    private void ResetCharactersForNewConnection()
-    {
-        try
-        {
-            // Réinitialiser seulement les listes de groupe et combat
-            // CONSERVER _recentCharacters pour garder les personnages visibles
-            _playersInGroup.Clear();
-            _playersInCombat.Clear();
-            
-            // Réinitialiser les positions de lecture pour relire depuis le début
-            _lastPosition = 0;
-            _lastKikimeterPosition = 0;
-            
-            // Relecture des logs pour détecter les joueurs actuels
-            Logger.Info("LootCharacterDetector", "Relecture des logs pour détecter les joueurs actuels");
-            InitializeLogPositions(initialLoad: true);
-            RehydrateCharactersAfterReset();
-            
-            Logger.Info("LootCharacterDetector", "Relecture des logs terminée");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("LootCharacterDetector", $"Erreur lors de la réinitialisation à la connexion: {ex.Message}");
         }
     }
 

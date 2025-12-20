@@ -91,12 +91,6 @@ public class CombatContext
     /// </summary>
     public List<string> UnaccountedLines { get; set; }
     
-    /// <summary>
-    /// Ordre de passage des tours (premier joueur qui joue = index 0, deuxième = index 1, etc.)
-    /// Permet de réorganiser automatiquement les joueurs dans le kikimeter selon l'ordre de jeu
-    /// </summary>
-    public List<string> TurnOrder { get; set; }
-    
     public CombatContext()
     {
         SummonOwnership = new Dictionary<long, string>();
@@ -105,7 +99,6 @@ public class CombatContext
         RecentSpells = new List<(string, string, DateTime)>();
         EffectOwnerships = new Dictionary<string, EffectOwnership>(StringComparer.OrdinalIgnoreCase);
         UnaccountedLines = new List<string>();
-        TurnOrder = new List<string>();
     }
     
     /// <summary>
@@ -125,7 +118,6 @@ public class CombatContext
         SummonNameToId.Clear();
         EffectOwnerships.Clear();
         UnaccountedLines.Clear();
-        TurnOrder.Clear();
     }
 
     private static string CreateEffectKey(string effectName, string? target)

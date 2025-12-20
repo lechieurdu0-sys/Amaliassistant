@@ -1203,31 +1203,9 @@ namespace GameOverlay.App
                     // Si la fenêtre Kikimeter est ouverte, la redémarrer avec le nouveau chemin
                     if (kikimeterWindow != null)
                     {
-                        try
-                        {
-                            kikimeterWindow.Hide();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning("MainWindow", $"Erreur lors du masquage de la fenêtre Kikimeter: {ex.Message}");
-                        }
-                        
+                        kikimeterWindow.Hide();
                         kikimeterWindow = null;
-                        
-                        try
-                        {
-                            ShowKikimeter();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error("MainWindow", $"Erreur lors de la réouverture de la fenêtre Kikimeter: {ex.Message}");
-                            System.Windows.MessageBox.Show(
-                                $"Le chemin a été sauvegardé, mais une erreur est survenue lors de la réouverture de la fenêtre Kikimeter: {ex.Message}",
-                                "Avertissement",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Warning);
-                            return;
-                        }
+                        ShowKikimeter();
                     }
                     
                     System.Windows.MessageBox.Show(
@@ -1262,20 +1240,7 @@ namespace GameOverlay.App
                 if (dialog.ShowDialog() == true)
                 {
                     config.LootChatLogPath = dialog.LogPath;
-                    try
-                    {
-                        SaveConfiguration();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors de la sauvegarde de la configuration: {ex.Message}");
-                        System.Windows.MessageBox.Show(
-                            $"Erreur lors de la sauvegarde: {ex.Message}",
-                            "Erreur",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Error);
-                        return;
-                    }
+                    SaveConfiguration();
                     
                     System.Windows.MessageBox.Show(
                         "Le chemin a été configuré avec succès.",
@@ -2416,6 +2381,9 @@ namespace GameOverlay.App
                         notificationWindow.Topmost = false;
                         notificationWindow.Topmost = true;
                         
+                        // Activer la fenêtre pour s'assurer qu'elle est visible même pendant les jeux en plein écran
+                        notificationWindow.Activate();
+                        
                         // Réorganiser le z-order de toutes les fenêtres (la plus récente au-dessus)
                         ReorganizeSaleNotificationsZOrder();
                         
@@ -2593,16 +2561,17 @@ namespace GameOverlay.App
             {
                 if (_saleTracker != null)
                 {
-                    // Appeler directement ManualRead (qui gère déjà la synchronisation interne)
-                    // Ne pas utiliser Task.Run pour éviter les problèmes de concurrence
-                    try
+                    System.Threading.Tasks.Task.Run(() =>
                     {
-                        _saleTracker.ManualRead();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors de ManualRead du SaleTracker: {ex.Message}");
-                    }
+                        try
+                        {
+                            _saleTracker.ManualRead();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("MainWindow", $"Erreur lors de ManualRead du SaleTracker: {ex.Message}");
+                        }
+                    });
                 }
             }
             catch (Exception ex)

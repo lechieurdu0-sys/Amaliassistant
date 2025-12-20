@@ -1,308 +1,233 @@
 using System;
-using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media.Effects;
+using System.Windows.Interop;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
+using System.Media;
+using GameOverlay.Kikimeter.Models;
 using GameOverlay.Kikimeter.Services;
 
 namespace GameOverlay.Kikimeter.Views;
 
-/// <summary>
-/// Fenêtre de notification pour afficher les informations de vente
-/// </summary>
 public partial class SaleNotificationWindow : Window
 {
-    private static readonly DropShadowEffect DropShadowEffect = new DropShadowEffect
-    {
-        Color = System.Windows.Media.Colors.Black,
-        Direction = 315,
-        ShadowDepth = 5,
-        Opacity = 0.5,
-        BlurRadius = 10
-    };
-    
-    private bool _isDragging = false;
-    private System.Drawing.Point _dragStartScreenPoint;
-    private double _dragStartLeft;
-    private double _dragStartTop;
-    private bool _hasMoved = false;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int GWL_EXSTYLE = -20;
     
     [DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out System.Drawing.Point lpPoint);
-    private System.Windows.Threading.DispatcherTimer? _autoCloseTimer;
-    private bool _timerStarted = false;
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
     
-    /// <summary>
-    /// Démarre le timer de fermeture automatique (seulement si la notification est visible)
-    /// </summary>
-    public void StartAutoCloseTimer()
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
+    
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    
+    private System.Windows.Threading.DispatcherTimer? _autoCloseTimer;
+    
+    public SaleNotificationWindow()
     {
-        if (_timerStarted || _autoCloseTimer != null)
-            return;
+        InitializeComponent();
+        Loaded += SaleNotificationWindow_Loaded;
+        SourceInitialized += SaleNotificationWindow_SourceInitialized;
+    }
+    
+    public SaleNotificationWindow(SaleInfo saleInfo, bool showAbsenceMessage = false) : this()
+    {
+        // Initialiser le contenu de la notification
+        if (MessageTextRun != null)
+        {
+            if (showAbsenceMessage)
+            {
+                MessageTextRun.Text = $"Pendant votre absence, vous avez vendu {saleInfo.ItemCount} objet{(saleInfo.ItemCount > 1 ? "s" : "")} pour ";
+            }
+            else
+            {
+                MessageTextRun.Text = $"Vous avez vendu {saleInfo.ItemCount} objet{(saleInfo.ItemCount > 1 ? "s" : "")} pour ";
+            }
+        }
+        
+        if (AbsenceTextRun != null)
+        {
+            AbsenceTextRun.Text = $" {saleInfo.TotalKamas:N0} kamas";
+        }
+    }
+    
+    private void SaleNotificationWindow_SourceInitialized(object? sender, EventArgs e)
+    {
+        // Forcer la fenêtre à rester au-dessus même pendant les jeux en plein écran
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            // Utiliser SetWindowPos pour forcer la fenêtre à rester au-dessus
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        }
+    }
+    
+    private void SaleNotificationWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Positionner la fenêtre en haut à droite de l'écran
+        var screen = System.Windows.Forms.Screen.PrimaryScreen;
+        if (screen != null)
+        {
+            Left = screen.WorkingArea.Right - Width - 20;
+            Top = 20;
+        }
+        
+        // Rendre la fenêtre cliquable mais pas transparente aux clics (pour pouvoir la fermer)
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            // Ne pas rendre transparent aux clics pour permettre la fermeture
+            // SetWindowLong(hwnd, GWL_EXSTYLE, (uint)(GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TRANSPARENT));
             
-        _timerStarted = true;
+            // Forcer la fenêtre à rester au-dessus même pendant les jeux en plein écran
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        }
+        
+        // Jouer le son de notification
+        PlayNotificationSound();
+        
+        // Animation d'apparition
+        Opacity = 0;
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.3));
+        BeginAnimation(OpacityProperty, fadeIn);
+        
+        // Auto-fermeture après 5 secondes
         _autoCloseTimer = new System.Windows.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(15)
+            Interval = TimeSpan.FromSeconds(5)
         };
-        _autoCloseTimer.Tick += (s, e) =>
+        _autoCloseTimer.Tick += (s, args) =>
         {
             _autoCloseTimer?.Stop();
-            _autoCloseTimer = null;
-            Close();
+            CloseNotification();
         };
         _autoCloseTimer.Start();
     }
     
-    /// <summary>
-    /// Arrête le timer de fermeture automatique
-    /// </summary>
+    private void PlayNotificationSound()
+    {
+        try
+        {
+            // Chercher le fichier son dans plusieurs emplacements possibles
+            string[] possiblePaths = new[]
+            {
+                // Chemin relatif depuis l'exécutable publié (dans le dossier publish)
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Sounds", "sale_notification.wav"),
+                // Chemin depuis l'assembly (pour le développement)
+                Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "", "Resources", "Sounds", "sale_notification.wav"),
+                // Chemin depuis le dossier de l'application (pour les installations)
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Amaliassistant", "Resources", "Sounds", "sale_notification.wav"),
+                // Chemin alternatif depuis l'assembly (si l'assembly est dans un sous-dossier)
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GameOverlay.Kikimeter", "Resources", "Sounds", "sale_notification.wav")
+            };
+            
+            string? soundPath = null;
+            foreach (var path in possiblePaths)
+            {
+                if (File.Exists(path))
+                {
+                    soundPath = path;
+                    break;
+                }
+            }
+            
+            if (soundPath != null)
+            {
+                using (var player = new SoundPlayer(soundPath))
+                {
+                    player.Play();
+                }
+            }
+            else
+            {
+                // Si aucun fichier son n'est trouvé, utiliser le son système par défaut
+                System.Media.SystemSounds.Exclamation.Play();
+            }
+        }
+        catch
+        {
+            // En cas d'erreur, utiliser le son système par défaut
+            try
+            {
+                System.Media.SystemSounds.Exclamation.Play();
+            }
+            catch
+            {
+                // Ignorer les erreurs de lecture de son
+            }
+        }
+    }
+    
     public void StopAutoCloseTimer()
+    {
+        _autoCloseTimer?.Stop();
+    }
+    
+    public void StartAutoCloseTimer()
+    {
+        if (_autoCloseTimer == null)
+        {
+            _autoCloseTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5)
+            };
+            _autoCloseTimer.Tick += (s, args) =>
+            {
+                _autoCloseTimer?.Stop();
+                CloseNotification();
+            };
+        }
+        _autoCloseTimer.Start();
+    }
+    
+    
+    private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Fermer la notification si on clique dessus
+        CloseNotification();
+    }
+    
+    private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Fermer la notification si on clique dessus avec le bouton droit
+        CloseNotification();
+    }
+    
+    private void MainBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Fermer la notification si on clique sur la bordure
+        CloseNotification();
+    }
+    
+    private void CloseNotification()
     {
         if (_autoCloseTimer != null)
         {
             _autoCloseTimer.Stop();
             _autoCloseTimer = null;
         }
-        _timerStarted = false;
-    }
-    
-    /// <param name="saleInfo">Informations de vente</param>
-    /// <param name="showAbsenceMessage">Si true, ajoute "pendant votre absence" au message</param>
-    public SaleNotificationWindow(SaleInfo saleInfo, bool showAbsenceMessage = false)
-    {
-        InitializeComponent();
         
-        // Appliquer l'effet d'ombre
-        if (Content is System.Windows.Controls.Border border)
-        {
-            border.Effect = DropShadowEffect;
-        }
-        
-        // Construire le message avec l'image de kamas au lieu du "k"
-        string baseMessage = $"Vous avez vendu {saleInfo.ItemCount} objet{(saleInfo.ItemCount > 1 ? "s" : "")} pour un prix total de {saleInfo.TotalKamas.ToString("N0", CultureInfo.InvariantCulture)} ";
-        
-        MessageTextRun.Text = baseMessage;
-        
-        if (showAbsenceMessage)
-        {
-            AbsenceTextRun.Text = " pendant votre absence";
-        }
-        else
-        {
-            AbsenceTextRun.Text = "";
-        }
-        
-        // Charger la position sauvegardée
-        LoadSavedPosition();
-        
-        // Jouer un son lors de l'affichage de la notification
-        PlayNotificationSound();
-        
-        // Le timer sera démarré seulement quand la notification devient visible (au-dessus)
-        // Voir MainWindow.ReorganizeSaleNotificationsZOrder()
-    }
-    
-    /// <summary>
-    /// Joue un son de notification pour alerter l'utilisateur d'une vente
-    /// </summary>
-    private void PlayNotificationSound()
-    {
-        try
-        {
-            // Essayer d'abord un fichier son personnalisé dans le dossier de l'application
-            string customSoundPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sounds", "sale_notification.wav");
-            if (File.Exists(customSoundPath))
-            {
-                using (var player = new System.Media.SoundPlayer(customSoundPath))
-                {
-                    player.Play(); // Play() est asynchrone et non bloquant
-                }
-                Logger.Debug("SaleNotificationWindow", $"Son personnalisé joué: {customSoundPath}");
-                return;
-            }
-            
-            // Sinon, utiliser un son système Windows par défaut
-            // SystemSounds.Asterisk est un son d'alerte discret
-            System.Media.SystemSounds.Asterisk.Play();
-            Logger.Debug("SaleNotificationWindow", "Son système par défaut joué (Asterisk)");
-        }
-        catch (Exception ex)
-        {
-            // Ne pas bloquer l'affichage de la notification si le son échoue
-            Logger.Warning("SaleNotificationWindow", $"Erreur lors de la lecture du son: {ex.Message}");
-        }
-    }
-    
-    private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // Libérer la capture de souris seulement si on est en train de drag
-        if (this.IsMouseCaptured && _isDragging)
-        {
-            this.ReleaseMouseCapture();
-            _isDragging = false;
-        }
-        // Ne pas gérer l'événement pour permettre la propagation au menu contextuel de la fenêtre principale
-        e.Handled = false;
+        // Animation de disparition
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.3));
+        fadeOut.Completed += (s, e) => Close();
+        BeginAnimation(OpacityProperty, fadeOut);
     }
     
     protected override void OnClosed(EventArgs e)
     {
-        // Libérer la capture de souris si elle est active
-        if (this.IsMouseCaptured)
-        {
-            this.ReleaseMouseCapture();
-        }
-        StopAutoCloseTimer();
+        _autoCloseTimer?.Stop();
         base.OnClosed(e);
     }
-    
-    protected override void OnLostMouseCapture(System.Windows.Input.MouseEventArgs e)
-    {
-        // Si on perd la capture de souris pendant un drag, sauvegarder la position
-        if (_isDragging && _hasMoved)
-        {
-            SavePosition();
-        }
-        // Ne pas réinitialiser _isDragging ici car MouseLeftButtonUp le fera
-        base.OnLostMouseCapture(e);
-    }
-    
-    private void MainBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // Ne capturer que si c'est un clic gauche
-        if (e.ChangedButton != MouseButton.Left)
-        {
-            // Libérer la capture si c'est un autre bouton (ex: clic droit pour le menu)
-            if (this.IsMouseCaptured)
-            {
-                this.ReleaseMouseCapture();
-                _isDragging = false;
-            }
-            return;
-        }
-        
-        _isDragging = true;
-        _hasMoved = false;
-        
-        // Obtenir la position de la souris directement depuis l'API Windows
-        GetCursorPos(out _dragStartScreenPoint);
-        
-        _dragStartLeft = Left;
-        _dragStartTop = Top;
-        
-        // Capturer la souris au niveau de la fenêtre pour continuer à recevoir les événements même si la souris sort
-        this.CaptureMouse();
-        e.Handled = true;
-    }
-    
-    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
-    {
-        base.OnMouseMove(e);
-        
-        if (!_isDragging || e.LeftButton != MouseButtonState.Pressed)
-        {
-            return;
-        }
-        
-        // Obtenir la position actuelle de la souris directement depuis l'API Windows
-        GetCursorPos(out System.Drawing.Point currentScreenPoint);
-        
-        // Calculer le delta depuis la position initiale
-        var deltaX = currentScreenPoint.X - _dragStartScreenPoint.X;
-        var deltaY = currentScreenPoint.Y - _dragStartScreenPoint.Y;
-        
-        // Si le mouvement est significatif (plus de 1 pixel), considérer qu'on déplace
-        if (Math.Abs(deltaX) > 1 || Math.Abs(deltaY) > 1)
-        {
-            _hasMoved = true;
-            // Appliquer le delta à la position initiale de la fenêtre
-            Left = _dragStartLeft + deltaX;
-            Top = _dragStartTop + deltaY;
-        }
-    }
-    
-    protected override void OnMouseLeftButtonUp(System.Windows.Input.MouseButtonEventArgs e)
-    {
-        base.OnMouseLeftButtonUp(e);
-        
-        if (!_isDragging)
-        {
-            return;
-        }
-        
-        _isDragging = false;
-        this.ReleaseMouseCapture();
-        
-        // Si on n'a pas bougé, fermer la fenêtre
-        if (!_hasMoved)
-        {
-            Close();
-        }
-        else
-        {
-            // Sauvegarder la position finale
-            SavePosition();
-        }
-    }
-    
-    private void LoadSavedPosition()
-    {
-        try
-        {
-            var positions = GameOverlay.Models.PersistentStorageHelper.LoadJsonWithFallback<GameOverlay.Models.WindowPositions>("window_positions.json");
-            
-            if (positions?.SaleNotificationWindow != null)
-            {
-                Left = positions.SaleNotificationWindow.Left;
-                Top = positions.SaleNotificationWindow.Top;
-            }
-            else
-            {
-                // Position par défaut : haut à droite
-                var screenWidth = SystemParameters.PrimaryScreenWidth;
-                Loaded += (s, e) =>
-                {
-                    Left = screenWidth - ActualWidth - 20;
-                    Top = 20;
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning("SaleNotificationWindow", $"Erreur lors du chargement de la position: {ex.Message}");
-            // Position par défaut en cas d'erreur
-            var screenWidth = SystemParameters.PrimaryScreenWidth;
-            Loaded += (s, e) =>
-            {
-                Left = screenWidth - ActualWidth - 20;
-                Top = 20;
-            };
-        }
-    }
-    
-    private void SavePosition()
-    {
-        try
-        {
-            var positions = GameOverlay.Models.PersistentStorageHelper.LoadJsonWithFallback<GameOverlay.Models.WindowPositions>("window_positions.json");
-            
-            positions.SaleNotificationWindow = new GameOverlay.Models.WindowPosition
-            {
-                Left = Left,
-                Top = Top,
-                Width = Width,
-                Height = Height
-            };
-            
-            GameOverlay.Models.PersistentStorageHelper.SaveJson("window_positions.json", positions);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning("SaleNotificationWindow", $"Erreur lors de la sauvegarde de la position: {ex.Message}");
-        }
-    }
 }
-
