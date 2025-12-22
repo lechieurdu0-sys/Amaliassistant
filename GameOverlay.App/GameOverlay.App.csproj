@@ -1,13 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
     <ProjectReference Include="..\GameOverlay.Windows\GameOverlay.Windows.csproj" />
     <ProjectReference Include="..\GameOverlay.Kikimeter\GameOverlay.Kikimeter.csproj" />
     <ProjectReference Include="..\GameOverlay.Themes\GameOverlay.Themes.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
   </ItemGroup>
 
   <ItemGroup>
@@ -27,8 +24,8 @@
     <AssemblyProduct>Amaliassistant</AssemblyProduct>
     <AssemblyCompany>Amaliassistant</AssemblyCompany>
     <AssemblyDescription>Overlay de sites web pour jeux - Optimisé Windows 11</AssemblyDescription>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.2</AssemblyVersion>
+    <FileVersion>1.0.0.2</FileVersion>
     <ApplicationIcon>Amalia.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>

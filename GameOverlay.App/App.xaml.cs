@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using GameOverlay.Kikimeter.Services;
 using GameOverlay.Models;
 using GameOverlay.Themes;
+using GameOverlay.App.Services;
 
 namespace GameOverlay.App
 {
@@ -20,6 +21,9 @@ namespace GameOverlay.App
             {
                 Logger.Info("App", "Application démarrée");
                 LootCharacterDetector.EnsureConfigFileExists();
+                
+                // Initialiser le service de mise à jour automatique
+                UpdateService.Initialize();
             }
             catch (Exception ex)
             {

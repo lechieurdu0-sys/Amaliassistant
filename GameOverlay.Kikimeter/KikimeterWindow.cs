@@ -3360,6 +3360,56 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// S'assure que la fenêtre du Kikimeter reste entièrement visible sur l'écran principal
+    /// lorsque l'utilisateur n'a qu'un seul écran.
+    /// Empêche que la fenêtre soit partiellement hors écran après un réduit/déployé.
+    /// </summary>
+    private void EnsureWindowVisibleOnPrimaryScreenIfSingleMonitor()
+    {
+        try
+        {
+            // Ne corriger que si un seul écran est présent
+            var screens = System.Windows.Forms.Screen.AllScreens;
+            if (screens == null || screens.Length != 1)
+            {
+                return;
+            }
+
+            var screen = screens[0].WorkingArea;
+
+            // Ajuster taille si elle dépasse l'écran
+            if (Width > screen.Width)
+            {
+                Width = screen.Width;
+            }
+            if (Height > screen.Height)
+            {
+                Height = screen.Height;
+            }
+
+            // Recalculer la position pour que la fenêtre reste dans les bornes
+            double newLeft = Left;
+            double newTop = Top;
+
+            if (newLeft < screen.Left)
+                newLeft = screen.Left;
+            if (newTop < screen.Top)
+                newTop = screen.Top;
+            if (newLeft + Width > screen.Right)
+                newLeft = screen.Right - Width;
+            if (newTop + Height > screen.Bottom)
+                newTop = screen.Bottom - Height;
+
+            Left = newLeft;
+            Top = newTop;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning("KikimeterWindow", $"Erreur dans EnsureWindowVisibleOnPrimaryScreenIfSingleMonitor: {ex.Message}");
+        }
+    }
+
     private void TryAutoShow()
     {
         if (_userRequestedHidden)

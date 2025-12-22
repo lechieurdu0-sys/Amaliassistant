@@ -261,6 +261,11 @@ namespace GameOverlay.App
                 startupItem.Click += (s, e) => ToggleStartup();
                 contextMenu.Items.Add(startupItem);
 
+                // Option de vérification des mises à jour
+                var updateItem = new ToolStripMenuItem("🔄 Vérifier les mises à jour");
+                updateItem.Click += (s, e) => CheckForUpdatesManually();
+                contextMenu.Items.Add(updateItem);
+
                 contextMenu.Items.Add(new ToolStripSeparator());
 
                 var exitItem = new ToolStripMenuItem("❌ Quitter");
@@ -439,6 +444,24 @@ namespace GameOverlay.App
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Erreur toggle startup: {ex.Message}");
+            }
+        }
+
+        private void CheckForUpdatesManually()
+        {
+            try
+            {
+                Logger.Info("MainWindow", "Vérification manuelle des mises à jour demandée par l'utilisateur");
+                GameOverlay.App.Services.UpdateService.CheckForUpdateAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de la vérification manuelle des mises à jour: {ex.Message}");
+                System.Windows.MessageBox.Show(
+                    $"Erreur lors de la vérification des mises à jour:\n{ex.Message}",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
         }
 
