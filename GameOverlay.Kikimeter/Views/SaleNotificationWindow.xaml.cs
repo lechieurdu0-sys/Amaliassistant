@@ -41,6 +41,7 @@ public partial class SaleNotificationWindow : Window
     private WpfPoint _dragStartPoint;
     private DateTime _mouseDownTime;
     private WaveOutEvent? _waveOut;
+    private double _volume = 100;
     
     public SaleNotificationWindow()
     {
@@ -49,8 +50,13 @@ public partial class SaleNotificationWindow : Window
         SourceInitialized += SaleNotificationWindow_SourceInitialized;
     }
     
-    public SaleNotificationWindow(SaleInfo saleInfo, bool showAbsenceMessage = false) : this()
+    public SaleNotificationWindow(SaleInfo saleInfo, bool showAbsenceMessage = false, double notificationVolume = 100) : this()
     {
+        // Normaliser le volume entre 0 et 100
+        if (notificationVolume < 0) notificationVolume = 0;
+        if (notificationVolume > 100) notificationVolume = 100;
+        _volume = notificationVolume;
+        
         // Initialiser le contenu de la notification
         if (MessageTextRun != null)
         {
@@ -89,11 +95,11 @@ public partial class SaleNotificationWindow : Window
         // Si aucune position sauvegardée, positionner la fenêtre en haut à droite de l'écran
         if (Left == 0 && Top == 0)
         {
-            var screen = System.Windows.Forms.Screen.PrimaryScreen;
-            if (screen != null)
-            {
-                Left = screen.WorkingArea.Right - Width - 20;
-                Top = 20;
+        var screen = System.Windows.Forms.Screen.PrimaryScreen;
+        if (screen != null)
+        {
+            Left = screen.WorkingArea.Right - Width - 20;
+            Top = 20;
             }
         }
         
@@ -190,6 +196,12 @@ public partial class SaleNotificationWindow : Window
             {
                 using (var audioFile = new AudioFileReader(filePath))
                 {
+                    // Appliquer le volume depuis la configuration (0-100 %)
+                    var volumeFactor = (float)(_volume / 100.0);
+                    if (volumeFactor < 0f) volumeFactor = 0f;
+                    if (volumeFactor > 1f) volumeFactor = 1f;
+                    audioFile.Volume = volumeFactor;
+                    
                     _waveOut = new WaveOutEvent();
                     _waveOut.Init(audioFile);
                     _waveOut.Play();

@@ -103,8 +103,18 @@ namespace GameOverlay.App
                         Logger.Info("MainWindow", "Loaded event déclenché");
                         LoadWindowPositionsFromFile();
                         LoadConfiguration();
+                        
+                        // Vérifier si c'est la première installation et afficher le message de bienvenue
+                        CheckAndShowWelcomeMessage();
+                        
                         // Créer les fenêtres au démarrage pour démarrer la surveillance même si elles ne sont pas visibles
                         InitializeWindowsInBackground();
+                        
+                        // Initialiser le SaleTracker après le chargement de la configuration
+                        if (!string.IsNullOrEmpty(config.LootChatLogPath) && File.Exists(config.LootChatLogPath))
+                        {
+                            InitializeSaleTracker();
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -579,8 +589,75 @@ namespace GameOverlay.App
                 
                 if (File.Exists(configFile))
                 {
-                    string json = File.ReadAllText(configFile);
-                    config = JsonConvert.DeserializeObject<Config>(json) ?? new Config();
+                    try
+                    {
+                        string json = File.ReadAllText(configFile);
+                        
+                        // Créer une sauvegarde de la configuration existante avant de la charger
+                        // Cela permet de récupérer les paramètres en cas d'erreur de désérialisation
+                        string backupConfigFile = configFile + ".backup";
+                        try
+                        {
+                            File.Copy(configFile, backupConfigFile, overwrite: true);
+                        }
+                        catch
+                        {
+                            // Ignorer les erreurs de sauvegarde, ce n'est pas critique
+                        }
+                        
+                        // Désérialiser la configuration
+                        var loadedConfig = JsonConvert.DeserializeObject<Config>(json);
+                        
+                        if (loadedConfig != null)
+                        {
+                            config = loadedConfig;
+                            Logger.Info("MainWindow", "Configuration chargée avec succès depuis config.json");
+                        }
+                        else
+                        {
+                            // Si la désérialisation échoue, créer une nouvelle config mais préserver les valeurs importantes
+                            GameOverlay.Models.Logger.Warning("MainWindow", "Échec de la désérialisation, utilisation de la configuration par défaut");
+                            config = new Config();
+                        }
+                    }
+                    catch (JsonException jsonEx)
+                    {
+                        // Fichier JSON corrompu, essayer de récupérer depuis la sauvegarde
+                        Logger.Error("MainWindow", $"Erreur de désérialisation JSON: {jsonEx.Message}");
+                        string backupConfigFile = configFile + ".backup";
+                        if (File.Exists(backupConfigFile))
+                        {
+                            try
+                            {
+                                string backupJson = File.ReadAllText(backupConfigFile);
+                                var backupConfig = JsonConvert.DeserializeObject<Config>(backupJson);
+                                if (backupConfig != null)
+                                {
+                                    config = backupConfig;
+                                    Logger.Info("MainWindow", "Configuration restaurée depuis la sauvegarde");
+                                    // Restaurer la sauvegarde comme fichier principal
+                                    File.Copy(backupConfigFile, configFile, overwrite: true);
+                                }
+                                else
+                                {
+                                    config = new Config();
+                                }
+                            }
+                            catch
+                            {
+                                config = new Config();
+                            }
+                        }
+                        else
+                        {
+                            config = new Config();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors du chargement de la configuration: {ex.Message}");
+                        config = new Config();
+                    }
 
                     // ZQSDConfigurations supprimé - fonctionnalité ZQSD retirée
 
@@ -616,6 +693,7 @@ namespace GameOverlay.App
                 else
                 {
                     config = new Config();
+                    Logger.Info("MainWindow", "Fichier de configuration non trouvé, utilisation de la configuration par défaut");
                 }
                 
                 // Créer ou ignorer les bulles principales selon la configuration persistée
@@ -1484,19 +1562,27 @@ namespace GameOverlay.App
                 // On attend un délai pour laisser le jeu écrire l'information dans le log
                 if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
                 {
+                    Logger.Info("MainWindow", $"Connexion au serveur détectée: {e.ServerName}");
+                    
+                    // Réinitialiser le SaleTracker AVANT de lire les notifications de vente
+                    InitializeSaleTracker();
+                    
                     // Attendre 2 secondes avant de lire le log pour laisser le jeu écrire l'information
                     System.Threading.Tasks.Task.Delay(2000).ContinueWith(_ =>
                     {
                         // S'assurer que l'appel se fait sur le thread UI
                         Dispatcher.BeginInvoke(new Action(() =>
                         {
+                            Logger.Info("MainWindow", "Lecture des notifications de vente depuis les lignes récentes");
                             ShowSaleNotificationFromRecentLines();
                         }), DispatcherPriority.Normal);
                     });
                 }
-                
-                // Réinitialiser le SaleTracker pour surveiller les nouvelles ventes
-                InitializeSaleTracker();
+                else
+                {
+                    // Réinitialiser le SaleTracker même en cas de déconnexion
+                    InitializeSaleTracker();
+                }
                 
                 // Réinitialiser le fichier de configuration des personnages
                 LootWindow_ResetButton_ExtraHandler(sender, new RoutedEventArgs());
@@ -2006,13 +2092,35 @@ namespace GameOverlay.App
                     Directory.CreateDirectory(configDir);
                 }
 
-                // Sauvegarder uniquement la configuration Kikimeter et Loot
+                // Créer une sauvegarde avant d'écrire la nouvelle configuration
+                string backupConfigFile = configFile + ".backup";
+                if (File.Exists(configFile))
+                {
+                    try
+                    {
+                        File.Copy(configFile, backupConfigFile, overwrite: true);
+                    }
+                    catch
+                    {
+                        // Ignorer les erreurs de sauvegarde, ce n'est pas critique
+                    }
+                }
 
+                // Sauvegarder uniquement la configuration Kikimeter et Loot
                 string jsonOutput = JsonConvert.SerializeObject(config, Formatting.Indented);
-                File.WriteAllText(configFile, jsonOutput);
+                
+                // Écrire dans un fichier temporaire d'abord, puis renommer pour éviter la corruption
+                string tempConfigFile = configFile + ".tmp";
+                File.WriteAllText(tempConfigFile, jsonOutput);
+                
+                // Remplacer le fichier principal seulement si l'écriture a réussi
+                File.Move(tempConfigFile, configFile, overwrite: true);
+                
+                Logger.Debug("MainWindow", "Configuration sauvegardée avec succès");
             }
             catch (Exception ex)
             {
+                Logger.Error("MainWindow", $"Erreur lors de la sauvegarde de la configuration: {ex.Message}");
                 System.Windows.MessageBox.Show($"Erreur sauvegarde: {ex.Message}");
             }
         }
@@ -2366,7 +2474,10 @@ namespace GameOverlay.App
                 {
                     try
                     {
-                        var notificationWindow = new GameOverlay.Kikimeter.Views.SaleNotificationWindow(saleInfo, showAbsenceMessage);
+                        var notificationWindow = new GameOverlay.Kikimeter.Views.SaleNotificationWindow(
+                            saleInfo,
+                            showAbsenceMessage,
+                            config?.SaleNotificationVolume ?? 100);
                         
                         // Nettoyer les fenêtres fermées de la liste
                         _saleNotificationWindows.RemoveAll(w => w == null || !w.IsLoaded);
@@ -2506,26 +2617,36 @@ namespace GameOverlay.App
             try
             {
                 string? chatLogPath = config.LootChatLogPath;
-                if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
+                if (string.IsNullOrWhiteSpace(chatLogPath))
                 {
-                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré ou fichier inexistant, notification de vente ignorée");
+                    Logger.Info("MainWindow", "Chemin du log de chat non configuré, notification de vente ignorée");
                     return;
                 }
+                
+                if (!File.Exists(chatLogPath))
+                {
+                    Logger.Info("MainWindow", $"Fichier de log de chat inexistant: {chatLogPath}, notification de vente ignorée");
+                    return;
+                }
+                
+                Logger.Info("MainWindow", $"Lecture des notifications de vente depuis: {chatLogPath}");
                 
                 // Lire les informations de vente depuis les dernières lignes du log (plus récentes)
                 var saleInfo = SaleNotificationService.ReadSaleInfoFromRecentLines(chatLogPath, maxLinesToRead: 50);
                 if (saleInfo == null)
                 {
-                    Logger.Debug("MainWindow", "Aucune information de vente trouvée dans les dernières lignes du log");
+                    Logger.Info("MainWindow", "Aucune information de vente trouvée dans les dernières lignes du log");
                     return;
                 }
+                
+                Logger.Info("MainWindow", $"Notification de vente trouvée: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
                 
                 // Pour la connexion, afficher "pendant votre absence"
                 ShowSaleNotification(saleInfo, showAbsenceMessage: true);
             }
             catch (Exception ex)
             {
-                Logger.Error("MainWindow", $"Erreur lors de la récupération des informations de vente: {ex.Message}");
+                Logger.Error("MainWindow", $"Erreur lors de la récupération des informations de vente: {ex.Message}\n{ex.StackTrace}");
             }
         }
         
@@ -2562,10 +2683,11 @@ namespace GameOverlay.App
                 _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(chatLogPath);
                 _saleTracker.SaleDetected += SaleTracker_SaleDetected;
                 
-                // Créer et démarrer le timer pour la lecture périodique (comme le Kikimeter)
+                // Créer et démarrer le timer pour la lecture périodique
+                // Interval réduit à 25ms pour une détection plus rapide et ne rien rater
                 _saleTrackerTimer = new System.Windows.Threading.DispatcherTimer
                 {
-                    Interval = TimeSpan.FromMilliseconds(50)
+                    Interval = TimeSpan.FromMilliseconds(25)
                 };
                 _saleTrackerTimer.Tick += SaleTrackerTimer_Tick;
                 _saleTrackerTimer.Start();
@@ -2629,6 +2751,52 @@ namespace GameOverlay.App
         }
 
         // Méthodes supprimées : Toutes les méthodes liées aux sites web et enfants ont été supprimées - fonctionnalité sites web retirée
+
+        /// <summary>
+        /// Vérifie si c'est la première installation et affiche un message de bienvenue si nécessaire
+        /// </summary>
+        private void CheckAndShowWelcomeMessage()
+        {
+            try
+            {
+                string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Amaliassistant");
+                string firstRunFlagFile = Path.Combine(appDataDir, "first_run_completed.flag");
+                
+                // Si le fichier de flag n'existe pas, c'est la première installation
+                if (!File.Exists(firstRunFlagFile))
+                {
+                    Logger.Info("MainWindow", "Première installation détectée, affichage du message de bienvenue");
+                    
+                    // Afficher le message de bienvenue
+                    System.Windows.MessageBox.Show(
+                        "Bienvenue sur Amaliassistant !\n\n" +
+                        "L'application est maintenant installée et prête à être utilisée.\n\n" +
+                        "Vous pouvez accéder aux fonctionnalités via l'icône dans la barre des tâches.",
+                        "Bienvenue",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    
+                    // Créer le dossier AppData s'il n'existe pas
+                    if (!Directory.Exists(appDataDir))
+                    {
+                        Directory.CreateDirectory(appDataDir);
+                    }
+                    
+                    // Créer le fichier de flag pour indiquer que la première installation est terminée
+                    File.WriteAllText(firstRunFlagFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    Logger.Info("MainWindow", "Fichier de flag de première installation créé");
+                }
+                else
+                {
+                    Logger.Debug("MainWindow", "Ce n'est pas la première installation, message de bienvenue ignoré");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de la vérification du message de bienvenue: {ex.Message}");
+                // Ne pas bloquer le démarrage si cette vérification échoue
+            }
+        }
 
     }
 }

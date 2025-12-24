@@ -45,6 +45,9 @@ namespace GameOverlay.Models
         public string? KikimeterLogPath { get; set; }
         public string? LootChatLogPath { get; set; }
         
+        // Volume de la notification de vente (0 à 100 %)
+        public double SaleNotificationVolume { get; set; } = 100;
+        
         // Couleur d'accent du thème (en hexadécimal, ex: "#FF00BFFF")
         public string? AccentColorHex { get; set; }
         

@@ -21,6 +21,7 @@ namespace GameOverlay.App.Services
     {
         private const string GitHubRepo = "lechieurdu0-sys/Amaliassistant";
         private const string UpdateXmlUrl = $"https://github.com/{GitHubRepo}/releases/latest/download/update.xml";
+        private const string GitHubApiReleasesUrl = $"https://api.github.com/repos/{GitHubRepo}/releases";
         private static readonly HttpClient _httpClient = new HttpClient();
         private static bool _isChecking = false;
 
@@ -429,35 +430,65 @@ namespace GameOverlay.App.Services
                 var escapedAppDir = appDir.Replace("'", "''").Replace("\"", "`\"");
                 var escapedExePath = exePath.Replace("\"", "`\"");
                 
-                var launcherScriptContent = $@"# Script PowerShell simplifié pour extraire le patch
+                var launcherScriptContent = $@"# Script PowerShell pour extraire le patch avec progression visible
 $ErrorActionPreference = ""Stop""
 
-# Afficher une fenêtre de message simple
+# Afficher une fenêtre avec progression
 Add-Type -AssemblyName System.Windows.Forms
 $form = New-Object System.Windows.Forms.Form
 $form.Text = ""Mise à jour d'Amaliassistant""
-$form.Size = New-Object System.Drawing.Size(400, 150)
+$form.Size = New-Object System.Drawing.Size(500, 180)
 $form.StartPosition = ""CenterScreen""
 $form.FormBorderStyle = ""FixedDialog""
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
 $form.TopMost = $true
 
-$label = New-Object System.Windows.Forms.Label
-$label.Text = ""Attente de la fermeture de l'application...""
-$label.AutoSize = $true
-$label.Location = New-Object System.Drawing.Point(20, 30)
-$form.Controls.Add($label)
+$labelStatus = New-Object System.Windows.Forms.Label
+$labelStatus.Text = ""Attente de la fermeture de l'application...""
+$labelStatus.AutoSize = $true
+$labelStatus.Location = New-Object System.Drawing.Point(20, 20)
+$labelStatus.Font = New-Object System.Drawing.Font(""Segoe UI"", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($labelStatus)
+
+$labelDetails = New-Object System.Windows.Forms.Label
+$labelDetails.Text = """"
+$labelDetails.AutoSize = $true
+$labelDetails.Location = New-Object System.Drawing.Point(20, 50)
+$labelDetails.Font = New-Object System.Drawing.Font(""Segoe UI"", 9)
+$form.Controls.Add($labelDetails)
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = New-Object System.Drawing.Point(20, 80)
+$progressBar.Width = 450
+$progressBar.Height = 25
+$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+$form.Controls.Add($progressBar)
 
 $form.Show() | Out-Null
 $form.Refresh()
 
+function Update-Status {{
+    param([string]$status, [string]$details = """")
+    $form.Invoke([action]{{
+        $labelStatus.Text = $status
+        $labelDetails.Text = $details
+        [System.Windows.Forms.Application]::DoEvents()
+    }})
+}}
+
 # Attendre que l'application se ferme complètement
+Update-Status ""Attente de la fermeture de l'application...""
+$waitCount = 0
 while ($true) {{
     try {{
         $process = Get-Process -Name ""GameOverlay.App"" -ErrorAction SilentlyContinue
         if (-not $process) {{
             break
+        }}
+        $waitCount++
+        if ($waitCount % 4 -eq 0) {{
+            Update-Status ""Attente de la fermeture de l'application..."" ""En attente... ($waitCount / 2) secondes""
         }}
     }} catch {{
         break
@@ -467,39 +498,77 @@ while ($true) {{
 }}
 
 # Attendre un court instant supplémentaire
+Update-Status ""Préparation de l'extraction...""
 Start-Sleep -Seconds 2
+[System.Windows.Forms.Application]::DoEvents()
 
-# Extraire le patch
-$label.Text = ""Extraction du patch en cours...""
-$form.Refresh()
+# Extraire le patch avec progression
+Update-Status ""Extraction du patch en cours..."", ""Veuillez patienter...""
+$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+$progressBar.MarqueeAnimationSpeed = 50
 [System.Windows.Forms.Application]::DoEvents()
 
 try {{
-    Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force
-    $label.Text = ""Patch appliqué avec succès ! Redémarrage...""
-    $form.Refresh()
+    # Vérifier que le fichier existe
+    if (-not (Test-Path '{escapedPatchPath}')) {{
+        throw ""Le fichier patch est introuvable: '{escapedPatchPath}'""
+    }}
+    
+    # Extraire le patch
+    Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction Stop
+    
+    Update-Status ""Patch appliqué avec succès !"", ""Redémarrage de l'application...""
+    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+    $progressBar.Value = 100
+    [System.Windows.Forms.Application]::DoEvents()
     Start-Sleep -Seconds 1
 }} catch {{
+    $errorMsg = $_.Exception.Message
     $form.Close()
-    [System.Windows.Forms.MessageBox]::Show(""Erreur lors de l'extraction du patch:`n$($_.Exception.Message)"", ""Erreur"", ""OK"", ""Error"")
+    [System.Windows.Forms.MessageBox]::Show(""Erreur lors de l'extraction du patch:`n$errorMsg`n`nFichier: '{escapedPatchPath}'`nDestination: '{escapedAppDir}'"", ""Erreur"", ""OK"", ""Error"")
     exit 1
 }}
 
 # Supprimer le fichier temporaire du patch
 try {{
-    Remove-Item -Path '{escapedPatchPath}' -Force -ErrorAction SilentlyContinue
-}} catch {{}}
+    if (Test-Path '{escapedPatchPath}') {{
+        Remove-Item -Path '{escapedPatchPath}' -Force -ErrorAction SilentlyContinue
+    }}
+}} catch {{
+    # Ignorer les erreurs de suppression
+}}
 
 # Redémarrer l'application
-$label.Text = ""Redémarrage de l'application...""
-$form.Refresh()
+Update-Status ""Redémarrage de l'application..."", ""L'application va se relancer dans quelques instants...""
+[System.Windows.Forms.Application]::DoEvents()
 Start-Sleep -Seconds 1
-Start-Process -FilePath '{escapedExePath}'
+
+try {{
+    # Vérifier que le fichier exe existe
+    $exePath = '{escapedExePath}'
+    if (-not (Test-Path $exePath)) {{
+        throw ""Le fichier exécutable est introuvable: $exePath""
+    }}
+    
+    # Lancer l'application
+    Start-Process -FilePath $exePath -ErrorAction Stop
+    Update-Status ""Application redémarrée !"", ""Fermeture de la fenêtre...""
+    Start-Sleep -Seconds 1
+}} catch {{
+    $errorMsg = $_.Exception.Message
+    $form.Close()
+    [System.Windows.Forms.MessageBox]::Show(""Erreur lors du redémarrage de l'application:`n$errorMsg`n`nChemin: '{escapedExePath}'"", ""Erreur"", ""OK"", ""Error"")
+    exit 1
+}}
 
 # Fermer la fenêtre et supprimer le script
-Start-Sleep -Seconds 1
 $form.Close()
-Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
+try {{
+    Start-Sleep -Milliseconds 500
+    Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
+}} catch {{
+    # Ignorer les erreurs de suppression du script
+}}
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
 
@@ -515,13 +584,14 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
                     }));
                 }
                 
-                // Lancer le script PowerShell qui gérera l'extraction et le redémarrage avec fenêtre visible
+                // Lancer le script PowerShell qui gérera l'extraction et le redémarrage avec fenêtre Windows Forms visible (mais PowerShell caché)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = powershellPath,
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File \"{launcherScriptPath}\"",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Normal // Afficher la fenêtre
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{launcherScriptPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 };
 
                 try
@@ -809,13 +879,14 @@ try {{
                     }));
                 }
                 
-                // Lancer le script PowerShell qui gérera l'installation et le redémarrage avec fenêtre visible
+                // Lancer le script PowerShell qui gérera l'installation et le redémarrage avec fenêtre Windows Forms visible (mais PowerShell caché)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = powershellPathForInstaller,
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File \"{launcherScriptPath}\"",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Normal // Afficher la fenêtre
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{launcherScriptPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 };
 
                 try

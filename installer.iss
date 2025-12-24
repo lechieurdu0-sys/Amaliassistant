@@ -1,4 +1,4 @@
-#define SourceDir ExtractFilePath(SourcePath)
+﻿#define SourceDir ExtractFilePath(SourcePath)
 #if Pos("InstallerAppData", SourceDir) > 0
   #define RootPath ExtractFilePath(ExtractFilePath(SourcePath))
 #else
@@ -8,7 +8,9 @@
 [Setup]
 AppId={{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}
 AppName=Amaliassistant
-AppVersion=1.0
+AppVersion=1.0.0.22
+VersionInfoVersion=1.0.0.22
+VersionInfoTextVersion=1.0.0.22
 AppPublisher=Amaliassistant
 AppPublisherURL=
 AppSupportURL=
@@ -28,9 +30,21 @@ UninstallDisplayIcon={app}\GameOverlay.App.exe
 SetupIconFile={#RootPath}Amalia.ico
 AllowNoIcons=yes
 WizardStyle=modern
+; Désactiver la demande d'élévation pour éviter UAC (nécessite PrivilegesRequired=lowest)
+; Note: Windows peut quand même demander UAC si l'installateur n'est pas signé numériquement
+; mais cela réduit considérablement les prompts
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+
+[Messages]
+; Personnaliser les messages pour indiquer qu'il s'agit d'une mise à jour
+french.WelcomeLabel1=Mise à jour d'%1
+french.WelcomeLabel2=Ce programme va mettre à jour [name/ver] sur votre ordinateur.%n%nIl est recommandé de fermer toutes les autres applications avant de continuer.
+; Désactiver le message de fin d'installation
+french.FinishedLabelNoIcons=
+french.FinishedHeadingLabel=
+french.FinishedLabel=
 
 [Tasks]
 Name: "desktopicon"; Description: "Créer un raccourci sur le bureau"; GroupDescription: "Raccourcis supplémentaires:"; Flags: unchecked
@@ -134,7 +148,7 @@ begin
     Exit;
   end;
   
-  // Vérifier aussi la clé alternative
+  // VÃ©rifier aussi la clÃ© alternative
   if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
   begin
     Result := True;
@@ -150,7 +164,7 @@ begin
   // Détecter l'architecture du système
   if not RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'PROCESSOR_ARCHITECTURE', ProcessorArchitecture) then
   begin
-    // Essayer une autre méthode
+    // Essayer une autre mÃ©thode
     if IsWin64 then
       ProcessorArchitecture := 'AMD64'
     else
@@ -191,9 +205,24 @@ begin
 end;
 
 procedure InitializeWizard;
+var
+  IsUpgrade: Boolean;
+  AppPath: String;
 begin
   // Forcer le chemin d'installation vers AppData\Roaming
-  WizardForm.DirEdit.Text := ExpandConstant('{userappdata}\Amaliassistant');
+  AppPath := ExpandConstant('{userappdata}\Amaliassistant');
+  WizardForm.DirEdit.Text := AppPath;
+  
+  // Détecter si c'est une mise à jour (vérifier si l'application existe déjà)
+  // Utiliser le chemin complet car {app} n'est pas encore initialisé à ce stade
+  IsUpgrade := FileExists(AppPath + '\GameOverlay.App.exe');
+  
+  // Personnaliser les messages si c'est une mise à jour
+  if IsUpgrade then
+  begin
+    WizardForm.Caption := 'Mise à jour d''Amaliassistant';
+    // Note: Les messages sont définis dans [Messages] mais on peut les personnaliser ici si nécessaire
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -207,7 +236,7 @@ begin
   begin
     Arch := GetArchitecture;
     
-    // Vérifier et installer .NET 8.0 Desktop Runtime
+    // VÃ©rifier et installer .NET 8.0 Desktop Runtime
     if not IsDotNetInstalled then
     begin
       // Déterminer le fichier .NET approprié selon l'architecture
@@ -225,7 +254,7 @@ begin
       end;
     end;
     
-    // Vérifier et installer WebView2 Runtime
+    // VÃ©rifier et installer WebView2 Runtime
     if not IsWebView2Installed then
     begin
       // Déterminer le fichier WebView2 approprié selon l'architecture
@@ -242,7 +271,7 @@ begin
         MsgBox('L''installation de WebView2 Runtime a échoué. L''application pourrait ne pas fonctionner correctement.', mbError, MB_OK);
       end;
     end;
-    
+  
     // Créer le dossier de configuration s'il n'existe pas
     ForceDirectories(ExpandConstant('{userappdata}\Amaliassistant'));
     
@@ -261,37 +290,13 @@ begin
 end;
 
 function InitializeSetup(): Boolean;
-var
-  RootDir: String;
 begin
+  // Les vérifications de "publish" et "Prerequisites" sont désormais faites
+  // au moment de la construction de l'installateur (scripts Build-Release / Build-Installer).
+  // Garder ici un simple "True" évite d'embarquer un chemin absolu du poste de build
+  // (par exemple "D:\Users\lechi\Desktop\Amaliassistant 2.0") dans l'installateur,
+  // ce qui causait l'erreur "Le dossier 'publish' est introuvable..." chez les utilisateurs.
   Result := True;
-  
-  // Utiliser le chemin racine défini dans la constante
-  RootDir := ExpandConstant('{#RootPath}');
-  
-  // Vérifier que le dossier publish existe
-  if not DirExists(RootDir + 'publish') then
-  begin
-    MsgBox('Le dossier "publish" est introuvable dans: ' + RootDir + #13#10 + 'Veuillez d''abord compiler l''application avec "dotnet publish".', mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
-  
-  // Vérifier que le dossier Prerequisites existe
-  if not DirExists(RootDir + 'Prerequisites') then
-  begin
-    MsgBox('Le dossier "Prerequisites" est introuvable dans: ' + RootDir + #13#10 + 'Veuillez vous assurer que les fichiers de prérequis sont présents.', mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
-  
-  // Vérifier que les fichiers de prérequis existent
-  if not FileExists(RootDir + 'Prerequisites\windowsdesktop-runtime-8.0.21-win-x64.exe') then
-  begin
-    MsgBox('Fichier de prérequis manquant: windowsdesktop-runtime-8.0.21-win-x64.exe' + #13#10 + 'Dans: ' + RootDir + 'Prerequisites', mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

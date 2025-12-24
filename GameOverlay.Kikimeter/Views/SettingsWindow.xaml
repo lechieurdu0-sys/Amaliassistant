@@ -51,6 +51,82 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Slider de volume dans le thème du livre -->
+        <Style x:Key="VolumeSliderStyle" TargetType="Slider">
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Margin="0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Piste -->
+                            <Border Grid.Row="0"
+                                    Height="15"
+                                    CornerRadius="4"
+                                    Background="#40FDF1D7"
+                                    BorderBrush="#FFAD9957"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Center">
+                                <Grid Margin="2,0">
+                                    <Rectangle x:Name="TrackBackground"
+                                               RadiusX="3"
+                                               RadiusY="3"
+                                               Fill="#40CBB58C" />
+                                    <Rectangle x:Name="TrackFill"
+                                               RadiusX="3"
+                                               RadiusY="3"
+                                               Fill="#FFCBB58C"
+                                               HorizontalAlignment="Left"
+                                               Width="0" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Track + Thumb fonctionnels -->
+                            <Track x:Name="PART_Track"
+                                   Grid.Row="0"
+                                   Margin="2,0"
+                                   IsDirectionReversed="False">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge"
+                                                  Opacity="0"
+                                                  IsHitTestVisible="False" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge"
+                                                  Opacity="0"
+                                                  IsHitTestVisible="False" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb x:Name="Thumb"
+                                           Width="14"
+                                           Height="14"
+                                           Background="#FFF0E3B6"
+                                           BorderBrush="#FF7D7249"
+                                           BorderThickness="1" />
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <!-- Mise à jour de la largeur de la partie remplie -->
+                            <Trigger Property="IsMouseCaptureWithin" Value="True">
+                                <Setter TargetName="Thumb" Property="Background" Value="#FFFFF3C8" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Thumb" Property="Opacity" Value="0.4" />
+                                <Setter TargetName="TrackBackground" Property="Opacity" Value="0.4" />
+                                <Setter TargetName="TrackFill" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Window.Background>
         <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/loot.png" Stretch="Fill"/>
@@ -120,6 +196,43 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="591.08"/>
                     </Grid.RowDefinitions>
+
+                    <!-- Slider de volume notification de vente (flottant dans la zone vide en haut de page) -->
+                    <Grid
+                        Margin="45,0,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Panel.ZIndex="10">
+                        <StackPanel Orientation="Horizontal"
+                                    Width="260"
+                                    Height="50"
+                                    Margin="120,63,0,0"
+                                    HorizontalAlignment="Left">
+                            <TextBlock Text="Volume de la notification de vente"
+                                       FontSize="13"
+                                       FontWeight="Bold"
+                                       Foreground="#FF4E421F"
+                                       Margin="0,0,10,0"
+                                       Width="260" Height="53" />
+                            <Slider x:Name="SaleNotificationVolumeSlider"
+                                    Width="206"
+                                    Minimum="1"
+                                    Maximum="100"
+                                    Value="{Binding SaleNotificationVolume, Mode=TwoWay}"
+                                    TickFrequency="5"
+                                    IsSnapToTickEnabled="False"
+                                    Height="30"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="SaleNotificationVolumeSlider_ValueChanged"
+                                    Margin="-330,25,0,0"
+                                    Style="{StaticResource VolumeSliderStyle}" />
+                            <TextBlock Text="{Binding SaleNotificationVolume, StringFormat='{}{0:F0}'}"
+                                       FontSize="14"
+                                       Foreground="#FF4E421F"
+                                       Margin="-60,7,43,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
 
                     <!-- Section Kikimeter Log -->
                     <Border Grid.Row="0"

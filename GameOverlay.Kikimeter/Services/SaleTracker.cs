@@ -92,11 +92,16 @@ public class SaleTracker : IDisposable
             {
                 _fileWatcher = new FileSystemWatcher(directory, fileName)
                 {
-                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite
+                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.CreationTime,
+                    // Augmenter la taille du buffer interne pour éviter de manquer des événements
+                    InternalBufferSize = 65536 // 64 KB au lieu de 8 KB par défaut
                 };
                 
                 _fileWatcher.Changed += OnFileChanged;
+                _fileWatcher.Error += OnFileWatcherError;
                 _fileWatcher.EnableRaisingEvents = true;
+                
+                Logger.Info("SaleTracker", "FileSystemWatcher configuré avec buffer de 64 KB");
             }
         }
         catch (Exception ex)
@@ -221,8 +226,16 @@ public class SaleTracker : IDisposable
     
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
-        // Délai pour éviter les lectures multiples lors d'une écriture en cours
-        System.Threading.Tasks.Task.Delay(50).ContinueWith(_ => ReadNewLines());
+        // Délai réduit pour une détection plus rapide (25ms au lieu de 50ms)
+        // Le FileSystemWatcher peut manquer des événements, donc on s'appuie aussi sur le timer
+        System.Threading.Tasks.Task.Delay(25).ContinueWith(_ => ReadNewLines());
+    }
+    
+    private void OnFileWatcherError(object sender, ErrorEventArgs e)
+    {
+        Logger.Error("SaleTracker", $"Erreur du FileSystemWatcher: {e.GetException().Message}");
+        // Le timer continuera à fonctionner même si le FileSystemWatcher échoue
+        // Cela garantit qu'on ne rate pas de ventes
     }
     
     private void ReadNewLines()
@@ -230,41 +243,77 @@ public class SaleTracker : IDisposable
         if (!File.Exists(_logFilePath))
             return;
         
-        lock (_lockObject)
+        // Utiliser TryEnter pour éviter les blocages si une autre lecture est en cours
+        if (!System.Threading.Monitor.TryEnter(_lockObject, 100))
         {
-            try
+            // Si on ne peut pas acquérir le lock rapidement, on ignore cette lecture
+            // Le timer rappellera bientôt (25ms)
+            return;
+        }
+        
+        try
+        {
+            // Plusieurs tentatives en cas de fichier verrouillé
+            int maxRetries = 3;
+            int retryDelay = 10;
+            
+            for (int attempt = 0; attempt < maxRetries; attempt++)
             {
-                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-
-                if (_lastPosition > reader.BaseStream.Length)
+                try
                 {
-                    _lastPosition = 0;
-                    Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
-                }
+                    using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
 
-                reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
-                
-                if (reader.BaseStream.Position >= reader.BaseStream.Length)
-                    return; // Pas de nouvelles lignes
-                
-                string? line;
-                while (true)
-                {
-                    line = reader.ReadLine();
-                    if (line == null)
+                    if (_lastPosition > reader.BaseStream.Length)
                     {
-                        break;
+                        _lastPosition = 0;
+                        Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
                     }
 
-                    ProcessLine(line);
+                    reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
+                    
+                    if (reader.BaseStream.Position >= reader.BaseStream.Length)
+                        return; // Pas de nouvelles lignes
+                    
+                    string? line;
+                    int linesRead = 0;
+                    while (true)
+                    {
+                        line = reader.ReadLine();
+                        if (line == null)
+                        {
+                            break;
+                        }
+
+                        ProcessLine(line);
+                        linesRead++;
+                    }
+                    
+                    _lastPosition = reader.BaseStream.Position;
+                    
+                    if (linesRead > 0)
+                    {
+                        Logger.Debug("SaleTracker", $"{linesRead} nouvelle(s) ligne(s) lue(s)");
+                    }
+                    
+                    // Succès, on sort de la boucle de retry
+                    return;
                 }
-                
-                _lastPosition = reader.BaseStream.Position;
+                catch (IOException ioEx) when (attempt < maxRetries - 1)
+                {
+                    // Fichier verrouillé, on réessaie après un court délai
+                    Logger.Debug("SaleTracker", $"Tentative {attempt + 1}/{maxRetries} - Fichier verrouillé, nouvelle tentative dans {retryDelay}ms: {ioEx.Message}");
+                    System.Threading.Thread.Sleep(retryDelay);
+                    retryDelay *= 2; // Backoff exponentiel
+                }
             }
-            catch (Exception ex)
-            {
-                Logger.Error("SaleTracker", $"Erreur lors de la lecture: {ex.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SaleTracker", $"Erreur lors de la lecture après 3 tentatives: {ex.Message}");
+        }
+        finally
+        {
+            System.Threading.Monitor.Exit(_lockObject);
         }
     }
     
@@ -405,10 +454,22 @@ public class SaleTracker : IDisposable
     
     /// <summary>
     /// Force la lecture des nouvelles lignes (utile pour l'actualisation en temps réel via un timer)
+    /// Cette méthode est appelée périodiquement pour s'assurer de ne rien rater, même si le FileSystemWatcher échoue
     /// </summary>
     public void ManualRead()
     {
-        System.Threading.Tasks.Task.Run(() => ReadNewLines());
+        // Ne pas bloquer le thread principal, mais s'assurer que la lecture se fait
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                ReadNewLines();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SaleTracker", $"Erreur dans ManualRead: {ex.Message}");
+            }
+        });
     }
     
     public void Dispose()

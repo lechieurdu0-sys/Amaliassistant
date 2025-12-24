@@ -51,6 +51,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     // Démarrage automatique
     private bool _startWithWindows;
     
+    // Volume de la notification de vente (0 à 100 %)
+    private double _saleNotificationVolume = 100;
+    
     public string? KikimeterLogPath
     {
         get => _kikimeterLogPath;
@@ -86,6 +89,19 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             {
                 _startWithWindows = value;
                 OnPropertyChanged(nameof(StartWithWindows));
+            }
+        }
+    }
+    
+    public double SaleNotificationVolume
+    {
+        get => _saleNotificationVolume;
+        set
+        {
+            if (Math.Abs(_saleNotificationVolume - value) > 0.1)
+            {
+                _saleNotificationVolume = value;
+                OnPropertyChanged(nameof(SaleNotificationVolume));
             }
         }
     }
@@ -130,6 +146,13 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         KikimeterLogPath = config.KikimeterLogPath;
         LootChatLogPath = config.LootChatLogPath;
         
+        // Initialiser le volume de la notification de vente
+        if (config.SaleNotificationVolume <= 0)
+        {
+            config.SaleNotificationVolume = 100;
+        }
+        SaleNotificationVolume = config.SaleNotificationVolume;
+        
         // Initialiser le démarrage automatique (vérifier le registre)
         StartWithWindows = IsStartupEnabled();
         
@@ -161,6 +184,21 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             PlayerListBox.ItemsSource = null;
             PlayerListBox.ItemsSource = Items;
             Logger.Info("SettingsWindow", $"ItemsSource forcé: {Items.Count} éléments, PlayerListBox.Items.Count = {PlayerListBox.Items.Count}");
+        }
+        
+        // Synchroniser la checkbox de démarrage automatique avec l'état réel du registre
+        try
+        {
+            var isEnabled = IsStartupEnabled();
+            if (StartWithWindows != isEnabled)
+            {
+                StartWithWindows = isEnabled;
+                Logger.Info("SettingsWindow", $"Démarrage automatique synchronisé: {isEnabled}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SettingsWindow", $"Erreur lors de la synchronisation du démarrage automatique: {ex.Message}");
         }
         
         // Mettre à jour la liste des joueurs au chargement si getCurrentPlayers est disponible
@@ -1317,6 +1355,20 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             MessageBoxImage.Information);
     }
     
+    private void SaleNotificationVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        try
+        {
+            // Mettre à jour la configuration dès que le volume change
+            _config.SaleNotificationVolume = SaleNotificationVolume;
+            _onConfigChanged(_config);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SettingsWindow", $"Erreur lors de la mise à jour du volume de notification: {ex.Message}");
+        }
+    }
+    
     #endregion
     
     #region Démarrage automatique
@@ -1623,6 +1675,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             if (changed)
             {
                 SaveCharacterConfigToDisk(config);
+                
+                // Retirer aussi des listes d'ordre et de l'affichage des joueurs
+                RemoveCharacterFromOrder(characterName);
             }
 
             return changed;
@@ -1741,6 +1796,62 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     }
 
     private static string GetLootConfigPath() => Path.Combine(LootConfigDirectory, LootCharactersFileName);
+
+    /// <summary>
+    /// Retire un personnage de l'ordre manuel (fichier kikimeter_manual_order.json) et de la liste Items affichée.
+    /// </summary>
+    private void RemoveCharacterFromOrder(string characterName)
+    {
+        // 1) Supprimer du fichier d'ordre manuel
+        try
+        {
+            var state = PersistentStorageHelper.LoadJsonWithFallback<ManualOrderState>(ManualOrderConfigFileName) ?? new ManualOrderState();
+            if (state.Orders != null && state.Orders.Remove(characterName))
+            {
+                // Re-normaliser les indices (ordre) après suppression
+                var ordered = state.Orders
+                    .OrderBy(kvp => kvp.Value)
+                    .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                state.Orders = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    state.Orders[ordered[i]] = i;
+                }
+            }
+
+            if (state.BaselineRoster != null && state.BaselineRoster.Count > 0)
+            {
+                state.BaselineRoster = state.BaselineRoster
+                    .Where(name => !string.Equals(name, characterName, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            PersistentStorageHelper.SaveJson(ManualOrderConfigFileName, state);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning("SettingsWindow", $"RemoveCharacterFromOrder: {ex.Message}");
+        }
+
+        // 2) Supprimer de la liste Items (ordre des joueurs affiché dans Settings)
+        var itemsToRemove = Items
+            .Where(i => string.Equals(i.Name, characterName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var item in itemsToRemove)
+        {
+            Items.Remove(item);
+        }
+
+        if (itemsToRemove.Count > 0)
+        {
+            RenumberItems();
+            UpdateEmptyListMessage();
+        }
+    }
 
     private sealed class ManualOrderState
     {

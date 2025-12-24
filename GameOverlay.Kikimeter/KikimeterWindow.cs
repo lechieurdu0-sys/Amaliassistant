@@ -3308,6 +3308,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 Logger.Debug("KikimeterWindow", "Fenêtre minimisée via bouton de réduction");
                 ReturnFocusToGame();
             }
+            
+            // S'assurer que la fenêtre reste visible sur l'écran principal s'il n'y a qu'un écran
+            EnsureWindowVisibleOnPrimaryScreenIfSingleMonitor();
+            
             // Sauvegarder l'état après le changement
             SaveWindowPositions();
         }
