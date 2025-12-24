@@ -18,7 +18,7 @@ Filtrage par personnage
 
 Statistiques détaillées
 
-Notification d'objets vendu hors connexion et meme pendant la session de jeu avec le prix total de celles ci
+Notification d'objets vendu hors connexion et meme pendant la session de jeu avec le prix total de celles ci avec un son de notification.(Le son est gérable directement dans les parametres)
 
 ### 🌐 Navigateur Web Intégré
 
@@ -38,7 +38,7 @@ Connexions sauvegardées (cookies persistants)
 
 Chemins de logs : Détection automatique Steam/Ankama Launcher
 
-Ordre des joueurs : Réorganisez l'ordre d'affichage dans le Kikimeter
+Ordre des joueurs : Réorganisez l'ordre d'affichage dans le Kikimeter automatiquement pendant le combat
 
 Gestion des personnages : Liste automatique des personnages détectés dans les logs
 
@@ -46,7 +46,7 @@ Démarrage automatique : Option pour lancer l'application au démarrage de Windo
 
 ## 🚀 Installation
 
-Téléchargez le dernier installateur depuis les Releases
+Téléchargez le dernier installateur depuis les Releases (désormais vous avez l'inforamtion lorsqu'une mise à jour est disponible et vous pouvez faire la recherche manuellement avec l'icon dans la barre des taches)
 
 Exécutez l'installateur
 
@@ -78,7 +78,7 @@ Configurez également le chemin du log de chat (wakfu_chat.log) pour le Loot Tra
 
 ### Ordre des Joueurs
 
-Dans les paramètres, onglet "Ordre des Joueurs"
+Dans les paramètres, onglet "Ordre des Joueurs" (Cette section se met à jours également automatiquement, mais reste presente au cas où un bug non vue au préalable soit présent)
 
 Sélectionnez un joueur dans la liste
 
