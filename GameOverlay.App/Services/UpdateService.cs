@@ -410,7 +410,9 @@ namespace GameOverlay.App.Services
                 }
 
                 // Préparer le redémarrage de l'application après l'extraction du patch
-                var exePath = Assembly.GetExecutingAssembly().Location;
+                // Convertir le chemin du DLL en chemin du EXE
+                var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+                var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
                 var exeDir = Path.GetDirectoryName(exePath);
                 
                 Logger.Info("UpdateService", "Patch téléchargé, préparation de l'extraction après fermeture de l'application");
@@ -771,7 +773,9 @@ try {{
                 progressWindow?.SetInstalling();
 
                 // Préparer le redémarrage de l'application après la mise à jour
-                var exePath = Assembly.GetExecutingAssembly().Location;
+                // Convertir le chemin du DLL en chemin du EXE
+                var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+                var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
                 var exeDir = Path.GetDirectoryName(exePath);
                 
                 // Créer un script PowerShell avec fenêtre de progression visible pour l'installateur
