@@ -488,6 +488,7 @@ namespace GameOverlay.App.Services
                 var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
                 var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
                 var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedLauncherScriptPath = launcherScriptPath.Replace("%", "%%").Replace("\"", "\"\"");
                 
                 // Script batch qui attend la fermeture, extrait les fichiers restants si nécessaire, puis redémarre
                 var launcherScriptContent = $@"@echo off
@@ -553,9 +554,9 @@ if not exist ""{escapedExePath}"" (
     exit /b 1
 )
 
-REM Redémarrer l'application en arrière-plan (sans ouvrir de nouvelle fenêtre CMD)
+REM Redémarrer l'application
 echo Demarrage de l'application...
-start /B "" ""{escapedExePath}""
+start "" ""{escapedExePath}""
 
 REM Attendre un peu pour vérifier que l'application démarre
 timeout /t 2 /nobreak
@@ -566,16 +567,22 @@ echo Mise a jour terminee avec succes!
 echo ========================================
 echo.
 echo L'application a ete redemarree.
-echo Cette fenetre va se fermer dans 3 secondes...
-timeout /t 3 /nobreak
+echo.
 
 REM Supprimer le flag d'exécution
 del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
 
-REM Ne pas supprimer le script ici car il est en cours d'exécution
-REM Il sera supprimé au prochain redémarrage si nécessaire
+REM Supprimer le script batch maintenant qu'on a terminé
+if exist ""%~f0"" (
+    REM Créer un script temporaire pour supprimer ce script après fermeture
+    echo @echo off > ""%TEMP%\DeleteUpdateScript.bat""
+    echo timeout /t 1 /nobreak >nul 2>&1 >> ""%TEMP%\DeleteUpdateScript.bat""
+    echo del /F /Q ""{escapedLauncherScriptPath}"" >nul 2>&1 >> ""%TEMP%\DeleteUpdateScript.bat""
+    echo del /F /Q ""%%~f0"" >nul 2>&1 >> ""%TEMP%\DeleteUpdateScript.bat""
+    start /MIN "" ""%TEMP%\DeleteUpdateScript.bat""
+)
 
-endlocal
+REM Fermer cette fenêtre
 exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
