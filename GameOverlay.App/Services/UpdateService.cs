@@ -205,7 +205,6 @@ namespace GameOverlay.App.Services
 
                 Logger.Info("UpdateService", $"Mise à jour disponible: {currentVersion} -> {newVersion}");
 
-                // Afficher le dialogue de mise à jour rapidement (sur le thread UI)
                 // Vérifier que le Dispatcher est disponible
                 if (WpfApplication.Current?.Dispatcher == null)
                 {
@@ -225,59 +224,32 @@ namespace GameOverlay.App.Services
                     return;
                 }
 
-                // Utiliser BeginInvoke pour ne pas bloquer le thread
+                // Demander confirmation AVANT de télécharger
                 WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     try
                     {
-                        Logger.Info("UpdateService", "Affichage du dialogue de mise à jour");
-                var message = $"Une nouvelle version est disponible !\n\n" +
-                             $"Version actuelle: {currentVersion}\n" +
-                             $"Nouvelle version: {newVersion}\n\n" +
-                             $"Souhaitez-vous télécharger et installer la mise à jour maintenant ?";
-
-                var result = WpfMessageBox.Show(
-                    message,
-                    "Mise à jour disponible",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                            // Afficher la fenêtre de progression et lancer la mise à jour
-                            Logger.Info("UpdateService", "Démarrage de la mise à jour avec fenêtre de progression");
-                            var progressWindow = new UpdateProgressWindow();
-                            progressWindow.Show();
-                            
+                        Logger.Info("UpdateService", "Affichage du dialogue de confirmation de mise à jour");
+                        
+                        var message = $"Une nouvelle version est disponible !\n\n" +
+                                     $"Version actuelle: {currentVersion}\n" +
+                                     $"Nouvelle version: {newVersion}\n\n" +
+                                     $"L'application va se fermer pour télécharger et installer la mise à jour.\n" +
+                                     $"Souhaitez-vous continuer maintenant ?";
+                        
+                        var result = WpfMessageBox.Show(
+                            message,
+                            "Mise à jour disponible",
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Question);
+                        
+                        if (result == MessageBoxResult.Yes)
+                        {
+                            Logger.Info("UpdateService", "Mise à jour acceptée, lancement de l'installateur");
+                            // Lancer l'installation (ferme l'app et lance l'installateur qui téléchargera)
                             _ = Task.Run(async () =>
                             {
-                                try
-                                {
-                                    await DownloadAndInstallUpdate(updateInfo, progressWindow);
-                                }
-                                catch (OperationCanceledException)
-                                {
-                                    Logger.Info("UpdateService", "Mise à jour annulée par l'utilisateur");
-                                    WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                    {
-                                        progressWindow?.Close();
-                                    }));
-                                }
-                                catch (Exception ex)
-                                {
-                                    AdvancedLogger.Error(AdvancedLogger.Categories.Network, "UpdateService", $"Erreur lors de la mise à jour: {ex.Message}", ex);
-                                    // Afficher un message d'erreur à l'utilisateur
-                                    WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                    {
-                                        progressWindow?.Close();
-                                        WpfMessageBox.Show(
-                                            $"Erreur lors de la mise à jour: {ex.Message}\n\n" +
-                                            "Veuillez réessayer plus tard ou télécharger manuellement depuis GitHub.",
-                                            "Erreur de mise à jour",
-                                            MessageBoxButton.OK,
-                                            MessageBoxImage.Error);
-                                    }));
-                                }
+                                await LaunchUpdateInstaller(updateInfo);
                             });
                         }
                         else
@@ -297,29 +269,111 @@ namespace GameOverlay.App.Services
             }
         }
 
-        private static async Task DownloadAndInstallUpdate(UpdateInfo updateInfo, UpdateProgressWindow? progressWindow = null)
+        // Lance l'installateur qui téléchargera et installera le patch (ferme l'app)
+        private static async Task LaunchUpdateInstaller(UpdateInfo updateInfo)
         {
             try
             {
-                // Préférer le patch si disponible (plus petit)
-                if (!string.IsNullOrEmpty(updateInfo.PatchUrl))
+                var appDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (string.IsNullOrEmpty(appDir))
                 {
-                    Logger.Info("UpdateService", $"Mise à jour incrémentale disponible, téléchargement du patch depuis: {updateInfo.PatchUrl}");
-                    progressWindow?.SetStatus("Téléchargement du patch de mise à jour...");
-                    await DownloadAndApplyPatch(updateInfo, progressWindow);
+                    throw new Exception("Impossible de déterminer le répertoire d'installation");
                 }
-                else
+
+                if (string.IsNullOrEmpty(updateInfo.PatchUrl))
                 {
-                    Logger.Info("UpdateService", $"Aucun patch disponible, téléchargement de l'installateur complet depuis: {updateInfo.DownloadUrl}");
-                    progressWindow?.SetStatus("Téléchargement de l'installateur complet...");
-                    await DownloadAndInstallFull(updateInfo, progressWindow);
+                    throw new Exception("Aucune URL de patch disponible pour cette mise à jour");
                 }
+
+                var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+                var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
+                
+                if (!File.Exists(exePath))
+                {
+                    throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
+                }
+                
+                // Trouver l'exécutable UpdateInstaller dans le même dossier que l'application
+                var updateInstallerPath = Path.Combine(appDir, "GameOverlay.UpdateInstaller.exe");
+                
+                if (!File.Exists(updateInstallerPath))
+                {
+                    // Essayer dans le dossier parent (pour les builds de développement)
+                    var parentDir = Path.GetDirectoryName(appDir);
+                    if (!string.IsNullOrEmpty(parentDir))
+                    {
+                        var altPath = Path.Combine(parentDir, "GameOverlay.UpdateInstaller.exe");
+                        if (File.Exists(altPath))
+                        {
+                            updateInstallerPath = altPath;
+                        }
+                    }
+                    
+                    if (!File.Exists(updateInstallerPath))
+                    {
+                        throw new Exception($"L'exécutable UpdateInstaller est introuvable. Cherché dans: {appDir}");
+                    }
+                }
+                
+                Logger.Info("UpdateService", "Lancement de l'installateur de mise à jour...");
+                
+                // Marquer qu'une mise à jour est en cours
+                _isUpdating = true;
+                
+                // Lancer l'exécutable UpdateInstaller avec l'URL du patch (pas le chemin local)
+                // Format: UpdateInstaller.exe <patchUrl> <appDir> <exePath> <newVersion>
+                var launcherInfo = new ProcessStartInfo
+                {
+                    FileName = updateInstallerPath,
+                    Arguments = $"\"{updateInfo.PatchUrl}\" \"{appDir}\" \"{exePath}\" \"{updateInfo.Version}\"",
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
+                };
+                
+                Logger.Info("UpdateService", $"Lancement de l'installateur: {updateInstallerPath}");
+                Logger.Info("UpdateService", $"Arguments: {launcherInfo.Arguments}");
+                var installerProcess = Process.Start(launcherInfo);
+                if (installerProcess == null)
+                {
+                    throw new Exception("Impossible de lancer l'installateur de mise à jour");
+                }
+                
+                Logger.Info("UpdateService", $"Installateur lancé (PID: {installerProcess.Id}), fermeture de l'application...");
+                
+                // Attendre un peu pour que l'installateur démarre
+                await Task.Delay(1000);
+                
+                // Nettoyer le NotifyIcon et fermer toutes les fenêtres
+                if (WpfApplication.Current?.Dispatcher != null)
+                {
+                    WpfApplication.Current.Dispatcher.Invoke(() =>
+                    {
+                        // Nettoyer le NotifyIcon depuis MainWindow
+                        if (WpfApplication.Current.MainWindow is MainWindow mainWindow)
+                        {
+                            mainWindow.CleanupNotifyIcon();
+                        }
+                        
+                        // Fermer toutes les fenêtres
+                        foreach (Window window in WpfApplication.Current.Windows)
+                        {
+                            window.Close();
+                        }
+                    });
+                }
+                
+                // Attendre encore un peu pour que le NotifyIcon soit bien nettoyé
+                await Task.Delay(500);
+                
+                // Fermer l'application immédiatement
+                Logger.Info("UpdateService", "Fermeture de l'application, l'installateur va télécharger et installer la mise à jour...");
+                Environment.Exit(0);
             }
             catch (Exception ex)
             {
-                Logger.Error("UpdateService", $"Erreur lors du téléchargement/installation de la mise à jour: {ex.Message}");
-                // En mode silencieux, on log juste l'erreur sans afficher de MessageBox
-                // L'utilisateur pourra vérifier manuellement les mises à jour si nécessaire
+                Logger.Error("UpdateService", $"Erreur lors de l'installation du patch: {ex.Message}");
+                throw;
             }
         }
 
@@ -470,11 +524,10 @@ namespace GameOverlay.App.Services
                     throw new Exception("Le fichier téléchargé n'est pas un ZIP valide");
                 }
 
-                // TOUJOURS créer un script batch pour gérer la fermeture et le redémarrage proprement
-                // Cela garantit que l'application est bien fermée avant de redémarrer
+                // Utiliser l'exécutable UpdateInstaller pour gérer la fermeture et le redémarrage proprement
                 Logger.Info("UpdateService", failedFiles.Count > 0 
-                    ? $"Création d'un script pour extraire {failedFiles.Count} fichier(s) après fermeture et redémarrer..." 
-                    : "Création d'un script pour redémarrer l'application après fermeture...");
+                    ? $"Lancement de l'installateur pour extraire {failedFiles.Count} fichier(s) après fermeture et redémarrer..." 
+                    : "Lancement de l'installateur pour redémarrer l'application après fermeture...");
                 
                 var assemblyLocation = Assembly.GetExecutingAssembly().Location;
                 var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
@@ -484,146 +537,47 @@ namespace GameOverlay.App.Services
                     throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
                 }
                 
-                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchInstaller.bat");
-                var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
-                var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
-                var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
-                var escapedLauncherScriptPath = launcherScriptPath.Replace("%", "%%").Replace("\"", "\"\"");
-                var escapedNewVersion = updateInfo.Version.Replace("%", "%%").Replace("\"", "\"\"");
+                // Trouver l'exécutable UpdateInstaller dans le même dossier que l'application
+                var updateInstallerPath = Path.Combine(appDir, "GameOverlay.UpdateInstaller.exe");
                 
-                // Script batch qui attend la fermeture, extrait les fichiers restants si nécessaire, puis redémarre
-                var launcherScriptContent = $@"@echo off
-title Mise a jour d'Amaliassistant
-setlocal enabledelayedexpansion
-
-REM Empêcher l'exécution multiple
-if exist ""%TEMP%\Amaliassistant_Update_Running.flag"" (
-    echo Script deja en cours d'execution, sortie...
-    exit /b 0
-)
-echo. > ""%TEMP%\Amaliassistant_Update_Running.flag""
-
-echo ========================================
-echo Mise a jour d'Amaliassistant
-echo ========================================
-echo.
-
-REM Attendre que l'application se ferme complètement
-echo Attente de la fermeture de l'application...
-set WAIT_COUNT=0
-:WAIT_LOOP
-timeout /t 1 /nobreak >nul 2>&1
-set /a WAIT_COUNT+=1
-tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
-if not errorlevel 1 (
-    if !WAIT_COUNT! LSS 60 (
-        goto WAIT_LOOP
-    ) else (
-        echo ATTENTION: L'application ne se ferme pas apres 60 secondes
-    )
-)
-
-REM Attendre encore 2 secondes pour être sûr que tous les fichiers sont libérés
-echo Application fermee, attente de 2 secondes...
-timeout /t 2 /nobreak
-
-REM Si des fichiers sont verrouillés, les extraire maintenant
-if exist ""{escapedPatchPath}"" (
-    echo.
-    echo Extraction des fichiers restants...
-    
-    REM Essayer avec tar.exe d'abord (disponible sur Windows 10+)
-    where tar.exe >nul 2>&1
-    if !ERRORLEVEL! EQU 0 (
-        tar.exe -xf ""{escapedPatchPath}"" -C ""{escapedAppDir}"" --strip-components=0 >nul 2>&1
-    ) else (
-        REM Fallback: utiliser PowerShell (caché)
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NoLogo -NonInteractive -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction SilentlyContinue"" >nul 2>&1
-    )
-    
-    REM Supprimer le fichier patch temporaire
-    del /F /Q ""{escapedPatchPath}"" >nul 2>&1
-    echo Fichiers extraits avec succes!
-    
-    REM Mettre à jour la version dans le registre Windows
-    echo.
-    echo Mise a jour de la version dans le registre Windows...
-    REM Clé de registre pour Inno Setup (installation utilisateur)
-    reg add ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v DisplayVersion /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-    reg add ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v Version /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-    REM Clé de registre pour installation système (si installé en admin)
-    reg add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v DisplayVersion /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-    reg add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v Version /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-    echo Version mise a jour dans le registre!
-)
-
-REM Mettre à jour la version dans le registre Windows (même si tous les fichiers ont été extraits)
-echo.
-echo Mise a jour de la version dans le registre Windows...
-REM Clé de registre pour Inno Setup (installation utilisateur)
-reg add ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v DisplayVersion /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-reg add ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v Version /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-REM Clé de registre pour installation système (si installé en admin)
-reg add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v DisplayVersion /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-reg add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v Version /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
-echo Version mise a jour dans le registre!
-
-echo.
-echo Redemarrage de l'application...
-
-REM Vérifier que l'exe existe
-if not exist ""{escapedExePath}"" (
-    echo ERREUR: Le fichier executable est introuvable: {escapedExePath}
-    pause
-    exit /b 1
-)
-
-REM Redémarrer l'application
-echo Demarrage de l'application...
-start "" ""{escapedExePath}""
-
-REM Attendre un peu pour vérifier que l'application démarre
-timeout /t 3 /nobreak
-
-REM Supprimer le flag d'exécution
-del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
-
-echo.
-echo Mise a jour terminee!
-echo Cette fenetre va se fermer dans 2 secondes...
-timeout /t 2 /nobreak
-
-REM Ne pas fermer la fenêtre automatiquement - laisser l'utilisateur voir le résultat
-REM La fenêtre se fermera automatiquement après le timeout
-REM exit
-";
-                File.WriteAllText(launcherScriptPath, launcherScriptContent);
-                Logger.Info("UpdateService", $"Script batch créé: {launcherScriptPath}");
-                
-                // Vérifier que le script existe
-                if (!File.Exists(launcherScriptPath))
+                if (!File.Exists(updateInstallerPath))
                 {
-                    throw new Exception($"Le script batch n'a pas été créé: {launcherScriptPath}");
+                    // Essayer dans le dossier parent (pour les builds de développement)
+                    var parentDir = Path.GetDirectoryName(appDir);
+                    if (!string.IsNullOrEmpty(parentDir))
+                    {
+                        var altPath = Path.Combine(parentDir, "GameOverlay.UpdateInstaller.exe");
+                        if (File.Exists(altPath))
+                        {
+                            updateInstallerPath = altPath;
+                        }
+                    }
+                    
+                    if (!File.Exists(updateInstallerPath))
+                    {
+                        throw new Exception($"L'exécutable UpdateInstaller est introuvable. Cherché dans: {appDir}");
+                    }
                 }
                 
-                // Lancer le script batch avec cmd.exe /k pour garder la fenêtre ouverte
+                // Lancer l'exécutable UpdateInstaller avec les paramètres nécessaires
                 var launcherInfo = new ProcessStartInfo
                 {
-                    FileName = "cmd.exe",
-                    Arguments = $"/k \"{launcherScriptPath}\"",
+                    FileName = updateInstallerPath,
+                    Arguments = $"\"{tempPatchPath}\" \"{appDir}\" \"{exePath}\" \"{updateInfo.Version}\"",
                     UseShellExecute = true,
                     CreateNoWindow = false,
                     WindowStyle = ProcessWindowStyle.Normal
                 };
                 
-                Logger.Info("UpdateService", $"Lancement du script batch: {launcherScriptPath}");
-                var scriptProcess = Process.Start(launcherInfo);
-                if (scriptProcess == null)
+                Logger.Info("UpdateService", $"Lancement de l'installateur: {updateInstallerPath}");
+                Logger.Info("UpdateService", $"Arguments: {launcherInfo.Arguments}");
+                var installerProcess = Process.Start(launcherInfo);
+                if (installerProcess == null)
                 {
-                    throw new Exception("Impossible de lancer le script de redémarrage");
+                    throw new Exception("Impossible de lancer l'installateur de mise à jour");
                 }
                 
-                Logger.Info("UpdateService", $"Script batch lancé (PID: {scriptProcess.Id}), attente de 2 secondes avant fermeture...");
+                Logger.Info("UpdateService", $"Installateur lancé (PID: {installerProcess.Id}), attente de 2 secondes avant fermeture...");
                 
                 Logger.Info("UpdateService", "Patch extrait, préparation du redémarrage...");
                 progressWindow?.SetStatus("Mise à jour terminée !");
@@ -633,16 +587,22 @@ REM exit
                 // Attendre suffisamment longtemps pour que le script batch démarre et soit prêt
                 await Task.Delay(2000);
                 
-                // Fermer la fenêtre de progression
+                // Nettoyer le NotifyIcon et fermer la fenêtre de progression
                 if (WpfApplication.Current?.Dispatcher != null)
                 {
                     WpfApplication.Current.Dispatcher.Invoke(() =>
                     {
+                        // Nettoyer le NotifyIcon depuis MainWindow
+                        if (WpfApplication.Current.MainWindow is MainWindow mainWindow)
+                        {
+                            mainWindow.CleanupNotifyIcon();
+                        }
+                        
                         progressWindow?.Close();
                     });
                 }
                 
-                // Attendre encore un peu pour que la fenêtre se ferme complètement
+                // Attendre encore un peu pour que le NotifyIcon soit bien nettoyé
                 await Task.Delay(500);
                 
                 // Fermer l'application immédiatement avec Environment.Exit pour éviter les dialogues
@@ -859,14 +819,23 @@ exit /b 0
                 // Attendre un court instant pour que l'utilisateur voie le message
                 await Task.Delay(1000);
                 
-                // Fermer la fenêtre de progression
+                // Nettoyer le NotifyIcon et fermer la fenêtre de progression
                 if (WpfApplication.Current?.Dispatcher != null)
                 {
                     WpfApplication.Current.Dispatcher.Invoke(() =>
                     {
+                        // Nettoyer le NotifyIcon depuis MainWindow
+                        if (WpfApplication.Current.MainWindow is MainWindow mainWindow)
+                        {
+                            mainWindow.CleanupNotifyIcon();
+                        }
+                        
                         progressWindow?.Close();
                     });
                 }
+                
+                // Attendre encore un peu pour que le NotifyIcon soit bien nettoyé
+                await Task.Delay(500);
                 
                 // Fermer l'application immédiatement avec Environment.Exit pour éviter les dialogues
                 Logger.Info("UpdateService", "Fermeture de l'application pour redémarrage...");

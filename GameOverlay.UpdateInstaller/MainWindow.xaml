@@ -1,0 +1,55 @@
+<Window x:Class="GameOverlay.UpdateInstaller.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Mise à jour d'Amaliassistant" 
+        Height="400" 
+        Width="600"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Titre -->
+        <TextBlock Grid.Row="0" 
+                   Text="Mise à jour d'Amaliassistant" 
+                   FontSize="20" 
+                   FontWeight="Bold" 
+                   HorizontalAlignment="Center" 
+                   Margin="0,0,0,20"/>
+
+        <!-- Zone de messages -->
+        <ScrollViewer x:Name="StatusScrollViewer"
+                      Grid.Row="1" 
+                      VerticalScrollBarVisibility="Auto" 
+                      Margin="0,0,0,20">
+            <TextBlock x:Name="StatusTextBlock" 
+                       TextWrapping="Wrap" 
+                       FontSize="12"
+                       LineHeight="18"/>
+        </ScrollViewer>
+
+        <!-- Barre de progression -->
+        <ProgressBar x:Name="ProgressBar" 
+                     Grid.Row="2" 
+                     Height="25" 
+                     Margin="0,0,0,10"
+                     Minimum="0"
+                     Maximum="100"
+                     Value="0"/>
+
+        <!-- Texte de progression -->
+        <TextBlock x:Name="ProgressTextBlock" 
+                   Grid.Row="3" 
+                   Text="Initialisation..." 
+                   HorizontalAlignment="Center" 
+                   FontSize="11"
+                   Foreground="Gray"/>
+    </Grid>
+</Window>
+

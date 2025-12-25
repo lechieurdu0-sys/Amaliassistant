@@ -258,37 +258,37 @@ public class SaleTracker : IDisposable
             int retryDelay = 10;
             
             for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
             {
-                try
+                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+
+                if (_lastPosition > reader.BaseStream.Length)
                 {
-                    using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+                    _lastPosition = 0;
+                    Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
+                }
 
-                    if (_lastPosition > reader.BaseStream.Length)
-                    {
-                        _lastPosition = 0;
-                        Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
-                    }
-
-                    reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
-                    
-                    if (reader.BaseStream.Position >= reader.BaseStream.Length)
-                        return; // Pas de nouvelles lignes
-                    
-                    string? line;
+                reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
+                
+                if (reader.BaseStream.Position >= reader.BaseStream.Length)
+                    return; // Pas de nouvelles lignes
+                
+                string? line;
                     int linesRead = 0;
-                    while (true)
+                while (true)
+                {
+                    line = reader.ReadLine();
+                    if (line == null)
                     {
-                        line = reader.ReadLine();
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        ProcessLine(line);
-                        linesRead++;
+                        break;
                     }
-                    
-                    _lastPosition = reader.BaseStream.Position;
+
+                    ProcessLine(line);
+                        linesRead++;
+                }
+                
+                _lastPosition = reader.BaseStream.Position;
                     
                     if (linesRead > 0)
                     {
@@ -306,11 +306,11 @@ public class SaleTracker : IDisposable
                     retryDelay *= 2; // Backoff exponentiel
                 }
             }
-        }
-        catch (Exception ex)
-        {
+            }
+            catch (Exception ex)
+            {
             Logger.Error("SaleTracker", $"Erreur lors de la lecture après 3 tentatives: {ex.Message}");
-        }
+            }
         finally
         {
             System.Threading.Monitor.Exit(_lockObject);

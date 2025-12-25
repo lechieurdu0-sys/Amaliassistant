@@ -1,0 +1,46 @@
+========================================
+   COMMANDE COMPLETE POUR LA RELEASE 1.0.0.10
+========================================
+
+Copiez-collez cette commande dans PowerShell (remplacez VOTRE_TOKEN par votre token GitHub) :
+
+$releaseNotes = @"
+## Version 1.0.0.10
+
+### Corrections
+- Correction du système de notifications de ventes en temps réel
+- Amélioration de la détection des ventes (FileSystemWatcher optimisé)
+- Correction de la persistance des paramètres lors des mises à jour
+- Correction de la version (1.0.0.12 -> 1.0.0.10)
+
+### Améliorations
+- Nouveau système de logging catégorisé (AdvancedLogger)
+- Rotation automatique des logs (3 fichiers max, 1 MB chacun)
+- Archivage automatique des logs en ZIP
+- Gestion automatique de l'espace disque (suppression des archives > 1 GB)
+- Validation automatique des URLs de patch
+- Script automatisé pour la création de releases GitHub
+
+### Technique
+- Amélioration de la robustesse du SaleTracker
+- Retry mechanism avec exponential backoff
+- Buffer FileSystemWatcher augmenté à 64 KB
+- Système de backup automatique de la configuration
+- Correction de la logique de création des patches
+"@
+
+.\Create-Release.ps1 -Version "1.0.0.10" -GitHubToken "VOTRE_TOKEN" -ReleaseNotes $releaseNotes
+
+========================================
+   INSTRUCTIONS
+========================================
+
+1. Remplacez "VOTRE_TOKEN" par votre token GitHub (commence par ghp_)
+2. Copiez-collez toute la commande dans PowerShell
+3. Le script va :
+   - Créer la release GitHub avec le tag v1.0.0.10
+   - Uploader le patch automatiquement
+   - Uploader update.xml automatiquement
+   - Afficher l'URL de la release
+4. Uploadez manuellement l'installateur (164 MB) sur la page de la release
+

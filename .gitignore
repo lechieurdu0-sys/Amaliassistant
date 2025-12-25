@@ -199,11 +199,26 @@ InstallerAppData/
 !*.csproj.user.json
 !*.pubxml.json
 
+# Secrets and tokens (NE JAMAIS COMMITER)
+TokenGitHub.txt
+*.token
+*.secret
+*credentials*
+*password*
+*api_key*
+*apikey*
+
+# Fichiers de configuration locaux (peuvent contenir des chemins personnels)
+GameOverlay.App/config.json
+GameOverlay.App/window_positions.json
+GameOverlay.App/kikimeter_individual_mode.json
+
 # Build scripts output
 build.log
 debug.log
 
 # Installer files
+installer.iss
 *.iss.bak
 unins000.*
 

@@ -411,13 +411,29 @@ namespace GameOverlay.App
 
         private void ExitApplication()
         {
-            if (notifyIcon != null)
-            {
-                notifyIcon.Visible = false;
-                notifyIcon.Dispose();
-            }
-            
+            CleanupNotifyIcon();
             System.Windows.Application.Current.Shutdown();
+        }
+
+        /// <summary>
+        /// Nettoie le NotifyIcon (méthode publique pour être appelée depuis UpdateService)
+        /// </summary>
+        public void CleanupNotifyIcon()
+        {
+            try
+            {
+                if (notifyIcon != null)
+                {
+                    notifyIcon.Visible = false;
+                    notifyIcon.Dispose();
+                    notifyIcon = null;
+                    Logger.Info("MainWindow", "NotifyIcon nettoyé");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors du nettoyage du NotifyIcon: {ex.Message}");
+            }
         }
 
         private bool IsStartupEnabled()

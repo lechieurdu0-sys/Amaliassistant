@@ -1,10 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
     <ProjectReference Include="..\GameOverlay.Windows\GameOverlay.Windows.csproj" />
     <ProjectReference Include="..\GameOverlay.Kikimeter\GameOverlay.Kikimeter.csproj" />
     <ProjectReference Include="..\GameOverlay.Themes\GameOverlay.Themes.csproj" />
+    <ProjectReference Include="..\GameOverlay.UpdateInstaller\GameOverlay.UpdateInstaller.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>Content</OutputItemType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -24,8 +29,8 @@
     <AssemblyProduct>Amaliassistant</AssemblyProduct>
     <AssemblyCompany>Amaliassistant</AssemblyCompany>
     <AssemblyDescription>Overlay de sites web pour jeux - OptimisÃ© Windows 11</AssemblyDescription>
-    <AssemblyVersion>1.0.0.23</AssemblyVersion>
-    <FileVersion>1.0.0.23</FileVersion>
+    <AssemblyVersion>1.9.0.0</AssemblyVersion>
+    <FileVersion>1.9.0.0</FileVersion>
     <ApplicationIcon>Amalia.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
@@ -41,5 +46,15 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="CopyUpdateInstaller" AfterTargets="Publish">
+    <ItemGroup>
+      <UpdateInstallerFiles Include="$(SolutionDir)GameOverlay.UpdateInstaller\bin\$(Configuration)\net8.0-windows\win-x64\GameOverlay.UpdateInstaller.exe" />
+      <UpdateInstallerFiles Include="$(SolutionDir)GameOverlay.UpdateInstaller\bin\$(Configuration)\net8.0-windows\GameOverlay.UpdateInstaller.exe" />
+      <UpdateInstallerFiles Include="$(SolutionDir)GameOverlay.UpdateInstaller\bin\$(Configuration)\net8.0\GameOverlay.UpdateInstaller.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UpdateInstallerFiles)" DestinationFolder="$(PublishDir)" Condition="Exists('%(UpdateInstallerFiles.Identity)')" />
+    <Message Text="Copie de UpdateInstaller vers $(PublishDir)" Condition="Exists('%(UpdateInstallerFiles.Identity)')" />
+  </Target>
 
 </Project>
