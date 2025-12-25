@@ -556,6 +556,17 @@ if exist ""{escapedPatchPath}"" (
     echo Version mise a jour dans le registre!
 )
 
+REM Mettre à jour la version dans le registre Windows (même si tous les fichiers ont été extraits)
+echo.
+echo Mise a jour de la version dans le registre Windows...
+REM Clé de registre pour Inno Setup (installation utilisateur)
+reg add ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v DisplayVersion /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
+reg add ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v Version /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
+REM Clé de registre pour installation système (si installé en admin)
+reg add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v DisplayVersion /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
+reg add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}}"" /v Version /t REG_SZ /d ""{escapedNewVersion}"" /f >nul 2>&1
+echo Version mise a jour dans le registre!
+
 echo.
 echo Redemarrage de l'application...
 
