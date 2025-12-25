@@ -461,7 +461,7 @@ echo Extraction du patch en cours...
 echo.
 
 REM Extraire le patch avec PowerShell Expand-Archive (méthode la plus fiable)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force""
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NoLogo -NonInteractive -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force; exit $LASTEXITCODE"" >nul 2>&1
 
 if !ERRORLEVEL! NEQ 0 (
     echo.
@@ -496,7 +496,6 @@ timeout /t 1 /nobreak >nul 2>&1
 
 endlocal
 exit /b 0
-exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
 
@@ -512,13 +511,13 @@ exit /b 0
                     }));
                 }
                 
-                // Lancer le script batch qui gérera l'extraction et le redémarrage
+                // Lancer le script batch qui gérera l'extraction et le redémarrage (fenêtre minimisée)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = launcherScriptPath,
                     UseShellExecute = true,
                     CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Normal
+                    WindowStyle = ProcessWindowStyle.Minimized
                 };
 
                 try
