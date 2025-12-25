@@ -529,9 +529,11 @@ exit /b 0
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
                 // Lancer le script de mise à jour (fenêtre visible pour voir la progression)
+                // Utiliser cmd.exe pour exécuter le script et garder la fenêtre ouverte
                 var launcherInfo = new ProcessStartInfo
                 {
-                    FileName = launcherScriptPath,
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"{launcherScriptPath}\"",
                     UseShellExecute = true,
                     CreateNoWindow = false,
                     WindowStyle = ProcessWindowStyle.Normal
