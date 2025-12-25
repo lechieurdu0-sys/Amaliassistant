@@ -24,6 +24,7 @@ namespace GameOverlay.App.Services
         private const string GitHubApiReleasesUrl = $"https://api.github.com/repos/{GitHubRepo}/releases";
         private static readonly HttpClient _httpClient = new HttpClient();
         private static bool _isChecking = false;
+        private static bool _isInitialized = false;
 
         static UpdateService()
         {
@@ -45,8 +46,16 @@ namespace GameOverlay.App.Services
         /// </summary>
         public static void Initialize()
         {
+            // Éviter les initialisations multiples
+            if (_isInitialized)
+            {
+                Logger.Info("UpdateService", "Service de mise à jour déjà initialisé, ignoré");
+                return;
+            }
+            
             try
             {
+                _isInitialized = true;
                 Logger.Info("UpdateService", "Service de mise à jour initialisé");
                 
                 // Vérifier les mises à jour de manière asynchrone après un court délai (1s pour laisser l'UI s'initialiser)
@@ -419,158 +428,74 @@ namespace GameOverlay.App.Services
                 progressWindow?.SetStatus("Préparation de la mise à jour...");
                 progressWindow?.SetProgress(100, "Fermeture de l'application pour appliquer le patch...");
                 
-                // Créer un script PowerShell avec fenêtre de progression visible
-                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchLauncher.ps1");
-                var powershellPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-                if (!File.Exists(powershellPath))
-                {
-                    powershellPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "powershell.exe");
-                }
+                // Créer un script batch pour extraire le patch (plus simple et plus fiable que PowerShell)
+                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchLauncher.bat");
                 
-                // Échapper les chemins pour PowerShell
-                var escapedPatchPath = tempPatchPath.Replace("'", "''").Replace("\"", "`\"");
-                var escapedAppDir = appDir.Replace("'", "''").Replace("\"", "`\"");
-                var escapedExePath = exePath.Replace("\"", "`\"");
+                // Échapper les chemins pour le batch (doubler les guillemets et échapper les %)
+                var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
                 
-                var launcherScriptContent = $@"# Script PowerShell pour extraire le patch avec progression visible
-$ErrorActionPreference = ""Stop""
+                var launcherScriptContent = $@"@echo off
+setlocal enabledelayedexpansion
 
-# Afficher une fenêtre avec progression
-Add-Type -AssemblyName System.Windows.Forms
-$form = New-Object System.Windows.Forms.Form
-$form.Text = ""Mise à jour d'Amaliassistant""
-$form.Size = New-Object System.Drawing.Size(500, 180)
-$form.StartPosition = ""CenterScreen""
-$form.FormBorderStyle = ""FixedDialog""
-$form.MaximizeBox = $false
-$form.MinimizeBox = $false
-$form.TopMost = $true
+REM Script batch pour extraire le patch et redémarrer l'application
+echo ========================================
+echo Mise a jour d'Amaliassistant
+echo ========================================
+echo.
+echo Attente de la fermeture de l'application...
 
-$labelStatus = New-Object System.Windows.Forms.Label
-$labelStatus.Text = ""Attente de la fermeture de l'application...""
-$labelStatus.AutoSize = $true
-$labelStatus.Location = New-Object System.Drawing.Point(20, 20)
-$labelStatus.Font = New-Object System.Drawing.Font(""Segoe UI"", 10, [System.Drawing.FontStyle]::Bold)
-$form.Controls.Add($labelStatus)
+REM Attendre que l'application se ferme (GameOverlay.App.exe)
+:WAIT_LOOP
+timeout /t 1 /nobreak >nul 2>&1
+tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
+if ""!ERRORLEVEL!""==""0"" (
+    goto WAIT_LOOP
+)
 
-$labelDetails = New-Object System.Windows.Forms.Label
-$labelDetails.Text = """"
-$labelDetails.AutoSize = $true
-$labelDetails.Location = New-Object System.Drawing.Point(20, 50)
-$labelDetails.Font = New-Object System.Drawing.Font(""Segoe UI"", 9)
-$form.Controls.Add($labelDetails)
+REM Attendre un court instant supplémentaire pour être sûr
+timeout /t 2 /nobreak >nul 2>&1
 
-$progressBar = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(20, 80)
-$progressBar.Width = 450
-$progressBar.Height = 25
-$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-$form.Controls.Add($progressBar)
+echo Extraction du patch en cours...
+echo.
 
-$form.Show() | Out-Null
-$form.Refresh()
+REM Extraire le patch avec PowerShell Expand-Archive (méthode la plus fiable)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force""
 
-function Update-Status {{
-    param([string]$status, [string]$details = """")
-    $form.Invoke([action]{{
-        $labelStatus.Text = $status
-        $labelDetails.Text = $details
-        [System.Windows.Forms.Application]::DoEvents()
-    }})
-}}
+if !ERRORLEVEL! NEQ 0 (
+    echo.
+    echo ERREUR: Impossible d'extraire le patch
+    echo Fichier: {escapedPatchPath}
+    echo Destination: {escapedAppDir}
+    pause
+    exit /b 1
+)
 
-# Attendre que l'application se ferme complètement
-Update-Status ""Attente de la fermeture de l'application...""
-$waitCount = 0
-while ($true) {{
-    try {{
-        $process = Get-Process -Name ""GameOverlay.App"" -ErrorAction SilentlyContinue
-        if (-not $process) {{
-            break
-        }}
-        $waitCount++
-        if ($waitCount % 4 -eq 0) {{
-            Update-Status ""Attente de la fermeture de l'application..."" ""En attente... ($waitCount / 2) secondes""
-        }}
-    }} catch {{
-        break
-    }}
-    Start-Sleep -Milliseconds 500
-    [System.Windows.Forms.Application]::DoEvents()
-}}
+REM Supprimer le fichier temporaire du patch
+if exist ""{escapedPatchPath}"" (
+    del /F /Q ""{escapedPatchPath}"" >nul 2>&1
+)
 
-# Attendre un court instant supplémentaire
-Update-Status ""Préparation de l'extraction...""
-Start-Sleep -Seconds 2
-[System.Windows.Forms.Application]::DoEvents()
+echo.
+echo Redemarrage de l'application...
 
-# Extraire le patch avec progression
-Update-Status ""Extraction du patch en cours..."", ""Veuillez patienter...""
-$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-$progressBar.MarqueeAnimationSpeed = 50
-[System.Windows.Forms.Application]::DoEvents()
+REM Vérifier que l'exe existe
+if not exist ""{escapedExePath}"" (
+    echo ERREUR: Le fichier executable est introuvable: {escapedExePath}
+    pause
+    exit /b 1
+)
 
-try {{
-    # Vérifier que le fichier existe
-    if (-not (Test-Path '{escapedPatchPath}')) {{
-        throw ""Le fichier patch est introuvable: '{escapedPatchPath}'""
-    }}
-    
-    # Extraire le patch
-    Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction Stop
-    
-    Update-Status ""Patch appliqué avec succès !"", ""Redémarrage de l'application...""
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-    $progressBar.Value = 100
-    [System.Windows.Forms.Application]::DoEvents()
-    Start-Sleep -Seconds 1
-}} catch {{
-    $errorMsg = $_.Exception.Message
-    $form.Close()
-    [System.Windows.Forms.MessageBox]::Show(""Erreur lors de l'extraction du patch:`n$errorMsg`n`nFichier: '{escapedPatchPath}'`nDestination: '{escapedAppDir}'"", ""Erreur"", ""OK"", ""Error"")
-    exit 1
-}}
+REM Lancer l'application
+start "" ""{escapedExePath}""
 
-# Supprimer le fichier temporaire du patch
-try {{
-    if (Test-Path '{escapedPatchPath}') {{
-        Remove-Item -Path '{escapedPatchPath}' -Force -ErrorAction SilentlyContinue
-    }}
-}} catch {{
-    # Ignorer les erreurs de suppression
-}}
+echo.
+echo Mise a jour terminee avec succes!
+timeout /t 1 /nobreak >nul 2>&1
 
-# Redémarrer l'application
-Update-Status ""Redémarrage de l'application..."", ""L'application va se relancer dans quelques instants...""
-[System.Windows.Forms.Application]::DoEvents()
-Start-Sleep -Seconds 1
-
-try {{
-    # Vérifier que le fichier exe existe
-    $exePath = '{escapedExePath}'
-    if (-not (Test-Path $exePath)) {{
-        throw ""Le fichier exécutable est introuvable: $exePath""
-    }}
-    
-    # Lancer l'application
-    Start-Process -FilePath $exePath -ErrorAction Stop
-    Update-Status ""Application redémarrée !"", ""Fermeture de la fenêtre...""
-    Start-Sleep -Seconds 1
-}} catch {{
-    $errorMsg = $_.Exception.Message
-    $form.Close()
-    [System.Windows.Forms.MessageBox]::Show(""Erreur lors du redémarrage de l'application:`n$errorMsg`n`nChemin: '{escapedExePath}'"", ""Erreur"", ""OK"", ""Error"")
-    exit 1
-}}
-
-# Fermer la fenêtre et supprimer le script
-$form.Close()
-try {{
-    Start-Sleep -Milliseconds 500
-    Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
-}} catch {{
-    # Ignorer les erreurs de suppression du script
-}}
+endlocal
+exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
 
@@ -586,23 +511,22 @@ try {{
                     }));
                 }
                 
-                // Lancer le script PowerShell qui gérera l'extraction et le redémarrage avec fenêtre Windows Forms visible (mais PowerShell caché)
+                // Lancer le script batch qui gérera l'extraction et le redémarrage
                 var launcherInfo = new ProcessStartInfo
                 {
-                    FileName = powershellPath,
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{launcherScriptPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    FileName = launcherScriptPath,
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
                 };
 
                 try
                 {
-                    // Lancer le script PowerShell
+                    // Lancer le script batch
                     var process = Process.Start(launcherInfo);
                     if (process == null)
                     {
-                        throw new Exception("Impossible de lancer le script PowerShell");
+                        throw new Exception("Impossible de lancer le script batch");
                     }
                     
                     Logger.Info("UpdateService", "Script de mise à jour par patch lancé, l'application redémarrera automatiquement après l'extraction");
@@ -778,96 +702,68 @@ try {{
                 var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
                 var exeDir = Path.GetDirectoryName(exePath);
                 
-                // Créer un script PowerShell avec fenêtre de progression visible pour l'installateur
-                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_UpdateLauncher.ps1");
-                var powershellPathForInstaller = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-                if (!File.Exists(powershellPathForInstaller))
-                {
-                    powershellPathForInstaller = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "powershell.exe");
-                }
+                // Créer un script batch pour installer la mise à jour (plus simple et plus fiable que PowerShell)
+                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_UpdateLauncher.bat");
                 
-                // Échapper les chemins pour PowerShell
-                var escapedTempPath = tempPath.Replace("'", "''").Replace("\"", "`\"");
-                var escapedExePathForInstaller = exePath.Replace("\"", "`\"");
+                // Échapper les chemins pour le batch (doubler les guillemets et échapper les %)
+                var escapedTempPath = tempPath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedExePathForInstaller = exePath.Replace("%", "%%").Replace("\"", "\"\"");
                 
-                var launcherScriptContent = $@"# Script PowerShell simplifié pour installer la mise à jour
-$ErrorActionPreference = ""Stop""
+                var launcherScriptContent = $@"@echo off
+setlocal enabledelayedexpansion
 
-# Afficher une fenêtre de message simple
-Add-Type -AssemblyName System.Windows.Forms
-$form = New-Object System.Windows.Forms.Form
-$form.Text = ""Mise à jour d'Amaliassistant""
-$form.Size = New-Object System.Drawing.Size(400, 150)
-$form.StartPosition = ""CenterScreen""
-$form.FormBorderStyle = ""FixedDialog""
-$form.MaximizeBox = $false
-$form.MinimizeBox = $false
-$form.TopMost = $true
+REM Script batch pour installer la mise à jour et redémarrer l'application
+echo ========================================
+echo Mise a jour d'Amaliassistant
+echo ========================================
+echo.
+echo Lancement de l'installateur...
 
-$label = New-Object System.Windows.Forms.Label
-$label.Text = ""Installation de la mise à jour...""
-$label.AutoSize = $true
-$label.Location = New-Object System.Drawing.Point(20, 30)
-$form.Controls.Add($label)
+REM Vérifier que l'installateur existe
+if not exist ""{escapedTempPath}"" (
+    echo ERREUR: L'installateur est introuvable: {escapedTempPath}
+    pause
+    exit /b 1
+)
 
-$form.Show() | Out-Null
-$form.Refresh()
+REM Lancer l'installateur en mode très silencieux
+start /WAIT """" ""{escapedTempPath}"" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES /UPGRADE
 
-# Lancer l'installateur en mode très silencieux
-$label.Text = ""Lancement de l'installateur...""
-$form.Refresh()
-[System.Windows.Forms.Application]::DoEvents()
+REM Attendre que l'installateur se termine complètement
+:WAIT_INSTALLER
+timeout /t 1 /nobreak >nul 2>&1
+tasklist /FI ""IMAGENAME eq Amaliassistant_Setup.exe"" 2>NUL | find /I /N ""Amaliassistant_Setup.exe"">NUL
+if ""!ERRORLEVEL!""==""0"" (
+    goto WAIT_INSTALLER
+)
 
-try {{
-    $installerProcess = Start-Process -FilePath '{escapedTempPath}' -ArgumentList ""/VERYSILENT"", ""/NORESTART"", ""/SUPPRESSMSGBOXES"", ""/UPGRADE"" -PassThru -WindowStyle Hidden
-    
-    # Attendre que l'installateur se termine complètement
-    $label.Text = ""Installation en cours... Veuillez patienter...""
-    $form.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
-    
-    while (-not $installerProcess.HasExited) {{
-        Start-Sleep -Milliseconds 500
-        [System.Windows.Forms.Application]::DoEvents()
-    }}
-    
-    # Vérifier aussi que le processus n'existe plus dans la liste
-    while ($true) {{
-        try {{
-            $process = Get-Process -Name ""Amaliassistant_Setup"" -ErrorAction SilentlyContinue
-            if (-not $process) {{
-                break
-            }}
-        }} catch {{
-            break
-        }}
-        Start-Sleep -Milliseconds 500
-        [System.Windows.Forms.Application]::DoEvents()
-    }}
-    
-    # Attendre un court instant supplémentaire
-    Start-Sleep -Seconds 2
-    
-    # Redémarrer l'application
-    $label.Text = ""Redémarrage de l'application...""
-    $form.Refresh()
-    Start-Sleep -Seconds 1
-    Start-Process -FilePath '{escapedExePathForInstaller}'
-    
-    # Supprimer l'installateur temporaire
-    try {{
-        Remove-Item -Path '{escapedTempPath}' -Force -ErrorAction SilentlyContinue
-    }} catch {{}}
-    
-    # Fermer la fenêtre et supprimer le script
-    Start-Sleep -Seconds 1
-    $form.Close()
-    Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
-}} catch {{
-    $form.Close()
-    [System.Windows.Forms.MessageBox]::Show(""Erreur lors de l'installation:`n$($_.Exception.Message)"", ""Erreur"", ""OK"", ""Error"")
-    exit 1
-}}
+REM Attendre un court instant supplémentaire
+timeout /t 2 /nobreak >nul 2>&1
+
+echo.
+echo Redemarrage de l'application...
+
+REM Vérifier que l'exe existe
+if not exist ""{escapedExePathForInstaller}"" (
+    echo ERREUR: Le fichier executable est introuvable: {escapedExePathForInstaller}
+    pause
+    exit /b 1
+)
+
+REM Lancer l'application
+start "" ""{escapedExePathForInstaller}""
+
+echo.
+echo Mise a jour terminee avec succes!
+timeout /t 1 /nobreak >nul 2>&1
+
+REM Supprimer l'installateur temporaire
+if exist ""{escapedTempPath}"" (
+    del /F /Q ""{escapedTempPath}"" >nul 2>&1
+)
+
+endlocal
+exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
 
@@ -883,23 +779,22 @@ try {{
                     }));
                 }
                 
-                // Lancer le script PowerShell qui gérera l'installation et le redémarrage avec fenêtre Windows Forms visible (mais PowerShell caché)
+                // Lancer le script batch qui gérera l'installation et le redémarrage
                 var launcherInfo = new ProcessStartInfo
                 {
-                    FileName = powershellPathForInstaller,
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{launcherScriptPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    FileName = launcherScriptPath,
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
                 };
 
                 try
                 {
-                    // Lancer le script PowerShell
+                    // Lancer le script batch
                     var process = Process.Start(launcherInfo);
                     if (process == null)
                     {
-                        throw new Exception("Impossible de lancer le script PowerShell");
+                        throw new Exception("Impossible de lancer le script batch");
                     }
                     
                     Logger.Info("UpdateService", "Script de mise à jour lancé, l'application redémarrera automatiquement après l'installation");
