@@ -2754,47 +2754,33 @@ namespace GameOverlay.App
 
         /// <summary>
         /// Vérifie si c'est la première installation et affiche un message de bienvenue si nécessaire
+        /// MÉTHODE DÉSACTIVÉE - Message de bienvenue supprimé comme demandé par l'utilisateur
         /// </summary>
         private void CheckAndShowWelcomeMessage()
         {
+            // MÉTHODE COMPLÈTEMENT DÉSACTIVÉE - Plus de message de bienvenue
+            // Créer simplement le fichier de flag pour éviter tout problème
             try
             {
                 string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Amaliassistant");
                 string firstRunFlagFile = Path.Combine(appDataDir, "first_run_completed.flag");
                 
-                // Si le fichier de flag n'existe pas, c'est la première installation
+                // Créer le dossier AppData s'il n'existe pas
+                if (!Directory.Exists(appDataDir))
+                {
+                    Directory.CreateDirectory(appDataDir);
+                }
+                
+                // Créer le fichier de flag pour indiquer que la première installation est terminée
                 if (!File.Exists(firstRunFlagFile))
                 {
-                    Logger.Info("MainWindow", "Première installation détectée, affichage du message de bienvenue");
-                    
-                    // Afficher le message de bienvenue
-                    System.Windows.MessageBox.Show(
-                        "Bienvenue sur Amaliassistant !\n\n" +
-                        "L'application est maintenant installée et prête à être utilisée.\n\n" +
-                        "Vous pouvez accéder aux fonctionnalités via l'icône dans la barre des tâches.",
-                        "Bienvenue",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
-                    
-                    // Créer le dossier AppData s'il n'existe pas
-                    if (!Directory.Exists(appDataDir))
-                    {
-                        Directory.CreateDirectory(appDataDir);
-                    }
-                    
-                    // Créer le fichier de flag pour indiquer que la première installation est terminée
                     File.WriteAllText(firstRunFlagFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                    Logger.Info("MainWindow", "Fichier de flag de première installation créé");
-                }
-                else
-                {
-                    Logger.Debug("MainWindow", "Ce n'est pas la première installation, message de bienvenue ignoré");
+                    Logger.Info("MainWindow", "Fichier de flag de première installation créé (sans message de bienvenue)");
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error("MainWindow", $"Erreur lors de la vérification du message de bienvenue: {ex.Message}");
-                // Ne pas bloquer le démarrage si cette vérification échoue
             }
         }
 
