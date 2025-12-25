@@ -596,23 +596,33 @@ REM Fermer cette fenêtre
 exit
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
+                Logger.Info("UpdateService", $"Script batch créé: {launcherScriptPath}");
                 
-                // Lancer le script batch directement - il s'affichera dans sa propre fenêtre
+                // Vérifier que le script existe
+                if (!File.Exists(launcherScriptPath))
+                {
+                    throw new Exception($"Le script batch n'a pas été créé: {launcherScriptPath}");
+                }
+                
+                // Lancer le script batch avec cmd.exe pour qu'il s'affiche correctement
                 var launcherInfo = new ProcessStartInfo
                 {
-                    FileName = launcherScriptPath,
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"{launcherScriptPath}\"",
                     UseShellExecute = true,
                     CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Normal
+                    WindowStyle = ProcessWindowStyle.Normal,
+                    WorkingDirectory = Path.GetTempPath()
                 };
                 
+                Logger.Info("UpdateService", $"Lancement du script batch: {launcherScriptPath}");
                 var scriptProcess = Process.Start(launcherInfo);
                 if (scriptProcess == null)
                 {
                     throw new Exception("Impossible de lancer le script de redémarrage");
                 }
                 
-                Logger.Info("UpdateService", "Script de redémarrage lancé, attente de 2 secondes avant fermeture...");
+                Logger.Info("UpdateService", $"Script batch lancé (PID: {scriptProcess.Id}), attente de 2 secondes avant fermeture...");
                 
                 Logger.Info("UpdateService", "Patch extrait, préparation du redémarrage...");
                 progressWindow?.SetStatus("Mise à jour terminée !");
