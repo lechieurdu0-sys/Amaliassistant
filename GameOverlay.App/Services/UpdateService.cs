@@ -498,6 +498,7 @@ setlocal enabledelayedexpansion
 
 REM Empêcher l'exécution multiple
 if exist ""%TEMP%\Amaliassistant_Update_Running.flag"" (
+    echo Script deja en cours d'execution, sortie...
     exit /b 0
 )
 echo. > ""%TEMP%\Amaliassistant_Update_Running.flag""
@@ -592,8 +593,9 @@ echo Mise a jour terminee!
 echo Cette fenetre va se fermer dans 2 secondes...
 timeout /t 2 /nobreak
 
-REM Fermer cette fenêtre
-exit
+REM Ne pas fermer la fenêtre automatiquement - laisser l'utilisateur voir le résultat
+REM La fenêtre se fermera automatiquement après le timeout
+REM exit
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 Logger.Info("UpdateService", $"Script batch créé: {launcherScriptPath}");
@@ -604,15 +606,14 @@ exit
                     throw new Exception($"Le script batch n'a pas été créé: {launcherScriptPath}");
                 }
                 
-                // Lancer le script batch avec cmd.exe pour qu'il s'affiche correctement
+                // Lancer le script batch avec cmd.exe /k pour garder la fenêtre ouverte
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c \"{launcherScriptPath}\"",
+                    Arguments = $"/k \"{launcherScriptPath}\"",
                     UseShellExecute = true,
                     CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Normal,
-                    WorkingDirectory = Path.GetTempPath()
+                    WindowStyle = ProcessWindowStyle.Normal
                 };
                 
                 Logger.Info("UpdateService", $"Lancement du script batch: {launcherScriptPath}");
