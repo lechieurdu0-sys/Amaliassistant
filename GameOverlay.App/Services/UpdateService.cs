@@ -25,6 +25,12 @@ namespace GameOverlay.App.Services
         private static readonly HttpClient _httpClient = new HttpClient();
         private static bool _isChecking = false;
         private static bool _isInitialized = false;
+        private static bool _isUpdating = false; // Flag pour indiquer qu'une mise à jour est en cours
+        
+        /// <summary>
+        /// Indique si une mise à jour est en cours
+        /// </summary>
+        public static bool IsUpdating => _isUpdating;
 
         static UpdateService()
         {
@@ -398,170 +404,152 @@ namespace GameOverlay.App.Services
                 }
 
                 Logger.Info("UpdateService", $"Patch téléchargé ({fileInfo.Length / 1024} KB), extraction dans: {appDir}");
+                
+                // Marquer qu'une mise à jour est en cours pour éviter les dialogues de confirmation
+                _isUpdating = true;
+                
+                // Extraire directement le patch dans le code C# avec progression visible
                 progressWindow?.SetStatus("Extraction du patch...");
-                progressWindow?.SetProgress(50, $"Extraction en cours...");
-
-                // Vérifier que c'est bien un fichier ZIP valide avant extraction
+                progressWindow?.SetDownloading(false); // Désactiver le bouton Annuler pendant l'extraction
+                
+                // Vérifier que c'est bien un fichier ZIP valide et compter les entrées
+                int totalEntries = 0;
                 try
                 {
-                    using (var archive = System.IO.Compression.ZipFile.OpenRead(tempPatchPath))
+                    using (var archive = ZipFile.OpenRead(tempPatchPath))
                     {
-                        if (archive.Entries.Count == 0)
+                        totalEntries = archive.Entries.Count;
+                        if (totalEntries == 0)
                         {
                             throw new Exception("Le patch ZIP est vide");
                         }
-                        Logger.Info("UpdateService", $"Patch contient {archive.Entries.Count} fichier(s)");
+                        Logger.Info("UpdateService", $"Patch contient {totalEntries} fichier(s)");
                     }
                 }
                 catch (InvalidDataException)
                 {
                     throw new Exception("Le fichier téléchargé n'est pas un ZIP valide");
                 }
-
-                // Préparer le redémarrage de l'application après l'extraction du patch
-                // Convertir le chemin du DLL en chemin du EXE
+                
+                // Extraire le patch avec progression
+                int extractedEntries = 0;
+                using (var archive = ZipFile.OpenRead(tempPatchPath))
+                {
+                    foreach (var entry in archive.Entries)
+                    {
+                        if (progressWindow?.IsCancelled == true)
+                        {
+                            throw new OperationCanceledException("Extraction annulée par l'utilisateur");
+                        }
+                        
+                        var entryPath = Path.Combine(appDir, entry.FullName);
+                        var entryDir = Path.GetDirectoryName(entryPath);
+                        
+                        // Créer le répertoire si nécessaire
+                        if (!string.IsNullOrEmpty(entryDir) && !Directory.Exists(entryDir))
+                        {
+                            Directory.CreateDirectory(entryDir);
+                        }
+                        
+                        // Extraire le fichier
+                        if (!string.IsNullOrEmpty(entry.Name))
+                        {
+                            entry.ExtractToFile(entryPath, overwrite: true);
+                            extractedEntries++;
+                            
+                            // Mettre à jour la progression (60% à 90% pour l'extraction)
+                            var extractionProgress = 60.0 + (extractedEntries * 30.0 / totalEntries);
+                            progressWindow?.SetProgress(extractionProgress, $"Extraction: {extractedEntries}/{totalEntries} fichiers...");
+                            
+                            // Petit délai pour permettre à l'UI de se mettre à jour
+                            await Task.Delay(10);
+                        }
+                    }
+                }
+                
+                Logger.Info("UpdateService", $"Patch extrait avec succès: {extractedEntries} fichier(s)");
+                
+                // Supprimer le fichier temporaire du patch
+                try
+                {
+                    File.Delete(tempPatchPath);
+                }
+                catch (Exception deleteEx)
+                {
+                    Logger.Info("UpdateService", $"Impossible de supprimer le fichier temporaire: {deleteEx.Message}");
+                }
+                
+                // Préparer le redémarrage de l'application
                 var assemblyLocation = Assembly.GetExecutingAssembly().Location;
                 var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
-                var exeDir = Path.GetDirectoryName(exePath);
                 
-                Logger.Info("UpdateService", "Patch téléchargé, préparation de l'extraction après fermeture de l'application");
-                progressWindow?.SetStatus("Préparation de la mise à jour...");
-                progressWindow?.SetProgress(100, "Fermeture de l'application pour appliquer le patch...");
+                if (!File.Exists(exePath))
+                {
+                    throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
+                }
                 
-                // Créer un script batch pour extraire le patch (plus simple et plus fiable que PowerShell)
-                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchLauncher.bat");
-                
-                // Échapper les chemins pour le batch (doubler les guillemets et échapper les %)
-                var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
-                var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
+                // Créer un script batch minimal qui attend et redémarre seulement
+                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_Restart.bat");
                 var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
                 
                 var launcherScriptContent = $@"@echo off
-setlocal enabledelayedexpansion
+setlocal
 
-REM Script batch pour extraire le patch et redémarrer l'application
-echo ========================================
-echo Mise a jour d'Amaliassistant
-echo ========================================
-echo.
-echo Attente de la fermeture de l'application...
-
-REM Attendre que l'application se ferme (GameOverlay.App.exe)
+REM Script simple pour redémarrer l'application après mise à jour
+REM Attendre que l'application se ferme
 :WAIT_LOOP
 timeout /t 1 /nobreak >nul 2>&1
 tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
-if ""!ERRORLEVEL!""==""0"" (
-    goto WAIT_LOOP
-)
+if not errorlevel 1 goto WAIT_LOOP
 
-REM Attendre un court instant supplémentaire pour être sûr
-timeout /t 2 /nobreak >nul 2>&1
-
-echo Extraction du patch en cours...
-echo.
-
-REM Extraire le patch avec PowerShell Expand-Archive (méthode la plus fiable)
-powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NoLogo -NonInteractive -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force; exit $LASTEXITCODE"" >nul 2>&1
-
-if !ERRORLEVEL! NEQ 0 (
-    echo.
-    echo ERREUR: Impossible d'extraire le patch
-    echo Fichier: {escapedPatchPath}
-    echo Destination: {escapedAppDir}
-    pause
-    exit /b 1
-)
-
-REM Supprimer le fichier temporaire du patch
-if exist ""{escapedPatchPath}"" (
-    del /F /Q ""{escapedPatchPath}"" >nul 2>&1
-)
-
-echo.
-echo Redemarrage de l'application...
-
-REM Vérifier que l'exe existe
-if not exist ""{escapedExePath}"" (
-    echo ERREUR: Le fichier executable est introuvable: {escapedExePath}
-    pause
-    exit /b 1
-)
-
-REM Lancer l'application en arrière-plan (la fenêtre batch se fermera après)
-start /B "" ""{escapedExePath}""
-
-echo.
-echo Mise a jour terminee avec succes!
+REM Attendre un court instant supplémentaire
 timeout /t 1 /nobreak >nul 2>&1
+
+REM Redémarrer l'application
+start "" ""{escapedExePath}""
+
+REM Supprimer ce script
+del /F /Q ""%~f0"" >nul 2>&1
 
 endlocal
 exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
-
-                // Fermer l'application AVANT d'extraire le patch
-                Logger.Info("UpdateService", "Fermeture de l'application avant l'extraction du patch");
                 
-                // Fermer la fenêtre de progression
-                if (WpfApplication.Current?.Dispatcher != null)
-                {
-                    WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        progressWindow?.Close();
-                    }));
-                }
-                
-                // Lancer le script batch qui gérera l'extraction et le redémarrage (fenêtre minimisée)
+                // Lancer le script de redémarrage en arrière-plan (fenêtre cachée)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = launcherScriptPath,
                     UseShellExecute = true,
-                    CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Minimized
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 };
-
-                try
+                
+                var restartProcess = Process.Start(launcherInfo);
+                if (restartProcess == null)
                 {
-                    // Lancer le script batch
-                    var process = Process.Start(launcherInfo);
-                    if (process == null)
-                    {
-                        throw new Exception("Impossible de lancer le script batch");
-                    }
-                    
-                    Logger.Info("UpdateService", "Script de mise à jour par patch lancé, l'application redémarrera automatiquement après l'extraction");
-                    
-                    // Fermer l'application maintenant, avant que l'extraction ne commence
-                    await Task.Delay(500); // Délai pour que le script démarre
-                    
-                    if (WpfApplication.Current?.Dispatcher != null)
-                    {
-                        WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            Logger.Info("UpdateService", "Fermeture de l'application...");
-                            try
-                            {
-                                WpfApplication.Current.Shutdown();
-                            }
-                            catch (Exception shutdownEx)
-                            {
-                                Logger.Error("UpdateService", $"Erreur lors de la fermeture: {shutdownEx.Message}");
-                                // Forcer la fermeture
-                                Environment.Exit(0);
-                            }
-                        }), System.Windows.Threading.DispatcherPriority.Send);
-                    }
-                    else
-                    {
-                        AdvancedLogger.Warning(AdvancedLogger.Categories.System, "UpdateService", "Dispatcher non disponible, fermeture forcée");
-                        Environment.Exit(0);
-                    }
+                    throw new Exception("Impossible de lancer le script de redémarrage");
                 }
-                catch (Exception patchEx)
+                
+                Logger.Info("UpdateService", "Patch extrait avec succès, redémarrage de l'application...");
+                progressWindow?.SetStatus("Mise à jour terminée, redémarrage...");
+                progressWindow?.SetProgress(100, "L'application va redémarrer automatiquement...");
+                
+                // Attendre un court instant pour que l'utilisateur voie le message
+                await Task.Delay(1000);
+                
+                // Fermer la fenêtre de progression
+                if (WpfApplication.Current?.Dispatcher != null)
                 {
-                    AdvancedLogger.Error(AdvancedLogger.Categories.System, "UpdateService", $"Erreur lors du lancement du script de patch: {patchEx.Message}", patchEx);
-                    throw;
+                    WpfApplication.Current.Dispatcher.Invoke(() =>
+                    {
+                        progressWindow?.Close();
+                    });
                 }
+                
+                // Fermer l'application immédiatement avec Environment.Exit pour éviter les dialogues
+                Logger.Info("UpdateService", "Fermeture de l'application pour redémarrage...");
+                Environment.Exit(0);
             }
             catch (Exception ex)
             {
@@ -695,36 +683,36 @@ exit /b 0
                 Logger.Info("UpdateService", $"Installateur téléchargé ({fileInfo.Length / (1024 * 1024)} MB): {tempPath}");
                 progressWindow?.SetProgress(100, $"Installateur téléchargé: {fileInfo.Length / (1024 * 1024)} MB");
                 progressWindow?.SetInstalling();
-
+                
+                // Marquer qu'une mise à jour est en cours pour éviter les dialogues de confirmation
+                _isUpdating = true;
+                
                 // Préparer le redémarrage de l'application après la mise à jour
-                // Convertir le chemin du DLL en chemin du EXE
                 var assemblyLocation = Assembly.GetExecutingAssembly().Location;
                 var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
-                var exeDir = Path.GetDirectoryName(exePath);
                 
-                // Créer un script batch pour installer la mise à jour (plus simple et plus fiable que PowerShell)
+                if (!File.Exists(exePath))
+                {
+                    throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
+                }
+                
+                // Créer un script batch simple pour installer et redémarrer
                 var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_UpdateLauncher.bat");
-                
-                // Échapper les chemins pour le batch (doubler les guillemets et échapper les %)
                 var escapedTempPath = tempPath.Replace("%", "%%").Replace("\"", "\"\"");
-                var escapedExePathForInstaller = exePath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
                 
                 var launcherScriptContent = $@"@echo off
-setlocal enabledelayedexpansion
+setlocal
 
-REM Script batch pour installer la mise à jour et redémarrer l'application
-echo ========================================
-echo Mise a jour d'Amaliassistant
-echo ========================================
-echo.
-echo Lancement de l'installateur...
+REM Script simple pour installer la mise à jour et redémarrer l'application
+REM Attendre que l'application se ferme
+:WAIT_LOOP
+timeout /t 1 /nobreak >nul 2>&1
+tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
+if not errorlevel 1 goto WAIT_LOOP
 
-REM Vérifier que l'installateur existe
-if not exist ""{escapedTempPath}"" (
-    echo ERREUR: L'installateur est introuvable: {escapedTempPath}
-    pause
-    exit /b 1
-)
+REM Attendre un court instant supplémentaire
+timeout /t 1 /nobreak >nul 2>&1
 
 REM Lancer l'installateur en mode très silencieux
 start /WAIT """" ""{escapedTempPath}"" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES /UPGRADE
@@ -733,103 +721,57 @@ REM Attendre que l'installateur se termine complètement
 :WAIT_INSTALLER
 timeout /t 1 /nobreak >nul 2>&1
 tasklist /FI ""IMAGENAME eq Amaliassistant_Setup.exe"" 2>NUL | find /I /N ""Amaliassistant_Setup.exe"">NUL
-if ""!ERRORLEVEL!""==""0"" (
-    goto WAIT_INSTALLER
-)
+if not errorlevel 1 goto WAIT_INSTALLER
 
 REM Attendre un court instant supplémentaire
 timeout /t 2 /nobreak >nul 2>&1
 
-echo.
-echo Redemarrage de l'application...
+REM Redémarrer l'application
+start "" ""{escapedExePath}""
 
-REM Vérifier que l'exe existe
-if not exist ""{escapedExePathForInstaller}"" (
-    echo ERREUR: Le fichier executable est introuvable: {escapedExePathForInstaller}
-    pause
-    exit /b 1
-)
-
-REM Lancer l'application en arrière-plan (la fenêtre batch se fermera après)
-start /B "" ""{escapedExePathForInstaller}""
-
-echo.
-echo Mise a jour terminee avec succes!
-timeout /t 1 /nobreak >nul 2>&1
-
-REM Supprimer l'installateur temporaire
-if exist ""{escapedTempPath}"" (
-    del /F /Q ""{escapedTempPath}"" >nul 2>&1
-)
+REM Supprimer l'installateur temporaire et ce script
+del /F /Q ""{escapedTempPath}"" >nul 2>&1
+del /F /Q ""%~f0"" >nul 2>&1
 
 endlocal
 exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
-
-                // Fermer l'application AVANT de lancer le script batch
-                Logger.Info("UpdateService", "Fermeture de l'application avant l'installation de la mise à jour");
                 
-                // Fermer la fenêtre de progression
-                if (WpfApplication.Current?.Dispatcher != null)
-                {
-                    WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        progressWindow?.Close();
-                    }));
-                }
-                
-                // Lancer le script batch qui gérera l'installation et le redémarrage (fenêtre minimisée)
+                // Lancer le script de mise à jour en arrière-plan (fenêtre cachée)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = launcherScriptPath,
                     UseShellExecute = true,
-                    CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Minimized
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 };
-
-                try
+                
+                var updateProcess = Process.Start(launcherInfo);
+                if (updateProcess == null)
                 {
-                    // Lancer le script batch
-                    var process = Process.Start(launcherInfo);
-                    if (process == null)
-                    {
-                        throw new Exception("Impossible de lancer le script batch");
-                    }
-                    
-                    Logger.Info("UpdateService", "Script de mise à jour lancé, l'application redémarrera automatiquement après l'installation");
-                    
-                    // Fermer l'application maintenant, avant que l'installateur ne démarre
-                    await Task.Delay(500); // Délai pour que le script démarre
-                    
-                    if (WpfApplication.Current?.Dispatcher != null)
-                    {
-                        WpfApplication.Current.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            Logger.Info("UpdateService", "Fermeture de l'application...");
-                            try
-                            {
-                                WpfApplication.Current.Shutdown();
-                            }
-                            catch (Exception shutdownEx)
-                            {
-                                Logger.Error("UpdateService", $"Erreur lors de la fermeture: {shutdownEx.Message}");
-                                // Forcer la fermeture
-                                Environment.Exit(0);
-                            }
-                        }), System.Windows.Threading.DispatcherPriority.Send);
-                    }
-                    else
-                    {
-                        AdvancedLogger.Warning(AdvancedLogger.Categories.System, "UpdateService", "Dispatcher non disponible, fermeture forcée");
-                        Environment.Exit(0);
-                    }
+                    throw new Exception("Impossible de lancer le script de mise à jour");
                 }
-                catch (Exception installEx)
+                
+                Logger.Info("UpdateService", "Installateur prêt, redémarrage de l'application...");
+                progressWindow?.SetStatus("Installation de la mise à jour...");
+                progressWindow?.SetProgress(100, "L'application va se fermer et redémarrer automatiquement...");
+                
+                // Attendre un court instant pour que l'utilisateur voie le message
+                await Task.Delay(1000);
+                
+                // Fermer la fenêtre de progression
+                if (WpfApplication.Current?.Dispatcher != null)
                 {
-                    AdvancedLogger.Error(AdvancedLogger.Categories.System, "UpdateService", $"Erreur lors du lancement du script de mise à jour: {installEx.Message}", installEx);
-                    throw;
+                    WpfApplication.Current.Dispatcher.Invoke(() =>
+                    {
+                        progressWindow?.Close();
+                    });
                 }
+                
+                // Fermer l'application immédiatement avec Environment.Exit pour éviter les dialogues
+                Logger.Info("UpdateService", "Fermeture de l'application pour redémarrage...");
+                Environment.Exit(0);
             }
             catch (Exception ex)
             {
