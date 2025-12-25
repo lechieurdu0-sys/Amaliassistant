@@ -577,9 +577,12 @@ if not exist ""{escapedExePath}"" (
     exit /b 1
 )
 
-REM Redémarrer l'application directement
+REM Redémarrer l'application
 echo Demarrage de l'application...
-""{escapedExePath}""
+start "" ""{escapedExePath}""
+
+REM Attendre un peu pour vérifier que l'application démarre
+timeout /t 2 /nobreak >nul 2>&1
 
 REM Supprimer le flag d'exécution
 del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
