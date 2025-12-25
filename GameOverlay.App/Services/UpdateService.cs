@@ -403,80 +403,26 @@ namespace GameOverlay.App.Services
                     throw new Exception("Le patch téléchargé est vide ou invalide");
                 }
 
-                Logger.Info("UpdateService", $"Patch téléchargé ({fileInfo.Length / 1024} KB), extraction dans: {appDir}");
+                Logger.Info("UpdateService", $"Patch téléchargé ({fileInfo.Length / 1024} KB), préparation de l'extraction...");
                 
                 // Marquer qu'une mise à jour est en cours pour éviter les dialogues de confirmation
                 _isUpdating = true;
                 
-                // Extraire directement le patch dans le code C# avec progression visible
-                progressWindow?.SetStatus("Extraction du patch...");
-                progressWindow?.SetDownloading(false); // Désactiver le bouton Annuler pendant l'extraction
-                
-                // Vérifier que c'est bien un fichier ZIP valide et compter les entrées
-                int totalEntries = 0;
+                // Vérifier que c'est bien un fichier ZIP valide
                 try
                 {
                     using (var archive = ZipFile.OpenRead(tempPatchPath))
                     {
-                        totalEntries = archive.Entries.Count;
-                        if (totalEntries == 0)
+                        if (archive.Entries.Count == 0)
                         {
                             throw new Exception("Le patch ZIP est vide");
                         }
-                        Logger.Info("UpdateService", $"Patch contient {totalEntries} fichier(s)");
+                        Logger.Info("UpdateService", $"Patch contient {archive.Entries.Count} fichier(s)");
                     }
                 }
                 catch (InvalidDataException)
                 {
                     throw new Exception("Le fichier téléchargé n'est pas un ZIP valide");
-                }
-                
-                // Extraire le patch avec progression
-                int extractedEntries = 0;
-                using (var archive = ZipFile.OpenRead(tempPatchPath))
-                {
-                    foreach (var entry in archive.Entries)
-                    {
-                        if (progressWindow?.IsCancelled == true)
-                        {
-                            throw new OperationCanceledException("Extraction annulée par l'utilisateur");
-                        }
-                        
-                        var entryPath = Path.Combine(appDir, entry.FullName);
-                        var entryDir = Path.GetDirectoryName(entryPath);
-                        
-                        // Créer le répertoire si nécessaire
-                        if (!string.IsNullOrEmpty(entryDir) && !Directory.Exists(entryDir))
-                        {
-                            Directory.CreateDirectory(entryDir);
-                        }
-                        
-                        // Extraire le fichier
-                        if (!string.IsNullOrEmpty(entry.Name))
-                        {
-                            entry.ExtractToFile(entryPath, overwrite: true);
-                            extractedEntries++;
-                            
-                            // Mettre à jour la progression (60% à 90% pour l'extraction)
-                            var extractionProgress = 60.0 + (extractedEntries * 30.0 / totalEntries);
-                            progressWindow?.SetProgress(extractionProgress, $"Extraction: {extractedEntries}/{totalEntries} fichiers...");
-                            
-                            // Petit délai pour permettre à l'UI de se mettre à jour
-                            await Task.Delay(10);
-                        }
-                    }
-                }
-                
-                Logger.Info("UpdateService", $"Patch extrait avec succès: {extractedEntries} fichier(s)");
-                
-                // Supprimer le fichier temporaire du patch
-                try
-                {
-                    File.Delete(tempPatchPath);
-                }
-                catch (Exception deleteEx)
-                {
-                    Logger.Info("UpdateService", $"Impossible de supprimer le fichier temporaire: {deleteEx.Message}");
                 }
                 
                 // Préparer le redémarrage de l'application
@@ -488,25 +434,69 @@ namespace GameOverlay.App.Services
                     throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
                 }
                 
-                // Créer un script batch minimal qui attend et redémarre seulement
-                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_Restart.bat");
+                // Créer un script batch qui attend la fermeture, extrait le patch, puis redémarre
+                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchInstaller.bat");
+                var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
                 var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
                 
                 var launcherScriptContent = $@"@echo off
-setlocal
+setlocal enabledelayedexpansion
 
-REM Script simple pour redémarrer l'application après mise à jour
-REM Attendre que l'application se ferme
+REM Script pour extraire le patch après fermeture de l'application et redémarrer
+echo ========================================
+echo Mise a jour d'Amaliassistant
+echo ========================================
+echo.
+echo Attente de la fermeture de l'application...
+
+REM Attendre que l'application se ferme (GameOverlay.App.exe)
 :WAIT_LOOP
 timeout /t 1 /nobreak >nul 2>&1
 tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
 if not errorlevel 1 goto WAIT_LOOP
 
-REM Attendre un court instant supplémentaire
-timeout /t 1 /nobreak >nul 2>&1
+REM Attendre un court instant supplémentaire pour être sûr que tous les fichiers sont libérés
+timeout /t 2 /nobreak >nul 2>&1
+
+echo Extraction du patch en cours...
+echo.
+
+REM Extraire le patch avec PowerShell (méthode fiable, fenêtre cachée)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NoLogo -NonInteractive -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction Stop; exit $LASTEXITCODE""
+
+if errorlevel 1 (
+    echo.
+    echo ERREUR: Impossible d'extraire le patch
+    echo Fichier: {escapedPatchPath}
+    echo Destination: {escapedAppDir}
+    pause
+    exit /b 1
+)
+
+echo Patch extrait avec succes!
+echo.
+
+REM Supprimer le fichier temporaire du patch
+if exist ""{escapedPatchPath}"" (
+    del /F /Q ""{escapedPatchPath}"" >nul 2>&1
+)
+
+echo Redemarrage de l'application...
+
+REM Vérifier que l'exe existe
+if not exist ""{escapedExePath}"" (
+    echo ERREUR: Le fichier executable est introuvable: {escapedExePath}
+    pause
+    exit /b 1
+)
 
 REM Redémarrer l'application
 start "" ""{escapedExePath}""
+
+echo.
+echo Mise a jour terminee avec succes!
+timeout /t 1 /nobreak >nul 2>&1
 
 REM Supprimer ce script
 del /F /Q ""%~f0"" >nul 2>&1
@@ -516,7 +506,7 @@ exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
-                // Lancer le script de redémarrage en arrière-plan (fenêtre cachée)
+                // Lancer le script de mise à jour en arrière-plan (fenêtre cachée)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = launcherScriptPath,
@@ -525,15 +515,16 @@ exit /b 0
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
                 
-                var restartProcess = Process.Start(launcherInfo);
-                if (restartProcess == null)
+                var updateProcess = Process.Start(launcherInfo);
+                if (updateProcess == null)
                 {
-                    throw new Exception("Impossible de lancer le script de redémarrage");
+                    throw new Exception("Impossible de lancer le script de mise à jour");
                 }
                 
-                Logger.Info("UpdateService", "Patch extrait avec succès, redémarrage de l'application...");
-                progressWindow?.SetStatus("Mise à jour terminée, redémarrage...");
-                progressWindow?.SetProgress(100, "L'application va redémarrer automatiquement...");
+                Logger.Info("UpdateService", "Script de mise à jour lancé, fermeture de l'application pour appliquer le patch...");
+                progressWindow?.SetStatus("Préparation de la mise à jour...");
+                progressWindow?.SetProgress(90, "L'application va se fermer pour appliquer le patch...");
+                progressWindow?.SetDownloading(false); // Désactiver le bouton Annuler
                 
                 // Attendre un court instant pour que l'utilisateur voie le message
                 await Task.Delay(1000);
@@ -548,7 +539,7 @@ exit /b 0
                 }
                 
                 // Fermer l'application immédiatement avec Environment.Exit pour éviter les dialogues
-                Logger.Info("UpdateService", "Fermeture de l'application pour redémarrage...");
+                Logger.Info("UpdateService", "Fermeture de l'application pour appliquer le patch...");
                 Environment.Exit(0);
             }
             catch (Exception ex)
