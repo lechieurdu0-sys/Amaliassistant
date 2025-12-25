@@ -104,8 +104,8 @@ namespace GameOverlay.App
                         LoadWindowPositionsFromFile();
                         LoadConfiguration();
                         
-                        // Vérifier si c'est la première installation et afficher le message de bienvenue
-                        CheckAndShowWelcomeMessage();
+                        // Message de bienvenue désactivé (demandé par l'utilisateur)
+                        // CheckAndShowWelcomeMessage();
                         
                         // Créer les fenêtres au démarrage pour démarrer la surveillance même si elles ne sont pas visibles
                         InitializeWindowsInBackground();

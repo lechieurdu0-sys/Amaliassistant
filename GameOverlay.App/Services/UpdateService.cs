@@ -547,10 +547,16 @@ if not exist ""{escapedExePath}"" (
 )
 
 REM Redémarrer l'application
+echo Demarrage de l'application...
 start "" ""{escapedExePath}""
 
+echo.
+echo ========================================
 echo Mise a jour terminee avec succes!
-timeout /t 1 /nobreak >nul 2>&1
+echo ========================================
+echo.
+echo L'application va redemarrer dans quelques secondes...
+timeout /t 3 /nobreak
 
 REM Supprimer ce script
 del /F /Q ""%~f0"" >nul 2>&1
@@ -560,14 +566,14 @@ exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
-                // Lancer le script batch avec cmd.exe pour qu'il s'affiche correctement
+                // Lancer le script batch avec start pour qu'il s'affiche dans sa propre fenêtre
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c \"{launcherScriptPath}\"",
+                    Arguments = $"/c start \"Mise à jour Amaliassistant\" /WAIT \"{launcherScriptPath}\"",
                     UseShellExecute = true,
-                    CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Normal
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 };
                 
                 var scriptProcess = Process.Start(launcherInfo);
