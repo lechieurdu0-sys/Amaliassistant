@@ -528,13 +528,13 @@ exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
-                // Lancer le script de mise à jour en arrière-plan (fenêtre cachée)
+                // Lancer le script de mise à jour (fenêtre visible pour voir la progression)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = launcherScriptPath,
                     UseShellExecute = true,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
                 };
                 
                 var updateProcess = Process.Start(launcherInfo);
@@ -548,8 +548,8 @@ exit /b 0
                 progressWindow?.SetProgress(90, "L'application va se fermer pour appliquer le patch...");
                 progressWindow?.SetDownloading(false); // Désactiver le bouton Annuler
                 
-                // Attendre un court instant pour que l'utilisateur voie le message
-                await Task.Delay(1000);
+                // Attendre un court instant pour que l'utilisateur voie le message et que le script démarre
+                await Task.Delay(1500);
                 
                 // Fermer la fenêtre de progression
                 if (WpfApplication.Current?.Dispatcher != null)
