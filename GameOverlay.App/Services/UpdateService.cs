@@ -554,33 +554,15 @@ if not exist ""{escapedExePath}"" (
     exit /b 1
 )
 
-REM Redémarrer l'application (sans ouvrir de nouvelle fenêtre CMD)
+REM Redémarrer l'application
 echo Demarrage de l'application...
-""{escapedExePath}"" &
+start "" ""{escapedExePath}""
 
 REM Attendre un peu pour vérifier que l'application démarre
-timeout /t 2 /nobreak
-
-echo.
-echo ========================================
-echo Mise a jour terminee avec succes!
-echo ========================================
-echo.
-echo L'application a ete redemarree.
-echo.
+timeout /t 1 /nobreak >nul 2>&1
 
 REM Supprimer le flag d'exécution
 del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
-
-REM Supprimer le script batch maintenant qu'on a terminé
-if exist ""%~f0"" (
-    REM Créer un script temporaire pour supprimer ce script après fermeture
-    echo @echo off > ""%TEMP%\DeleteUpdateScript.bat""
-    echo timeout /t 1 /nobreak >nul 2>&1 >> ""%TEMP%\DeleteUpdateScript.bat""
-    echo del /F /Q ""{escapedLauncherScriptPath}"" >nul 2>&1 >> ""%TEMP%\DeleteUpdateScript.bat""
-    echo del /F /Q ""%%~f0"" >nul 2>&1 >> ""%TEMP%\DeleteUpdateScript.bat""
-    start /MIN "" ""%TEMP%\DeleteUpdateScript.bat""
-)
 
 REM Fermer cette fenêtre immédiatement
 exit
