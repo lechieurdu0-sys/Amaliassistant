@@ -470,57 +470,87 @@ namespace GameOverlay.App.Services
                     throw new Exception("Le fichier téléchargé n'est pas un ZIP valide");
                 }
                 
-                // Si certains fichiers sont verrouillés, créer un script minimal pour les extraire après fermeture
-                string? launcherScriptPath = null;
-                if (failedFiles.Count > 0)
+                // TOUJOURS créer un script batch pour gérer la fermeture et le redémarrage proprement
+                // Cela garantit que l'application est bien fermée avant de redémarrer
+                Logger.Info("UpdateService", failedFiles.Count > 0 
+                    ? $"Création d'un script pour extraire {failedFiles.Count} fichier(s) après fermeture et redémarrer..." 
+                    : "Création d'un script pour redémarrer l'application après fermeture...");
+                
+                var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+                var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
+                
+                if (!File.Exists(exePath))
                 {
-                    Logger.Info("UpdateService", $"Création d'un script pour extraire {failedFiles.Count} fichier(s) après fermeture...");
-                    
-                    var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-                    var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
-                    
-                    if (!File.Exists(exePath))
-                    {
-                        throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
-                    }
-                    
-                    launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchInstaller.bat");
-                    var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
-                    var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
-                    var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
-                    
-                    // Utiliser tar.exe (disponible sur Windows 10+) au lieu de PowerShell
-                    var launcherScriptContent = $@"@echo off
+                    throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
+                }
+                
+                var launcherScriptPath = Path.Combine(Path.GetTempPath(), "Amaliassistant_PatchInstaller.bat");
+                var escapedPatchPath = tempPatchPath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
+                
+                // Script batch qui attend la fermeture, extrait les fichiers restants si nécessaire, puis redémarre
+                var launcherScriptContent = $@"@echo off
 setlocal enabledelayedexpansion
 
 echo ========================================
-echo Finalisation de la mise a jour
+echo Mise a jour d'Amaliassistant
 echo ========================================
 echo.
 
-REM Attendre que l'application se ferme
+REM Attendre que l'application se ferme complètement
+echo Attente de la fermeture de l'application...
+set WAIT_COUNT=0
 :WAIT_LOOP
 timeout /t 1 /nobreak >nul 2>&1
+set /a WAIT_COUNT+=1
 tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
-if not errorlevel 1 goto WAIT_LOOP
-
-timeout /t 1 /nobreak >nul 2>&1
-
-REM Extraire les fichiers restants avec tar.exe (disponible sur Windows 10+)
-where tar.exe >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo Extraction des fichiers restants...
-    tar.exe -xf ""{escapedPatchPath}"" -C ""{escapedAppDir}"" --strip-components=0 >nul 2>&1
-) else (
-    REM Fallback: utiliser PowerShell uniquement si tar n'est pas disponible
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction SilentlyContinue"" >nul 2>&1
+if not errorlevel 1 (
+    if !WAIT_COUNT! LSS 60 (
+        goto WAIT_LOOP
+    ) else (
+        echo ATTENTION: L'application ne se ferme pas apres 60 secondes
+    )
 )
 
-REM Supprimer le fichier patch temporaire
-if exist ""{escapedPatchPath}"" del /F /Q ""{escapedPatchPath}"" >nul 2>&1
+REM Attendre encore 2 secondes pour être sûr que tous les fichiers sont libérés
+echo Application fermee, attente de 2 secondes...
+timeout /t 2 /nobreak
+
+REM Si des fichiers sont verrouillés, les extraire maintenant
+if exist ""{escapedPatchPath}"" (
+    echo.
+    echo Extraction des fichiers restants...
+    
+    REM Essayer avec tar.exe d'abord (disponible sur Windows 10+)
+    where tar.exe >nul 2>&1
+    if !ERRORLEVEL! EQU 0 (
+        tar.exe -xf ""{escapedPatchPath}"" -C ""{escapedAppDir}"" --strip-components=0 >nul 2>&1
+    ) else (
+        REM Fallback: utiliser PowerShell (caché)
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NoLogo -NonInteractive -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction SilentlyContinue"" >nul 2>&1
+    )
+    
+    REM Supprimer le fichier patch temporaire
+    del /F /Q ""{escapedPatchPath}"" >nul 2>&1
+    echo Fichiers extraits avec succes!
+)
+
+echo.
+echo Redemarrage de l'application...
+
+REM Vérifier que l'exe existe
+if not exist ""{escapedExePath}"" (
+    echo ERREUR: Le fichier executable est introuvable: {escapedExePath}
+    pause
+    exit /b 1
+)
 
 REM Redémarrer l'application
 start "" ""{escapedExePath}""
+
+echo Mise a jour terminee avec succes!
+timeout /t 1 /nobreak >nul 2>&1
 
 REM Supprimer ce script
 del /F /Q ""%~f0"" >nul 2>&1
@@ -528,45 +558,33 @@ del /F /Q ""%~f0"" >nul 2>&1
 endlocal
 exit /b 0
 ";
-                    File.WriteAllText(launcherScriptPath, launcherScriptContent);
-                    
-                    var launcherInfo = new ProcessStartInfo
-                    {
-                        FileName = launcherScriptPath,
-                        UseShellExecute = true,
-                        CreateNoWindow = true,
-                        WindowStyle = ProcessWindowStyle.Hidden
-                    };
-                    
-                    Process.Start(launcherInfo);
-                }
+                File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
-                // Supprimer le fichier patch temporaire si tout a été extrait
-                if (failedFiles.Count == 0 && File.Exists(tempPatchPath))
+                // Lancer le script batch avec cmd.exe pour qu'il s'affiche correctement
+                var launcherInfo = new ProcessStartInfo
                 {
-                    try
-                    {
-                        File.Delete(tempPatchPath);
-                    }
-                    catch
-                    {
-                        // Ignorer si on ne peut pas supprimer
-                    }
+                    FileName = "cmd.exe",
+                    Arguments = $"/c \"{launcherScriptPath}\"",
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
+                };
+                
+                var scriptProcess = Process.Start(launcherInfo);
+                if (scriptProcess == null)
+                {
+                    throw new Exception("Impossible de lancer le script de redémarrage");
                 }
                 
-                Logger.Info("UpdateService", "Patch extrait, redémarrage de l'application...");
+                Logger.Info("UpdateService", "Script de redémarrage lancé, attente de 2 secondes avant fermeture...");
+                
+                Logger.Info("UpdateService", "Patch extrait, préparation du redémarrage...");
                 progressWindow?.SetStatus("Mise à jour terminée !");
-                progressWindow?.SetProgress(95, "Redémarrage de l'application...");
+                progressWindow?.SetProgress(95, "L'application va se fermer et redémarrer...");
                 progressWindow?.SetDownloading(false);
                 
-                // Attendre un court instant pour que l'utilisateur voie le message
-                await Task.Delay(1000);
-                
-                // Si on a un script pour les fichiers restants, attendre qu'il démarre
-                if (launcherScriptPath != null && File.Exists(launcherScriptPath))
-                {
-                    await Task.Delay(500);
-                }
+                // Attendre suffisamment longtemps pour que le script batch démarre et soit prêt
+                await Task.Delay(2000);
                 
                 // Fermer la fenêtre de progression
                 if (WpfApplication.Current?.Dispatcher != null)
@@ -577,32 +595,12 @@ exit /b 0
                     });
                 }
                 
+                // Attendre encore un peu pour que la fenêtre se ferme complètement
+                await Task.Delay(500);
+                
                 // Fermer l'application immédiatement avec Environment.Exit pour éviter les dialogues
-                Logger.Info("UpdateService", "Mise à jour terminée, redémarrage de l'application...");
-                
-                // Redémarrer directement l'application si tout a été extrait
-                if (failedFiles.Count == 0)
-                {
-                    var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-                    var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
-                    
-                    if (File.Exists(exePath))
-                    {
-                        try
-                        {
-                            Process.Start(new ProcessStartInfo
-                            {
-                                FileName = exePath,
-                                UseShellExecute = true
-                            });
-                        }
-                        catch (Exception restartEx)
-                        {
-                            Logger.Error("UpdateService", $"Erreur lors du redémarrage: {restartEx.Message}");
-                        }
-                    }
-                }
-                
+                // Le script batch va attendre que l'application se ferme, puis redémarrer
+                Logger.Info("UpdateService", "Fermeture de l'application, le script va redémarrer automatiquement...");
                 Environment.Exit(0);
             }
             catch (Exception ex)
