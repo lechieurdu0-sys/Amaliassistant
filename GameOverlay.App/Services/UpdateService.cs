@@ -556,7 +556,7 @@ if not exist ""{escapedExePath}"" (
 
 REM Redémarrer l'application (sans ouvrir de nouvelle fenêtre CMD)
 echo Demarrage de l'application...
-cmd /c start "" /MIN ""{escapedExePath}""
+""{escapedExePath}"" &
 
 REM Attendre un peu pour vérifier que l'application démarre
 timeout /t 2 /nobreak
