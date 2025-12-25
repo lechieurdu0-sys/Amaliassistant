@@ -489,6 +489,7 @@ namespace GameOverlay.App.Services
                 var escapedAppDir = appDir.Replace("%", "%%").Replace("\"", "\"\"");
                 var escapedExePath = exePath.Replace("%", "%%").Replace("\"", "\"\"");
                 var escapedLauncherScriptPath = launcherScriptPath.Replace("%", "%%").Replace("\"", "\"\"");
+                var escapedNewVersion = updateInfo.Version.Replace("%", "%%").Replace("\"", "\"\"");
                 
                 // Script batch qui attend la fermeture, extrait les fichiers restants si nécessaire, puis redémarre
                 var launcherScriptContent = $@"@echo off
