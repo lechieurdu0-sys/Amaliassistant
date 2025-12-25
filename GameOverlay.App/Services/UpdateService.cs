@@ -451,16 +451,35 @@ echo.
 echo Attente de la fermeture de l'application...
 
 REM Attendre que l'application se ferme (GameOverlay.App.exe)
+set WAIT_COUNT=0
 :WAIT_LOOP
 timeout /t 1 /nobreak >nul 2>&1
+set /a WAIT_COUNT+=1
 tasklist /FI ""IMAGENAME eq GameOverlay.App.exe"" 2>NUL | find /I /N ""GameOverlay.App.exe"">NUL
-if not errorlevel 1 goto WAIT_LOOP
+if not errorlevel 1 (
+    if !WAIT_COUNT! LSS 60 (
+        goto WAIT_LOOP
+    ) else (
+        echo ATTENTION: L'application ne se ferme pas apres 60 secondes, extraction forcee...
+    )
+)
 
 REM Attendre un court instant supplémentaire pour être sûr que tous les fichiers sont libérés
-timeout /t 2 /nobreak >nul 2>&1
+echo Application fermee, attente de 2 secondes...
+timeout /t 2 /nobreak
 
-echo Extraction du patch en cours...
 echo.
+echo Extraction du patch en cours...
+echo Fichier: {escapedPatchPath}
+echo Destination: {escapedAppDir}
+echo.
+
+REM Vérifier que le fichier patch existe
+if not exist ""{escapedPatchPath}"" (
+    echo ERREUR: Le fichier patch est introuvable: {escapedPatchPath}
+    pause
+    exit /b 1
+)
 
 REM Extraire le patch avec PowerShell (méthode fiable, fenêtre cachée)
 powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NoLogo -NonInteractive -Command ""Expand-Archive -Path '{escapedPatchPath}' -DestinationPath '{escapedAppDir}' -Force -ErrorAction Stop; exit $LASTEXITCODE""
@@ -483,6 +502,8 @@ if exist ""{escapedPatchPath}"" (
 )
 
 echo Redemarrage de l'application...
+echo Chemin: {escapedExePath}
+echo.
 
 REM Vérifier que l'exe existe
 if not exist ""{escapedExePath}"" (
@@ -496,7 +517,8 @@ start "" ""{escapedExePath}""
 
 echo.
 echo Mise a jour terminee avec succes!
-timeout /t 1 /nobreak >nul 2>&1
+echo L'application va redemarrer dans quelques instants...
+timeout /t 2 /nobreak
 
 REM Supprimer ce script
 del /F /Q ""%~f0"" >nul 2>&1
