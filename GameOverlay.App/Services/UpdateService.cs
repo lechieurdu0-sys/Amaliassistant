@@ -556,24 +556,26 @@ echo Mise a jour terminee avec succes!
 echo ========================================
 echo.
 echo L'application va redemarrer dans quelques secondes...
-timeout /t 3 /nobreak
+timeout /t 2 /nobreak
 
-REM Supprimer ce script
-del /F /Q ""%~f0"" >nul 2>&1
+REM Supprimer le flag d'exécution
+del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
+
+REM Ne pas supprimer le script ici car il est en cours d'exécution
+REM Il sera supprimé au prochain redémarrage si nécessaire
 
 endlocal
 exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
-                // Lancer le script batch avec start pour qu'il s'affiche dans sa propre fenêtre
+                // Lancer le script batch directement - il s'affichera dans sa propre fenêtre
                 var launcherInfo = new ProcessStartInfo
                 {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c start \"Mise à jour Amaliassistant\" /WAIT \"{launcherScriptPath}\"",
+                    FileName = launcherScriptPath,
                     UseShellExecute = true,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
                 };
                 
                 var scriptProcess = Process.Start(launcherInfo);
