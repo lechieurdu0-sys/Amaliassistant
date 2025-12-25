@@ -8,9 +8,9 @@
 [Setup]
 AppId={{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}
 AppName=Amaliassistant
-AppVersion=1.0.0.22
-VersionInfoVersion=1.0.0.22
-VersionInfoTextVersion=1.0.0.22
+AppVersion=1.0.0.23
+VersionInfoVersion=1.0.0.23
+VersionInfoTextVersion=1.0.0.23
 AppPublisher=Amaliassistant
 AppPublisherURL=
 AppSupportURL=
