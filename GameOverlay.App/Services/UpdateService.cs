@@ -137,30 +137,30 @@ namespace GameOverlay.App.Services
                 using (var quickClient = CreateQuickHttpClient())
                 {
                     var response = await quickClient.GetStringAsync(UpdateXmlUrl);
-                    var doc = XDocument.Parse(response);
-                    var item = doc.Element("item");
-                    
-                    if (item == null)
-                        return null;
+                var doc = XDocument.Parse(response);
+                var item = doc.Element("item");
+                
+                if (item == null)
+                    return null;
 
-                    var version = item.Element("version")?.Value;
-                    var url = item.Element("url")?.Value;
-                    var patchUrl = item.Element("patch_url")?.Value;
-                    var changelog = item.Element("changelog")?.Value;
-                    var mandatoryStr = item.Element("mandatory")?.Value;
-                    var mandatory = mandatoryStr?.ToLower() == "true";
+                var version = item.Element("version")?.Value;
+                var url = item.Element("url")?.Value;
+                var patchUrl = item.Element("patch_url")?.Value;
+                var changelog = item.Element("changelog")?.Value;
+                var mandatoryStr = item.Element("mandatory")?.Value;
+                var mandatory = mandatoryStr?.ToLower() == "true";
 
-                    if (string.IsNullOrEmpty(version) || string.IsNullOrEmpty(url))
-                        return null;
+                if (string.IsNullOrEmpty(version) || string.IsNullOrEmpty(url))
+                    return null;
 
-                    return new UpdateInfo
-                    {
-                        Version = version,
-                        DownloadUrl = url,
-                        PatchUrl = string.IsNullOrWhiteSpace(patchUrl) ? null : patchUrl,
-                        ChangelogUrl = changelog,
-                        Mandatory = mandatory
-                    };
+                return new UpdateInfo
+                {
+                    Version = version,
+                    DownloadUrl = url,
+                    PatchUrl = string.IsNullOrWhiteSpace(patchUrl) ? null : patchUrl,
+                    ChangelogUrl = changelog,
+                    Mandatory = mandatory
+                };
                 }
             }
             catch (TaskCanceledException)
@@ -231,19 +231,19 @@ namespace GameOverlay.App.Services
                     try
                     {
                         Logger.Info("UpdateService", "Affichage du dialogue de mise à jour");
-                        var message = $"Une nouvelle version est disponible !\n\n" +
-                                     $"Version actuelle: {currentVersion}\n" +
-                                     $"Nouvelle version: {newVersion}\n\n" +
-                                     $"Souhaitez-vous télécharger et installer la mise à jour maintenant ?";
+                var message = $"Une nouvelle version est disponible !\n\n" +
+                             $"Version actuelle: {currentVersion}\n" +
+                             $"Nouvelle version: {newVersion}\n\n" +
+                             $"Souhaitez-vous télécharger et installer la mise à jour maintenant ?";
 
-                        var result = WpfMessageBox.Show(
-                            message,
-                            "Mise à jour disponible",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Question);
+                var result = WpfMessageBox.Show(
+                    message,
+                    "Mise à jour disponible",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
 
-                        if (result == MessageBoxResult.Yes)
-                        {
+                if (result == MessageBoxResult.Yes)
+                {
                             // Afficher la fenêtre de progression et lancer la mise à jour
                             Logger.Info("UpdateService", "Démarrage de la mise à jour avec fenêtre de progression");
                             var progressWindow = new UpdateProgressWindow();
@@ -469,7 +469,7 @@ namespace GameOverlay.App.Services
                 {
                     throw new Exception("Le fichier téléchargé n'est pas un ZIP valide");
                 }
-                
+
                 // TOUJOURS créer un script batch pour gérer la fermeture et le redémarrage proprement
                 // Cela garantit que l'application est bien fermée avant de redémarrer
                 Logger.Info("UpdateService", failedFiles.Count > 0 
@@ -553,17 +553,21 @@ if not exist ""{escapedExePath}"" (
     exit /b 1
 )
 
-REM Redémarrer l'application
+REM Redémarrer l'application en arrière-plan (sans ouvrir de nouvelle fenêtre CMD)
 echo Demarrage de l'application...
-start "" ""{escapedExePath}""
+start /B "" ""{escapedExePath}""
+
+REM Attendre un peu pour vérifier que l'application démarre
+timeout /t 2 /nobreak
 
 echo.
 echo ========================================
 echo Mise a jour terminee avec succes!
 echo ========================================
 echo.
-echo L'application va redemarrer dans quelques secondes...
-timeout /t 2 /nobreak
+echo L'application a ete redemarree.
+echo Cette fenetre va se fermer dans 3 secondes...
+timeout /t 3 /nobreak
 
 REM Supprimer le flag d'exécution
 del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
@@ -647,19 +651,19 @@ exit /b 0
                                 try
                                 {
                                     await DownloadAndInstallFull(updateInfo, newProgressWindow);
-                                }
-                                catch (Exception fallbackEx)
-                                {
-                                    Logger.Error("UpdateService", $"Erreur lors du fallback vers l'installateur: {fallbackEx.Message}");
+                }
+                catch (Exception fallbackEx)
+                {
+                    Logger.Error("UpdateService", $"Erreur lors du fallback vers l'installateur: {fallbackEx.Message}");
                                     WpfApplication.Current.Dispatcher.Invoke(() =>
                                     {
                                         newProgressWindow?.Close();
-                                        WpfMessageBox.Show(
+                    WpfMessageBox.Show(
                                             $"Erreur lors du téléchargement de l'installateur:\n{fallbackEx.Message}\n\n" +
                                             "Veuillez télécharger manuellement depuis GitHub.",
-                                            "Erreur de mise à jour",
-                                            MessageBoxButton.OK,
-                                            MessageBoxImage.Error);
+                        "Erreur de mise à jour",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
                                     });
                                 }
                             });
