@@ -582,8 +582,8 @@ if exist ""%~f0"" (
     start /MIN "" ""%TEMP%\DeleteUpdateScript.bat""
 )
 
-REM Fermer cette fenêtre
-exit /b 0
+REM Fermer cette fenêtre immédiatement
+exit
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
                 
