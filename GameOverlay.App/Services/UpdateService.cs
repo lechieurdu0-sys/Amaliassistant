@@ -491,7 +491,14 @@ namespace GameOverlay.App.Services
                 
                 // Script batch qui attend la fermeture, extrait les fichiers restants si nécessaire, puis redémarre
                 var launcherScriptContent = $@"@echo off
+title Mise a jour d'Amaliassistant
 setlocal enabledelayedexpansion
+
+REM Empêcher l'exécution multiple
+if exist ""%TEMP%\Amaliassistant_Update_Running.flag"" (
+    exit /b 0
+)
+echo. > ""%TEMP%\Amaliassistant_Update_Running.flag""
 
 echo ========================================
 echo Mise a jour d'Amaliassistant
