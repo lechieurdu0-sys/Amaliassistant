@@ -582,12 +582,17 @@ echo Demarrage de l'application...
 start "" ""{escapedExePath}""
 
 REM Attendre un peu pour vérifier que l'application démarre
-timeout /t 2 /nobreak >nul 2>&1
+timeout /t 3 /nobreak
 
 REM Supprimer le flag d'exécution
 del /F /Q ""%TEMP%\Amaliassistant_Update_Running.flag"" >nul 2>&1
 
-REM Fermer cette fenêtre immédiatement
+echo.
+echo Mise a jour terminee!
+echo Cette fenetre va se fermer dans 2 secondes...
+timeout /t 2 /nobreak
+
+REM Fermer cette fenêtre
 exit
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
