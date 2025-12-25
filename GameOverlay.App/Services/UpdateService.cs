@@ -487,14 +487,15 @@ if not exist ""{escapedExePath}"" (
     exit /b 1
 )
 
-REM Lancer l'application
-start "" ""{escapedExePath}""
+REM Lancer l'application en arrière-plan (la fenêtre batch se fermera après)
+start /B "" ""{escapedExePath}""
 
 echo.
 echo Mise a jour terminee avec succes!
 timeout /t 1 /nobreak >nul 2>&1
 
 endlocal
+exit /b 0
 exit /b 0
 ";
                 File.WriteAllText(launcherScriptPath, launcherScriptContent);
@@ -750,8 +751,8 @@ if not exist ""{escapedExePathForInstaller}"" (
     exit /b 1
 )
 
-REM Lancer l'application
-start "" ""{escapedExePathForInstaller}""
+REM Lancer l'application en arrière-plan (la fenêtre batch se fermera après)
+start /B "" ""{escapedExePathForInstaller}""
 
 echo.
 echo Mise a jour terminee avec succes!
