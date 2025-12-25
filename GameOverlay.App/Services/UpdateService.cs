@@ -779,13 +779,13 @@ exit /b 0
                     }));
                 }
                 
-                // Lancer le script batch qui gérera l'installation et le redémarrage
+                // Lancer le script batch qui gérera l'installation et le redémarrage (fenêtre minimisée)
                 var launcherInfo = new ProcessStartInfo
                 {
                     FileName = launcherScriptPath,
                     UseShellExecute = true,
                     CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Normal
+                    WindowStyle = ProcessWindowStyle.Minimized
                 };
 
                 try
