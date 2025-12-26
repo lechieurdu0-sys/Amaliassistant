@@ -5,6 +5,7 @@ using FormsColorDialog = System.Windows.Forms.ColorDialog;
 using GameOverlay.Kikimeter.Views;
 using GameOverlay.Kikimeter.Services;
 using GameOverlay.Kikimeter.Models;
+using GameOverlay.App.Services;
 using Newtonsoft.Json;
 using System;
 using System.Collections;
@@ -67,6 +68,10 @@ namespace GameOverlay.App
         private readonly List<GameOverlay.Kikimeter.Views.SaleNotificationWindow> _saleNotificationWindows = new();
         private System.Windows.Threading.DispatcherTimer? _saleTrackerTimer;
 
+        // Plugin System
+        private GameOverlay.App.Services.PluginManager? _pluginManager;
+        private PluginManagerWindow? _pluginManagerWindow;
+
         private int _openContextMenus;
         private bool _focusReturnPending;
 
@@ -115,6 +120,9 @@ namespace GameOverlay.App
                         {
                             InitializeSaleTracker();
                         }
+                        
+                        // Initialiser le PluginManager
+                        InitializePluginManager();
                     }
                     catch (Exception ex)
                     {
@@ -261,6 +269,10 @@ namespace GameOverlay.App
                 var settingsItem = new ToolStripMenuItem("⚙️ Paramètres");
                 settingsItem.Click += (s, e) => ToggleSettingsWindow();
                 contextMenu.Items.Add(settingsItem);
+
+                var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
+                pluginsItem.Click += (s, e) => TogglePluginManagerWindow();
+                contextMenu.Items.Add(pluginsItem);
 
                 contextMenu.Items.Add(new ToolStripSeparator());
 
@@ -1709,6 +1721,39 @@ namespace GameOverlay.App
             }
         }
         
+        private void TogglePluginManagerWindow()
+        {
+            try
+            {
+                if (_pluginManager == null)
+                {
+                    InitializePluginManager();
+                }
+                
+                if (_pluginManagerWindow == null || !_pluginManagerWindow.IsVisible)
+                {
+                    if (_pluginManagerWindow == null)
+                    {
+                        _pluginManagerWindow = new PluginManagerWindow(_pluginManager!);
+                    }
+                    
+                    _pluginManagerWindow.Show();
+                    _pluginManagerWindow.Activate();
+                    
+                    // Gérer la fermeture de la fenêtre
+                    _pluginManagerWindow.Closed += (s, e) => { _pluginManagerWindow = null; };
+                }
+                else
+                {
+                    _pluginManagerWindow.Hide();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur TogglePluginManagerWindow: {ex.Message}");
+            }
+        }
+
         private void ToggleSettingsWindow()
         {
             try
@@ -2666,6 +2711,26 @@ namespace GameOverlay.App
             }
         }
         
+        /// <summary>
+        /// Initialise le PluginManager pour charger et gérer les plugins
+        /// </summary>
+        private void InitializePluginManager()
+        {
+            try
+            {
+                if (_pluginManager == null)
+                {
+                    _pluginManager = new PluginManager();
+                    _pluginManager.Initialize(config);
+                    Logger.Info("MainWindow", "PluginManager initialisé");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de l'initialisation du PluginManager: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Initialise le service de suivi des ventes en temps réel
         /// </summary>

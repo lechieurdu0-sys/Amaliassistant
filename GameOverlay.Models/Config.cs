@@ -73,6 +73,9 @@ namespace GameOverlay.Models
         public string WebWindowBackgroundColor { get; set; } = "#FF1A1A1A"; // Fond sombre par défaut
         public double WebWindowBackgroundOpacity { get; set; } = 1.0;
         public string WebWindowTitleBarColor { get; set; } = "#FF2A2A2A"; // Barre de titre
+        
+        // Configuration des plugins
+        public PluginConfig PluginConfig { get; set; } = new PluginConfig();
     }
 }
 

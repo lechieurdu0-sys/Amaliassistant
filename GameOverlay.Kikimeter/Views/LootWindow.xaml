@@ -20,7 +20,7 @@
         Foreground="{x:Null}" Cursor="">
     <FrameworkElement.Resources>
         <ResourceDictionary>
-            <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF00BFFF" />
+            <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A" />
             <SolidColorBrush x:Key="SectionBackgroundBrush" Color="#80000000" />
             <!-- LinearGradientBrush pour le titre et les textes d'item -->
             <LinearGradientBrush x:Key="TitleGradientBrush" EndPoint="0.5,1" StartPoint="0.5,0">

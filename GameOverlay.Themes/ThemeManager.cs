@@ -12,12 +12,12 @@ namespace GameOverlay.Themes
 {
     /// <summary>
     /// Gestionnaire centralisé des thèmes de l'application
-    /// Permet de changer la couleur d'accent (cyan par défaut) partout dans l'application
+    /// Permet de changer la couleur d'accent (brun/marron par défaut : #FF6E5C2A) partout dans l'application
     /// </summary>
     public static class ThemeManager
     {
-        // Couleur d'accent par défaut (cyan : RGB(0, 191, 255))
-        private static WpfColor _accentColor = WpfColor.FromRgb(0, 191, 255);
+        // Couleur d'accent par défaut (brun/marron : RGB(110, 92, 42) = #FF6E5C2A)
+        private static WpfColor _accentColor = WpfColor.FromRgb(110, 92, 42);
         
         // Couleur de fond des bulles par défaut
         private static string _bubbleBackgroundColor = "#FF1A1A1A";
@@ -30,7 +30,7 @@ namespace GameOverlay.Themes
 
         /// <summary>
         /// Obtient ou définit la couleur d'accent de l'application
-        /// Cette couleur remplace partout le cyan (#00BFFF)
+        /// Couleur par défaut : brun/marron (#FF6E5C2A)
         /// </summary>
         public static WpfColor AccentColor
         {
@@ -145,11 +145,11 @@ namespace GameOverlay.Themes
         public static WpfSolidColorBrush HoverBrush => new WpfSolidColorBrush(HoverColor);
 
         /// <summary>
-        /// Réinitialise la couleur d'accent au cyan par défaut
+        /// Réinitialise la couleur d'accent au brun/marron par défaut (#FF6E5C2A)
         /// </summary>
         public static void ResetToDefault()
         {
-            AccentColor = WpfColor.FromRgb(0, 191, 255);
+            AccentColor = WpfColor.FromRgb(110, 92, 42);
         }
         
         /// <summary>

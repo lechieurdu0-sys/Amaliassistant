@@ -9,8 +9,8 @@
         <ResourceDictionary>
             <!-- Palette de couleurs -->
             <SolidColorBrush x:Key="DarkBackgroundBrush" Color="#FF1A1A1A"/>
-            <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF00BFFF"/>
-            <!-- Cette ressource sera mise à jour dynamiquement par ThemeManager -->
+            <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A"/>
+            <!-- Cette ressource sera mise à jour dynamiquement par ThemeManager avec la couleur d'accent par défaut (brun/marron) -->
             <!-- Couleur de survol : contour #FF6E5C2A avec 15% d'opacité (alpha 38 = 15% de 255) -->
             <SolidColorBrush x:Key="HoverBrush" Color="#266E5C2A"/>
             <SolidColorBrush x:Key="TextBrush" Color="White"/>

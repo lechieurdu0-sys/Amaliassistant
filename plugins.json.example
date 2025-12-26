@@ -1,0 +1,11 @@
+[
+  {
+    "Id": "ExamplePlugin_ExamplePlugin",
+    "Name": "Plugin Exemple",
+    "Version": "1.0.0",
+    "Description": "Un exemple de plugin pour Amaliassistant",
+    "Author": "Votre Nom",
+    "DownloadUrl": "https://github.com/lechieurdu0-sys/Amaliassistant/releases/download/v1.0.0/ExamplePlugin.dll"
+  }
+]
+

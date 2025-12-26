@@ -89,3 +89,5 @@ Amaliassistant est un overlay complet pour **Wakfu** qui offre de nombreuses fon
 7. **Paramètres** : Accessibles depuis "le menu de la barre des tâches ou l'interface à l'écran"
 8. **Versions antérieures** : Les versions antérieures à 1.9.0 ont été supprimées
 
+
+

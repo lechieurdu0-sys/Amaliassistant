@@ -141,3 +141,5 @@ Write-Host "  ✓ InstallerAppData/ (installateurs créés)" -ForegroundColor Gr
 Write-Host "  ✓ Prerequisites/ (prérequis pour l'installateur)" -ForegroundColor Green
 Write-Host ""
 
+
+

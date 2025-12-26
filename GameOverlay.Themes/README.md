@@ -1,6 +1,6 @@
 # GameOverlay.Themes
 
-Bibliothèque de gestion de thèmes pour Amaliassistant. Permet de modifier la couleur d'accent (cyan par défaut) partout dans l'application.
+Bibliothèque de gestion de thèmes pour Amaliassistant. Permet de modifier la couleur d'accent (brun/marron par défaut : #FF6E5C2A) partout dans l'application.
 
 ## Utilisation
 
@@ -50,10 +50,10 @@ ThemeManager.AccentColorChanged += (sender, e) =>
 };
 ```
 
-### Réinitialiser au cyan par défaut
+### Réinitialiser au brun/marron par défaut
 
 ```csharp
-ThemeManager.ResetToDefault(); // Remet RGB(0, 191, 255)
+ThemeManager.ResetToDefault(); // Remet RGB(110, 92, 42) = #FF6E5C2A
 ```
 
 ### Couleur de survol
@@ -69,8 +69,8 @@ var hoverColor = ThemeManager.HoverColor;
 Au lieu d'utiliser :
 ```csharp
 // ❌ Ne pas faire
-var cyan = System.Windows.Media.Color.FromRgb(0, 191, 255);
-var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 191, 255));
+var accentColor = System.Windows.Media.Color.FromRgb(110, 92, 42);
+var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(110, 92, 42));
 ```
 
 Utiliser :

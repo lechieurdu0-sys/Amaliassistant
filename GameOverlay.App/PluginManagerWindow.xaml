@@ -1,0 +1,365 @@
+<Window x:Class="GameOverlay.App.PluginManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        d:DesignHeight="700" d:DesignWidth="900"
+        Title="Gestionnaire de plugins" Height="700" Width="900"
+        WindowStartupLocation="CenterScreen" 
+        ResizeMode="CanResize" 
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        MinWidth="800"
+        MinHeight="600">
+    <Window.Resources>
+        <Style x:Key="DialogButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource SectionBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="#FFFFFFFF" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Window.Background>
+        <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/loot.png" Stretch="Fill"/>
+    </Window.Background>
+    <Border
+            BorderThickness="1"
+            BorderBrush="#FF6E5C2A"
+            CornerRadius="10"
+            Padding="0"
+            SnapsToDevicePixels="True"
+            MouseLeftButtonDown="Border_MouseLeftButtonDown">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- En-tête avec titre et bouton fermer -->
+            <Grid Grid.Row="0" Margin="15,49,15,15">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Icône de déplacement -->
+                <Viewbox Grid.Column="0"
+                         Width="16"
+                         Height="16"
+                         VerticalAlignment="Center"
+                         Margin="0,0,12,0"
+                         Cursor="SizeAll"
+                         MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <Canvas Width="24" Height="24">
+                        <Path Data="M3,7H5V9H3M7,7H9V9H7M11,7H13V9H11M3,11H5V13H3M7,11H9V13H7M11,11H13V13H11M3,15H5V17H3M7,15H9V17H7M11,15H13V17H11Z"
+                              Fill="{DynamicResource CyanAccentBrush}" />
+                    </Canvas>
+                </Viewbox>
+                <Image Grid.Column="1"
+                       Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png"
+                       Width="20"
+                       Height="20"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Left"
+                       Cursor="SizeAll"
+                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+                       Stretch="Uniform" Margin="12,0,0,0"/>
+                <TextBlock Grid.Column="1"
+                           Text="Gestionnaire de plugins"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           Foreground="#FF4E421F"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,40,0"/>
+                <Image Grid.Column="2"
+                       Source="/GameOverlay.Kikimeter;component/Views/Assets/utilities/fermeture.png"
+                       Width="28"
+                       Height="28"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Cursor="Hand"
+                       MouseLeftButtonDown="CloseButton_Click"
+                       Stretch="Uniform" Margin="0,5,0,0"/>
+            </Grid>
+
+            <!-- Onglets -->
+            <TabControl Grid.Row="1" Margin="15,0,15,15" Background="Transparent" BorderBrush="#FF6E5C2A" BorderThickness="1">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="TabItem">
+                                    <Border Name="Border" Background="{DynamicResource SectionBackgroundBrush}" BorderBrush="#FF6E5C2A" BorderThickness="1,1,1,0" CornerRadius="4,4,0,0" Margin="2,2,2,0">
+                                        <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Center" ContentSource="Header" Margin="12,2"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Border" Property="Background" Value="#FF6E5C2A"/>
+                                            <Setter TargetName="ContentSite" Property="TextElement.Foreground" Value="#FFF6E7A9"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="False">
+                                            <Setter TargetName="ContentSite" Property="TextElement.Foreground" Value="#FF4E421F"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Border" Property="BorderBrush" Value="#FFFFFFFF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TabControl.Resources>
+                
+                <!-- Onglet Plugins locaux -->
+                <TabItem Header="Plugins installés">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Liste des plugins locaux -->
+                        <DataGrid x:Name="LocalPluginsDataGrid"
+                                 Grid.Row="0"
+                                 AutoGenerateColumns="False"
+                                 CanUserAddRows="False"
+                                 CanUserDeleteRows="False"
+                                 SelectionMode="Single"
+                                 SelectionUnit="FullRow"
+                                 GridLinesVisibility="Horizontal"
+                                 HeadersVisibility="Column"
+                                 IsReadOnly="True"
+                                 Margin="0,10,0,10"
+                                 Background="{DynamicResource SectionBackgroundBrush}"
+                                 BorderBrush="#FF6E5C2A"
+                                 BorderThickness="1"
+                                 RowBackground="Transparent"
+                                 AlternatingRowBackground="{DynamicResource SectionBackgroundBrush}">
+                            <DataGrid.ColumnHeaderStyle>
+                                <Style TargetType="DataGridColumnHeader">
+                                    <Setter Property="Background" Value="#FF6E5C2A"/>
+                                    <Setter Property="Foreground" Value="#FF4E421F"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="FontSize" Value="12"/>
+                                    <Setter Property="Padding" Value="8,5"/>
+                                    <Setter Property="BorderBrush" Value="#FF6E5C2A"/>
+                                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                </Style>
+                            </DataGrid.ColumnHeaderStyle>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Foreground" Value="#FF4E421F"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#266E5C2A"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#266E5C2A"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridCheckBoxColumn Header="Actif" Binding="{Binding IsEnabled}" Width="60">
+                                    <DataGridCheckBoxColumn.ElementStyle>
+                                        <Style TargetType="CheckBox">
+                                            <EventSetter Event="Click" Handler="PluginEnabledCheckBox_Click"/>
+                                            <Setter Property="Foreground" Value="#FF4E421F"/>
+                                        </Style>
+                                    </DataGridCheckBoxColumn.ElementStyle>
+                                </DataGridCheckBoxColumn>
+                                <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="150"/>
+                                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="80"/>
+                                <DataGridTextColumn Header="Auteur" Binding="{Binding Author}" Width="120"/>
+                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
+                                <DataGridTextColumn Header="État" Binding="{Binding StatusText}" Width="100"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </TabItem>
+                
+                <!-- Onglet Plugins disponibles -->
+                <TabItem Header="Plugins disponibles">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Liste des plugins disponibles -->
+                        <DataGrid x:Name="AvailablePluginsDataGrid"
+                                 Grid.Row="0"
+                                 AutoGenerateColumns="False"
+                                 CanUserAddRows="False"
+                                 CanUserDeleteRows="False"
+                                 SelectionMode="Single"
+                                 SelectionUnit="FullRow"
+                                 GridLinesVisibility="Horizontal"
+                                 HeadersVisibility="Column"
+                                 IsReadOnly="True"
+                                 Margin="0,10,0,10"
+                                 Background="{DynamicResource SectionBackgroundBrush}"
+                                 BorderBrush="#FF6E5C2A"
+                                 BorderThickness="1"
+                                 RowBackground="Transparent"
+                                 AlternatingRowBackground="{DynamicResource SectionBackgroundBrush}">
+                            <DataGrid.ColumnHeaderStyle>
+                                <Style TargetType="DataGridColumnHeader">
+                                    <Setter Property="Background" Value="#FF6E5C2A"/>
+                                    <Setter Property="Foreground" Value="#FF4E421F"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="FontSize" Value="12"/>
+                                    <Setter Property="Padding" Value="8,5"/>
+                                    <Setter Property="BorderBrush" Value="#FF6E5C2A"/>
+                                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                </Style>
+                            </DataGrid.ColumnHeaderStyle>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Foreground" Value="#FF4E421F"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#266E5C2A"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#266E5C2A"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="150"/>
+                                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="80"/>
+                                <DataGridTextColumn Header="Auteur" Binding="{Binding Author}" Width="120"/>
+                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
+                                <DataGridTextColumn Header="État" Binding="{Binding StatusText}" Width="100"/>
+                                <DataGridTemplateColumn Header="Action" Width="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="📥 Installer" 
+                                                    Style="{StaticResource DialogButtonStyle}"
+                                                    Click="InstallPluginButton_Click"
+                                                    Padding="5,2"
+                                                    FontSize="10"
+                                                    Height="25"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+
+            <!-- Informations du plugin sélectionné -->
+            <Border Grid.Row="2" 
+                   BorderBrush="#FF6E5C2A" 
+                   BorderThickness="1" 
+                   CornerRadius="4"
+                   Padding="15"
+                   Margin="15,0,15,15"
+                   Background="{DynamicResource SectionBackgroundBrush}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Nom:" FontWeight="Bold" Foreground="#FF4E421F" Margin="0,0,10,5" FontSize="12"/>
+                    <TextBlock x:Name="SelectedPluginName" Grid.Row="0" Grid.Column="1" Foreground="#FF4E421F" Margin="0,0,0,5" FontSize="12"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Description:" FontWeight="Bold" Foreground="#FF4E421F" Margin="0,0,10,5" FontSize="12"/>
+                    <TextBlock x:Name="SelectedPluginDescription" Grid.Row="1" Grid.Column="1" Foreground="#FF4E421F" TextWrapping="Wrap" Margin="0,0,0,5" FontSize="12"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Auteur:" FontWeight="Bold" Foreground="#FF4E421F" Margin="0,0,10,5" FontSize="12"/>
+                    <TextBlock x:Name="SelectedPluginAuthor" Grid.Row="2" Grid.Column="1" Foreground="#FF4E421F" Margin="0,0,0,5" FontSize="12"/>
+
+                    <TextBlock x:Name="SelectedPluginVersionLabel" Grid.Row="3" Grid.Column="0" Text="Version:" FontWeight="Bold" Foreground="#FF4E421F" Margin="0,0,10,5" FontSize="12" Visibility="Collapsed"/>
+                    <TextBlock x:Name="SelectedPluginVersion" Grid.Row="3" Grid.Column="1" Foreground="#FF4E421F" Margin="0,0,0,5" FontSize="12" Visibility="Collapsed"/>
+
+                    <TextBlock x:Name="SelectedPluginErrorLabel" Grid.Row="4" Grid.Column="0" Text="Message d'erreur:" FontWeight="Bold" Foreground="#FF4E421F" Margin="0,0,10,0" FontSize="12" Visibility="Collapsed"/>
+                    <TextBlock x:Name="SelectedPluginError" Grid.Row="4" Grid.Column="1" Foreground="#FFFF4444" TextWrapping="Wrap" Visibility="Collapsed" FontSize="12"/>
+                </Grid>
+            </Border>
+
+            <!-- Boutons -->
+            <StackPanel Grid.Row="4" 
+                       Orientation="Horizontal" 
+                       HorizontalAlignment="Right"
+                       Margin="15,0,15,15">
+                <Button x:Name="RefreshButton" 
+                       Content="🔄 Actualiser" 
+                       Width="120"
+                       Height="35"
+                       Click="RefreshButton_Click"
+                       Margin="0,0,10,0"
+                       Style="{StaticResource DialogButtonStyle}"/>
+                
+                <Button x:Name="RefreshAvailableButton" 
+                       Content="🔄 Actualiser disponibles" 
+                       Width="180"
+                       Height="35"
+                       Click="RefreshAvailablePluginsButton_Click"
+                       Margin="0,0,10,0"
+                       Style="{StaticResource DialogButtonStyle}"/>
+                
+                <Button x:Name="OpenPluginsFolderButton" 
+                       Content="📁 Ouvrir le dossier" 
+                       Width="150"
+                       Height="35"
+                       Click="OpenPluginsFolderButton_Click"
+                       Margin="0,0,10,0"
+                       Style="{StaticResource DialogButtonStyle}"/>
+                
+                <Button x:Name="CloseWindowButton" 
+                       Content="Fermer" 
+                       Width="90"
+                       Height="35"
+                       Click="CloseButton_Click"
+                       Style="{StaticResource DialogButtonStyle}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
