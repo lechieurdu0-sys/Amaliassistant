@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using GameOverlay.Kikimeter.Models;
 
@@ -14,6 +16,9 @@ public class SaleTracker : IDisposable
     private readonly object _lockObject = new object();
     private long _lastPosition = 0;
     private readonly FileSystemWatcher? _fileWatcher;
+    private readonly HashSet<string> _processedSaleLines = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private DateTime _lastCleanupTime = DateTime.Now;
+    private const int CleanupIntervalMinutes = 5; // Nettoyer les lignes traitées toutes les 5 minutes
     
     // Regex pour détecter les informations de vente dans les nouvelles lignes
     private static readonly Regex[] SaleInfoPatterns = new[]
@@ -60,29 +65,31 @@ public class SaleTracker : IDisposable
     {
         _logFilePath = logFilePath ?? throw new ArgumentNullException(nameof(logFilePath));
         
-        if (!File.Exists(_logFilePath))
+        // Initialiser la position à la fin du fichier si le fichier existe (ne pas lire l'historique)
+        if (File.Exists(_logFilePath))
         {
-            Logger.Warning("SaleTracker", $"Fichier de log non trouvé: {_logFilePath}");
-            return;
-        }
-        
-        // Initialiser la position à la fin du fichier (ne pas lire l'historique)
-        try
-        {
-            var fileInfo = new FileInfo(_logFilePath);
-            if (fileInfo.Length > 0)
+            try
             {
-                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-                reader.BaseStream.Seek(0, SeekOrigin.End);
-                _lastPosition = reader.BaseStream.Position;
+                var fileInfo = new FileInfo(_logFilePath);
+                if (fileInfo.Length > 0)
+                {
+                    using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+                    reader.BaseStream.Seek(0, SeekOrigin.End);
+                    _lastPosition = reader.BaseStream.Position;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SaleTracker", $"Erreur lors de l'initialisation: {ex.Message}");
             }
         }
-        catch (Exception ex)
+        else
         {
-            Logger.Error("SaleTracker", $"Erreur lors de l'initialisation: {ex.Message}");
+            Logger.Info("SaleTracker", $"Fichier de log n'existe pas encore: {_logFilePath} - La surveillance attendra sa création");
         }
         
-        // Créer le FileSystemWatcher
+        // Créer le FileSystemWatcher même si le fichier n'existe pas encore
+        // Il détectera la création du fichier via l'événement Created
         try
         {
             var directory = Path.GetDirectoryName(_logFilePath);
@@ -92,16 +99,17 @@ public class SaleTracker : IDisposable
             {
                 _fileWatcher = new FileSystemWatcher(directory, fileName)
                 {
-                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.CreationTime,
+                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.FileName,
                     // Augmenter la taille du buffer interne pour éviter de manquer des événements
                     InternalBufferSize = 65536 // 64 KB au lieu de 8 KB par défaut
                 };
                 
                 _fileWatcher.Changed += OnFileChanged;
+                _fileWatcher.Created += OnFileChanged; // Détecter la création du fichier
                 _fileWatcher.Error += OnFileWatcherError;
                 _fileWatcher.EnableRaisingEvents = true;
                 
-                Logger.Info("SaleTracker", "FileSystemWatcher configuré avec buffer de 64 KB");
+                Logger.Info("SaleTracker", $"FileSystemWatcher initialisé pour {_logFilePath} avec buffer de 64 KB (fichier peut ne pas exister encore)");
             }
         }
         catch (Exception ex)
@@ -111,13 +119,16 @@ public class SaleTracker : IDisposable
         
         Logger.Info("SaleTracker", $"SaleTracker initialisé pour: {_logFilePath}");
         
-        // Lire les dernières lignes au démarrage pour détecter les ventes récentes
-        // Délai augmenté pour laisser le temps au fichier de se stabiliser
-        System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ => 
+        // Lire les dernières lignes au démarrage pour détecter les ventes récentes seulement si le fichier existe
+        if (File.Exists(_logFilePath))
         {
-            Logger.Info("SaleTracker", "Démarrage de la lecture des lignes récentes...");
-            ReadRecentLines(100);
-        });
+            // Délai augmenté pour laisser le temps au fichier de se stabiliser
+            System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ => 
+            {
+                Logger.Info("SaleTracker", "Démarrage de la lecture des lignes récentes...");
+                ReadRecentLines(100);
+            });
+        }
     }
     
     /// <summary>
@@ -226,6 +237,13 @@ public class SaleTracker : IDisposable
     
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
+        // Si le fichier vient d'être créé, réinitialiser la position
+        if (e.ChangeType == WatcherChangeTypes.Created)
+        {
+            _lastPosition = 0;
+            Logger.Info("SaleTracker", $"Fichier de log créé détecté: {_logFilePath}");
+        }
+        
         // Délai réduit pour une détection plus rapide (25ms au lieu de 50ms)
         // Le FileSystemWatcher peut manquer des événements, donc on s'appuie aussi sur le timer
         System.Threading.Tasks.Task.Delay(25).ContinueWith(_ => ReadNewLines());
@@ -241,13 +259,19 @@ public class SaleTracker : IDisposable
     private void ReadNewLines()
     {
         if (!File.Exists(_logFilePath))
+        {
+            // Si le fichier n'existe pas encore, réinitialiser la position pour qu'il soit lu depuis le début quand il sera créé
+            _lastPosition = 0;
+            Logger.Debug("SaleTracker", "Fichier de log n'existe pas encore, lecture ignorée");
             return;
+        }
         
         // Utiliser TryEnter pour éviter les blocages si une autre lecture est en cours
         if (!System.Threading.Monitor.TryEnter(_lockObject, 100))
         {
             // Si on ne peut pas acquérir le lock rapidement, on ignore cette lecture
             // Le timer rappellera bientôt (25ms)
+            Logger.Debug("SaleTracker", "Lock non disponible, lecture ignorée");
             return;
         }
         
@@ -319,6 +343,19 @@ public class SaleTracker : IDisposable
     
     private void ProcessLine(string line)
     {
+        // Créer un hash de la ligne pour la déduplication (sans le timestamp)
+        string lineHash = CreateLineHash(line);
+        
+        // Vérifier si cette ligne a déjà été traitée
+        lock (_lockObject)
+        {
+            if (_processedSaleLines.Contains(lineHash))
+            {
+                Logger.Debug("SaleTracker", "Ligne de vente déjà traitée, ignorée");
+                return;
+            }
+        }
+        
         // Nettoyer la ligne (enlever les préfixes timestamp et [Information (jeu)])
         string cleanLine = line;
         const string infoMarker = "[Information (jeu)] ";
@@ -350,8 +387,69 @@ public class SaleTracker : IDisposable
         var saleInfo = ParseSaleInfo(cleanLine);
         if (saleInfo != null)
         {
+            // Marquer cette ligne comme traitée AVANT d'invoquer l'événement pour éviter les doublons
+            lock (_lockObject)
+            {
+                _processedSaleLines.Add(lineHash);
+            }
+            
             Logger.Info("SaleTracker", $"Vente détectée: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
             SaleDetected?.Invoke(this, saleInfo);
+            
+            // Nettoyer les anciennes entrées périodiquement pour éviter que le HashSet ne grossisse trop
+            CleanupProcessedLinesIfNeeded();
+        }
+    }
+    
+    /// <summary>
+    /// Crée un hash unique d'une ligne de log en enlevant le timestamp
+    /// </summary>
+    private static string CreateLineHash(string line)
+    {
+        // Enlever le timestamp et les préfixes pour créer un hash unique du contenu
+        string cleanLine = line;
+        const string infoMarker = "[Information (jeu)] ";
+        int infoIndex = line.IndexOf(infoMarker, StringComparison.OrdinalIgnoreCase);
+        if (infoIndex >= 0)
+        {
+            cleanLine = line[(infoIndex + infoMarker.Length)..].Trim();
+        }
+        else
+        {
+            int fallbackIndex = line.LastIndexOf("] ", StringComparison.Ordinal);
+            if (fallbackIndex >= 0)
+            {
+                cleanLine = line[(fallbackIndex + 2)..].Trim();
+            }
+        }
+        
+        // Retourner la ligne nettoyée comme hash (simple mais efficace pour la déduplication)
+        return cleanLine;
+    }
+    
+    /// <summary>
+    /// Nettoie périodiquement le HashSet des lignes traitées pour éviter qu'il ne grossisse trop
+    /// </summary>
+    private void CleanupProcessedLinesIfNeeded()
+    {
+        lock (_lockObject)
+        {
+            var now = DateTime.Now;
+            if ((now - _lastCleanupTime).TotalMinutes >= CleanupIntervalMinutes)
+            {
+                // Garder seulement les 100 dernières lignes pour éviter une croissance infinie
+                if (_processedSaleLines.Count > 100)
+                {
+                    var itemsToKeep = _processedSaleLines.TakeLast(50).ToList();
+                    _processedSaleLines.Clear();
+                    foreach (var item in itemsToKeep)
+                    {
+                        _processedSaleLines.Add(item);
+                    }
+                    Logger.Debug("SaleTracker", $"Nettoyage du cache des lignes traitées: {_processedSaleLines.Count} lignes conservées");
+                }
+                _lastCleanupTime = now;
+            }
         }
     }
     

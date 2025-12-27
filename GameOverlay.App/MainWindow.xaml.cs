@@ -2735,12 +2735,25 @@ namespace GameOverlay.App
                         
                         // S'assurer que la nouvelle fenêtre est au-dessus
                         notificationWindow.Show();
-                        notificationWindow.Topmost = true;
+                        
+                        // Forcer la fenêtre à être toujours visible même en plein écran
                         notificationWindow.Topmost = false;
                         notificationWindow.Topmost = true;
                         
-                        // Activer la fenêtre pour s'assurer qu'elle est visible même pendant les jeux en plein écran
+                        // Utiliser Show() et Activate() pour forcer la visibilité
+                        notificationWindow.Show();
                         notificationWindow.Activate();
+                        
+                        // Forcer à nouveau Topmost après un court délai pour garantir la visibilité
+                        System.Threading.Tasks.Task.Delay(50).ContinueWith(_ =>
+                        {
+                            Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                notificationWindow.Topmost = false;
+                                notificationWindow.Topmost = true;
+                                notificationWindow.Show();
+                            }), DispatcherPriority.Normal);
+                        });
                         
                         // Réorganiser le z-order de toutes les fenêtres (la plus récente au-dessus)
                         ReorganizeSaleNotificationsZOrder();
@@ -2920,10 +2933,16 @@ namespace GameOverlay.App
                 }
                 
                 string? chatLogPath = config.LootChatLogPath;
-                if (string.IsNullOrWhiteSpace(chatLogPath) || !File.Exists(chatLogPath))
+                if (string.IsNullOrWhiteSpace(chatLogPath))
                 {
-                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré ou fichier inexistant, SaleTracker non initialisé");
+                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré, SaleTracker non initialisé");
                     return;
+                }
+                
+                // Le SaleTracker surveille maintenant même si le fichier n'existe pas encore
+                if (!File.Exists(chatLogPath))
+                {
+                    Logger.Info("MainWindow", $"Fichier de log chat n'existe pas encore: {chatLogPath} - SaleTracker surveillera la création du fichier");
                 }
                 
                 _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(chatLogPath);
@@ -2964,6 +2983,10 @@ namespace GameOverlay.App
                         }
                     });
                 }
+                else
+                {
+                    GameOverlay.Models.Logger.Warning("MainWindow", "SaleTrackerTimer_Tick: _saleTracker est null");
+                }
             }
             catch (Exception ex)
             {
@@ -2973,6 +2996,7 @@ namespace GameOverlay.App
         
         private void SaleTracker_SaleDetected(object? sender, SaleInfo saleInfo)
         {
+            Logger.Info("MainWindow", $"Événement SaleDetected reçu: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
             ShowSaleNotification(saleInfo);
         }
         

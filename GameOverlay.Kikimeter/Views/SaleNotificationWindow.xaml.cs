@@ -83,7 +83,18 @@ public partial class SaleNotificationWindow : Window
         if (hwnd != IntPtr.Zero)
         {
             // Utiliser SetWindowPos pour forcer la fenêtre à rester au-dessus
+            // Utiliser HWND_TOPMOST avec les flags appropriés pour garantir la visibilité en plein écran
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            
+            // Forcer un refresh pour s'assurer que la fenêtre est bien au-dessus
+            System.Threading.Tasks.Task.Delay(100).ContinueWith(_ =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    Topmost = false;
+                    Topmost = true;
+                });
+            });
         }
     }
     
@@ -112,6 +123,10 @@ public partial class SaleNotificationWindow : Window
             
             // Forcer la fenêtre à rester au-dessus même pendant les jeux en plein écran
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            
+            // S'assurer que la fenêtre est vraiment visible en forçant un refresh
+            Topmost = false;
+            Topmost = true;
         }
         
         // Jouer le son de notification
