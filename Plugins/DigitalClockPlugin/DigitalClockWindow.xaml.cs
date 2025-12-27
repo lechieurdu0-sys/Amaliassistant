@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using GameOverlay.Models;
@@ -12,6 +14,15 @@ namespace DigitalClockPlugin
 {
     public class DigitalClockWindow : Window
     {
+        // Constantes pour masquer la fenêtre d'Alt+Tab
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+        
+        [DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        
+        [DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
         private readonly DispatcherTimer _timer;
         private readonly IPluginContext _context;
         private readonly string _configPath;
@@ -20,6 +31,16 @@ namespace DigitalClockPlugin
         private double _fontSize = 48;
         private TextBlock _timeDisplay;
         private const string WindowId = "ClockWindow";
+        private bool _isPluginActive = false;
+        
+        /// <summary>
+        /// Permet de définir si le plugin est actif pour empêcher la fermeture accidentelle
+        /// </summary>
+        public bool IsPluginActive
+        {
+            get => _isPluginActive;
+            set => _isPluginActive = value;
+        }
 
         public DigitalClockWindow(IPluginContext context, string configPath)
         {
@@ -72,6 +93,7 @@ namespace DigitalClockPlugin
             MouseMove += Window_MouseMove;
             MouseWheel += Window_MouseWheel;
             Loaded += Window_Loaded;
+            Closing += Window_Closing;
             
             // Timer pour mettre à jour l'heure chaque seconde
             _timer = new DispatcherTimer
@@ -240,6 +262,11 @@ namespace DigitalClockPlugin
         
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            // Masquer la fenêtre d'Alt+Tab
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+            SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle | WS_EX_TOOLWINDOW);
+            
             // Forcer la couleur au chargement de la fenêtre
             _timeDisplay.Foreground = new SolidColorBrush(Colors.White);
             
@@ -305,10 +332,28 @@ namespace DigitalClockPlugin
             }
         }
         
-        protected override void OnClosed(EventArgs e)
+        private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Si le plugin est toujours actif, empêcher la fermeture et cacher la fenêtre à la place
+            if (_isPluginActive)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+            
+            // Si le plugin n'est plus actif, permettre la fermeture normale
             _timer?.Stop();
             SaveConfiguration();
+        }
+        
+        protected override void OnClosed(EventArgs e)
+        {
+            if (!_isPluginActive)
+            {
+                _timer?.Stop();
+                SaveConfiguration();
+            }
             base.OnClosed(e);
         }
     }
