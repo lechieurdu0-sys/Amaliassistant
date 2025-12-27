@@ -2130,7 +2130,8 @@ namespace GameOverlay.App
                 Logger.Info("MainWindow", "Initialisation des fenêtres en arrière-plan pour démarrer la surveillance");
                 
                 // Initialiser KikimeterWindow si elle n'existe pas encore
-                if (kikimeterWindow == null && !string.IsNullOrEmpty(config.KikimeterLogPath) && File.Exists(config.KikimeterLogPath))
+                // Créer la fenêtre même si le fichier n'existe pas encore - LogFileWatcher détectera sa création
+                if (kikimeterWindow == null && !string.IsNullOrEmpty(config.KikimeterLogPath))
                 {
                     try
                     {

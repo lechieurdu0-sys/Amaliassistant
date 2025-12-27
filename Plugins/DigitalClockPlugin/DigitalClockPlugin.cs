@@ -32,6 +32,8 @@ namespace DigitalClockPlugin
 
             try
             {
+                _isActive = true; // Marquer comme actif en premier
+                
                 if (_clockWindow == null)
                 {
                     var configPath = System.IO.Path.Combine(_context.PluginDataDirectory, "config.json");
@@ -39,6 +41,7 @@ namespace DigitalClockPlugin
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         _clockWindow = new DigitalClockWindow(_context, configPath);
+                        _clockWindow.IsPluginActive = true; // Marquer le plugin comme actif
                         _clockWindow.Closed += (s, e) => 
                         { 
                             // Si la fenêtre se ferme, ne pas la mettre à null si le plugin est toujours actif
@@ -53,8 +56,17 @@ namespace DigitalClockPlugin
                         _clockWindow.Activate();
                     });
                 }
-
-                _isActive = true;
+                else
+                {
+                    // Si la fenêtre existe déjà, la réafficher et la réactiver
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        _clockWindow.IsPluginActive = true; // Marquer le plugin comme actif
+                        _clockWindow.Show();
+                        _clockWindow.Visibility = Visibility.Visible;
+                        _clockWindow.Activate();
+                    });
+                }
                 _context.Logger.Info("Horloge digitale activée");
             }
             catch (Exception ex)
@@ -72,16 +84,19 @@ namespace DigitalClockPlugin
 
             try
             {
+                // Marquer le plugin comme inactif avant de cacher la fenêtre
+                _isActive = false;
+                
                 // Ne cacher la fenêtre que si on désactive vraiment le plugin
                 if (_clockWindow != null)
                 {
                     Application.Current.Dispatcher.Invoke(() =>
                     {
+                        _clockWindow.IsPluginActive = false; // Permettre la fermeture maintenant
                         _clockWindow.Hide();
                     });
                 }
 
-                _isActive = false;
                 _context.Logger.Info("Horloge digitale désactivée");
             }
             catch (Exception ex)

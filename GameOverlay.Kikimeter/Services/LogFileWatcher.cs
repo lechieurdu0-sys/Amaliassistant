@@ -31,40 +31,65 @@ public class LogFileWatcher
         _logPath = logPath;
         WatcherDiagnostics.LogStartWatching(_logPath);
         
-        if (string.IsNullOrEmpty(_logPath) || !File.Exists(_logPath))
+        if (string.IsNullOrEmpty(_logPath))
         {
-                WatcherDiagnostics.LogFileEvent("FileMissing", $"Impossible de démarrer la surveillance : {_logPath ?? "chemin nul"}");
-                Logger.Warning(LogCategory, $"Fichier de log introuvable: {_logPath}");
-                LogFileNotFound?.Invoke(this, EventArgs.Empty);
-                return;
-            }
+            WatcherDiagnostics.LogFileEvent("FileMissing", "Chemin de log vide ou null");
+            Logger.Warning(LogCategory, "Le chemin de log est vide ou null");
+            LogFileNotFound?.Invoke(this, EventArgs.Empty);
+            return;
+        }
             
         try
         {
-            // Lire le fichier existant de manière asynchrone pour éviter de bloquer l'UI
-            System.Threading.Tasks.Task.Run(() => ReadExistingLog());
-            
             // Surveiller les changements
             var directory = Path.GetDirectoryName(_logPath);
             var fileName = Path.GetFileName(_logPath);
             
-            if (directory != null)
+            if (directory == null || string.IsNullOrEmpty(fileName))
             {
-                Logger.Info(LogCategory, $"Surveillance du fichier '{fileName}' dans '{directory}'");
-                _fileWatcher = new FileSystemWatcher(directory, fileName)
-                {
-                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.FileName
-                };
-                
-                _fileWatcher.Changed += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath);
-                _fileWatcher.Created += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath, resetPosition: true);
-                _fileWatcher.Deleted += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath, resetPosition: true, skipRead: true);
-                _fileWatcher.Renamed += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath, resetPosition: true);
-                _fileWatcher.Error += (_, e) => HandleWatcherError(e);
-                
-                _fileWatcher.EnableRaisingEvents = true;
-                WatcherDiagnostics.LogFileEvent("WatcherReady", $"FileSystemWatcher initialisé pour {_logPath}");
+                Logger.Error(LogCategory, $"Impossible de déterminer le répertoire ou le nom de fichier pour: {_logPath}");
+                return;
             }
+            
+            // Vérifier si le dossier existe
+            if (!Directory.Exists(directory))
+            {
+                Logger.Warning(LogCategory, $"Le répertoire n'existe pas: {directory}. La surveillance sera activée mais ne fonctionnera que lorsque le dossier sera créé.");
+            }
+            
+            // Lire le fichier existant de manière asynchrone si le fichier existe déjà
+            if (File.Exists(_logPath))
+            {
+                System.Threading.Tasks.Task.Run(() => ReadExistingLog());
+                Logger.Info(LogCategory, $"Fichier existant détecté, lecture initiale démarrée");
+            }
+            else
+            {
+                Logger.Info(LogCategory, $"Fichier de log n'existe pas encore: '{_logPath}'. Surveillance activée pour détecter sa création.");
+            }
+            
+            // Créer le FileSystemWatcher même si le fichier n'existe pas encore
+            // Cela permet de détecter quand le fichier sera créé
+            _fileWatcher = new FileSystemWatcher(directory, fileName)
+            {
+                NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.FileName
+            };
+            
+            _fileWatcher.Changed += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath);
+            _fileWatcher.Created += (_, e) => 
+            {
+                Logger.Info(LogCategory, $"Fichier de log créé détecté: {e.FullPath}");
+                // Lire le fichier nouvellement créé
+                System.Threading.Tasks.Task.Run(() => ReadExistingLog());
+                HandleWatcherEvent(e.ChangeType, e.FullPath, resetPosition: true);
+            };
+            _fileWatcher.Deleted += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath, resetPosition: true, skipRead: true);
+            _fileWatcher.Renamed += (_, e) => HandleWatcherEvent(e.ChangeType, e.FullPath, resetPosition: true);
+            _fileWatcher.Error += (_, e) => HandleWatcherError(e);
+            
+            _fileWatcher.EnableRaisingEvents = true;
+            WatcherDiagnostics.LogFileEvent("WatcherReady", $"FileSystemWatcher initialisé pour {_logPath} (fichier existe: {File.Exists(_logPath)})");
+            Logger.Info(LogCategory, $"Surveillance du fichier '{fileName}' dans '{directory}' démarrée (fichier existe: {File.Exists(_logPath)})");
         }
         catch (Exception ex)
         {

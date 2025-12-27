@@ -33,8 +33,8 @@
     <AssemblyProduct>Amaliassistant</AssemblyProduct>
     <AssemblyCompany>Amaliassistant</AssemblyCompany>
     <AssemblyDescription>Overlay de sites web pour jeux - OptimisÃƒÂ© Windows 11</AssemblyDescription>
-    <AssemblyVersion>1.9.0.4</AssemblyVersion>
-    <FileVersion>1.9.0.4</FileVersion>
+    <AssemblyVersion>1.9.0.5</AssemblyVersion>
+    <FileVersion>1.9.0.5</FileVersion>
     <ApplicationIcon>Amalia.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>

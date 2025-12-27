@@ -2193,10 +2193,11 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             return;
         }
         
+        // Ne plus retourner si le fichier n'existe pas - LogFileWatcher peut maintenant surveiller
+        // même si le fichier n'existe pas encore (il détectera sa création)
         if (!File.Exists(_logPath))
         {
-            Logger.Error("KikimeterWindow", $"Le fichier de log n'existe pas: '{_logPath}'. Veuillez vérifier le chemin dans les paramètres.");
-            return;
+            Logger.Info("KikimeterWindow", $"Le fichier de log n'existe pas encore: '{_logPath}'. La surveillance sera activée et détectera sa création.");
         }
         
         _logWatcher = new Services.LogFileWatcher();
