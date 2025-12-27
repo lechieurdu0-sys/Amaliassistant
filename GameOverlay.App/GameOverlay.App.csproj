@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <None Remove="EndTurnWidgetBackground.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\GameOverlay.Models\GameOverlay.Models.csproj" />
     <ProjectReference Include="..\GameOverlay.Windows\GameOverlay.Windows.csproj" />
     <ProjectReference Include="..\GameOverlay.Kikimeter\GameOverlay.Kikimeter.csproj" />
@@ -28,9 +32,9 @@
     <AssemblyTitle>Amaliassistant</AssemblyTitle>
     <AssemblyProduct>Amaliassistant</AssemblyProduct>
     <AssemblyCompany>Amaliassistant</AssemblyCompany>
-    <AssemblyDescription>Overlay de sites web pour jeux - OptimisÃ© Windows 11</AssemblyDescription>
-    <AssemblyVersion>1.9.0.0</AssemblyVersion>
-    <FileVersion>1.9.0.0</FileVersion>
+    <AssemblyDescription>Overlay de sites web pour jeux - OptimisÃƒÂ© Windows 11</AssemblyDescription>
+    <AssemblyVersion>1.9.0.2</AssemblyVersion>
+    <FileVersion>1.9.0.2</FileVersion>
     <ApplicationIcon>Amalia.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
@@ -45,6 +49,10 @@
     <Content Include="Amalia.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="EndTurnWidgetBackground.png" />
   </ItemGroup>
 
   <Target Name="CopyUpdateInstaller" AfterTargets="Publish">

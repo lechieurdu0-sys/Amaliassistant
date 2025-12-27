@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
 using WpfMessageBox = System.Windows.MessageBox;
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
 
 namespace GameOverlay.App
 {
@@ -23,7 +24,7 @@ namespace GameOverlay.App
         {
             if (_isDownloading && !_isCancelled)
             {
-                var result = WpfMessageBox.Show(
+                var result = CustomMessageBox.Show(
                     "Le téléchargement est en cours. Êtes-vous sûr de vouloir annuler ?",
                     "Annuler la mise à jour",
                     MessageBoxButton.YesNo,

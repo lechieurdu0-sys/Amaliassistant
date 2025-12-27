@@ -14,6 +14,7 @@ using GameOverlay.Kikimeter.Services;
 using GameOverlay.Models;
 using WpfApplication = System.Windows.Application;
 using WpfMessageBox = System.Windows.MessageBox;
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
 
 namespace GameOverlay.App.Services
 {
@@ -237,7 +238,7 @@ namespace GameOverlay.App.Services
                                      $"L'application va se fermer pour télécharger et installer la mise à jour.\n" +
                                      $"Souhaitez-vous continuer maintenant ?";
                         
-                        var result = WpfMessageBox.Show(
+                        var result = CustomMessageBox.Show(
                             message,
                             "Mise à jour disponible",
                             MessageBoxButton.YesNo,
@@ -620,7 +621,7 @@ namespace GameOverlay.App.Services
                     WpfApplication.Current.Dispatcher.Invoke(() =>
                     {
                         progressWindow?.Close();
-                        var result = WpfMessageBox.Show(
+                        var result = CustomMessageBox.Show(
                             $"Erreur lors de l'application du patch:\n{ex.Message}\n\n" +
                             $"Souhaitez-vous télécharger l'installateur complet à la place ?",
                             "Erreur de mise à jour",
@@ -646,7 +647,7 @@ namespace GameOverlay.App.Services
                                     WpfApplication.Current.Dispatcher.Invoke(() =>
                                     {
                                         newProgressWindow?.Close();
-                    WpfMessageBox.Show(
+                    CustomMessageBox.Show(
                                             $"Erreur lors du téléchargement de l'installateur:\n{fallbackEx.Message}\n\n" +
                                             "Veuillez télécharger manuellement depuis GitHub.",
                         "Erreur de mise à jour",

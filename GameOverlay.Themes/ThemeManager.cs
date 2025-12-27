@@ -207,25 +207,49 @@ namespace GameOverlay.Themes
             
             try
             {
-                // Fond : #FFF6E7A9 (RGB: 246, 231, 169)
-                var backgroundColor = Color.FromRgb(246, 231, 169);
+                // Utiliser l'image de fond comme dans PluginManagerWindow
+                var imageBrush = new ImageBrush();
+                imageBrush.ImageSource = new System.Windows.Media.Imaging.BitmapImage(
+                    new Uri("pack://application:,,,/EndTurnWidgetBackground.png"));
+                imageBrush.Stretch = Stretch.Fill;
+                imageBrush.Freeze();
+                
                 // Contour : #FF6E5C2A (RGB: 110, 92, 42)
                 var borderColor = Color.FromRgb(110, 92, 42);
+                // Texte plus clair pour être visible : #FF6E5C2A (marron moyen) ou plus clair encore
+                var textColor = Color.FromRgb(110, 92, 42); // #FF6E5C2A - marron moyen plus visible
                 
                 var accentBrushClone = new SolidColorBrush(borderColor);
-                var backgroundBrushClone = new SolidColorBrush(backgroundColor);
-                var foregroundBrushClone = new SolidColorBrush(borderColor);
+                var foregroundBrushClone = new SolidColorBrush(textColor);
                 
-                contextMenu.Background = backgroundBrushClone;
+                contextMenu.Background = imageBrush;
                 contextMenu.BorderBrush = accentBrushClone;
+                contextMenu.BorderThickness = new Thickness(1);
                 contextMenu.Foreground = foregroundBrushClone;
                 
                 // Utiliser la couleur secondaire pour le texte en surbrillance
                 var highlightTextBrush = foregroundBrushClone;
                 
-                ApplySystemColorOverrides(contextMenu.Resources, backgroundBrushClone, accentBrushClone, highlightTextBrush);
+                ApplySystemColorOverrides(contextMenu.Resources, imageBrush, accentBrushClone, highlightTextBrush);
                 
-                ApplyMenuItemsTheme(contextMenu.Items.OfType<MenuItem>(), backgroundBrushClone, accentBrushClone, highlightTextBrush);
+                ApplyMenuItemsTheme(contextMenu.Items.OfType<MenuItem>(), imageBrush, accentBrushClone, highlightTextBrush);
+                
+                // S'assurer que la couleur de survol brune est bien appliquée via les SystemColors
+                // Forcer l'override pour éviter que le cyan ne s'affiche
+                var hoverBrush = new SolidColorBrush(Color.FromArgb(150, 110, 92, 42)); // #966E5C2A - brun semi-transparent
+                contextMenu.Resources[SystemColors.MenuHighlightBrushKey] = hoverBrush;
+                contextMenu.Resources[SystemColors.HighlightBrushKey] = hoverBrush;
+                contextMenu.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = hoverBrush;
+                
+                // Rendre tous les séparateurs invisibles
+                foreach (var separator in contextMenu.Items.OfType<Separator>())
+                {
+                    separator.Height = 8;
+                    separator.Background = Brushes.Transparent;
+                    separator.BorderBrush = Brushes.Transparent;
+                    separator.Opacity = 0;
+                    separator.Margin = new Thickness(0, 2, 0, 2);
+                }
             }
             catch
             {
@@ -238,8 +262,8 @@ namespace GameOverlay.Themes
             resources[SystemColors.ControlBrushKey] = backgroundBrush;
             resources[SystemColors.MenuBrushKey] = backgroundBrush;
             resources[SystemColors.MenuBarBrushKey] = backgroundBrush;
-            // Couleur de survol : contour avec 15% d'opacité (RGB: 110, 92, 42 avec alpha 38 = 15% de 255)
-            var hoverColor = Color.FromArgb(38, 110, 92, 42);
+            // Couleur de survol brune : #FF6E5C2A avec alpha 150 (RGB: 110, 92, 42 avec alpha 150)
+            var hoverColor = Color.FromArgb(150, 110, 92, 42); // #966E5C2A - brun semi-transparent
             resources[SystemColors.InactiveSelectionHighlightBrushKey] = new SolidColorBrush(hoverColor);
             resources[SystemColors.MenuHighlightBrushKey] = new SolidColorBrush(hoverColor);
             resources[SystemColors.HighlightBrushKey] = new SolidColorBrush(hoverColor);
@@ -249,19 +273,32 @@ namespace GameOverlay.Themes
         
         private static void ApplyMenuItemsTheme(IEnumerable<MenuItem> menuItems, Brush backgroundBrush, Brush accentBrush, Brush highlightTextBrush)
         {
-            // Couleur de survol : contour avec 15% d'opacité (RGB: 110, 92, 42 avec alpha 38 = 15% de 255)
-            var hoverColor = Color.FromArgb(38, 110, 92, 42);
+            // Couleur de survol brune : #FF6E5C2A avec alpha 150 (RGB: 110, 92, 42 avec alpha 150)
+            var hoverColor = Color.FromArgb(150, 110, 92, 42); // #966E5C2A - brun semi-transparent
             var hoverBrush = new SolidColorBrush(hoverColor);
+            
+            // Image de fond pour les items (réutiliser celle passée en paramètre si c'est une ImageBrush)
+            Brush itemBackgroundBrush = backgroundBrush;
+            if (!(backgroundBrush is ImageBrush))
+            {
+                // Créer une nouvelle ImageBrush si ce n'est pas déjà une ImageBrush
+                var imageBrush = new ImageBrush();
+                imageBrush.ImageSource = new System.Windows.Media.Imaging.BitmapImage(
+                    new Uri("pack://application:,,,/EndTurnWidgetBackground.png"));
+                imageBrush.Stretch = Stretch.Fill;
+                imageBrush.Freeze();
+                itemBackgroundBrush = imageBrush;
+            }
             
             foreach (var menuItem in menuItems)
             {
-                menuItem.Background = backgroundBrush;
+                menuItem.Background = itemBackgroundBrush;
                 menuItem.BorderBrush = accentBrush;
                 menuItem.Foreground = highlightTextBrush;
                 
                 // Forcer la couleur de survol via le style
                 var style = new Style(typeof(MenuItem));
-                style.Setters.Add(new Setter(MenuItem.BackgroundProperty, backgroundBrush));
+                style.Setters.Add(new Setter(MenuItem.BackgroundProperty, itemBackgroundBrush));
                 style.Setters.Add(new Setter(MenuItem.ForegroundProperty, highlightTextBrush));
                 style.Setters.Add(new Setter(MenuItem.BorderBrushProperty, accentBrush));
                 
@@ -277,11 +314,11 @@ namespace GameOverlay.Themes
                 
                 menuItem.Style = style;
                 
-                ApplySystemColorOverrides(menuItem.Resources, backgroundBrush, accentBrush, highlightTextBrush);
+                ApplySystemColorOverrides(menuItem.Resources, itemBackgroundBrush, accentBrush, highlightTextBrush);
                 
                 if (menuItem.Items.Count > 0)
                 {
-                    ApplyMenuItemsTheme(menuItem.Items.OfType<MenuItem>(), backgroundBrush, accentBrush, highlightTextBrush);
+                    ApplyMenuItemsTheme(menuItem.Items.OfType<MenuItem>(), itemBackgroundBrush, accentBrush, highlightTextBrush);
                 }
             }
         }

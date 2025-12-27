@@ -1,6 +1,7 @@
 using GameOverlay.Models;
 using GameOverlay.Themes;
 using GameOverlay.Windows;
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
 using FormsColorDialog = System.Windows.Forms.ColorDialog;
 using GameOverlay.Kikimeter.Views;
 using GameOverlay.Kikimeter.Services;
@@ -39,7 +40,13 @@ namespace GameOverlay.App
         private bool isHidden = false;
         private Dictionary<string, WindowPosition> windowPositions = new Dictionary<string, WindowPosition>();
         private NotifyIcon notifyIcon;
+        private ContextMenuStrip? mainWindowContextMenu;
         private Config config = new Config();
+        
+        /// <summary>
+        /// Obtient le menu contextuel Windows Forms du MainWindow
+        /// </summary>
+        public ContextMenuStrip? GetMainWindowContextMenu() => mainWindowContextMenu;
         
         /// <summary>
         /// Obtient la couleur de fond des bulles depuis la configuration
@@ -83,11 +90,8 @@ namespace GameOverlay.App
                 
                 InitializeComponent();
                 
-                // Appliquer le thème au menu contextuel de la fenêtre
-                if (this.ContextMenu != null)
-                {
-                    GameOverlay.Themes.ThemeManager.ApplyContextMenuTheme(this.ContextMenu);
-                }
+                // Initialiser le menu contextuel Windows Forms (comme le NotifyIcon)
+                InitializeMainWindowContextMenu();
 
                 // Optimisations Windows 11
                 OptimizeForWindows11();
@@ -106,6 +110,19 @@ namespace GameOverlay.App
                     try
                     {
                         Logger.Info("MainWindow", "Loaded event déclenché");
+                        // Appliquer le thème au menu contextuel
+                        if (ContextMenu != null)
+                        {
+                            ThemeManager.ApplyContextMenuTheme(ContextMenu);
+                            // Forcer le thème à chaque ouverture pour éviter le cyan
+                            ContextMenu.Opened += (s, e) =>
+                            {
+                                if (s is System.Windows.Controls.ContextMenu menu)
+                                {
+                                    ThemeManager.ApplyContextMenuTheme(menu);
+                                }
+                            };
+                        }
                         LoadWindowPositionsFromFile();
                         LoadConfiguration();
                         
@@ -197,12 +214,12 @@ namespace GameOverlay.App
                 double centerY = SystemParameters.PrimaryScreenHeight / 2;
                 CreateKikimeterBubble((int)centerX, (int)centerY + 245);
                 
-                System.Windows.MessageBox.Show("Bulle Kikimeter recréée au centre.", "Information", 
+                CustomMessageBox.Show("Bulle Kikimeter recréée au centre.", "Information", 
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Erreur: {ex.Message}", "Erreur", 
+                CustomMessageBox.Show($"Erreur: {ex.Message}", "Erreur", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -224,12 +241,12 @@ namespace GameOverlay.App
                 double centerY = SystemParameters.PrimaryScreenHeight / 2;
                 CreateLootBubble((int)centerX, (int)centerY + 315);
                 
-                System.Windows.MessageBox.Show("Bulle Loot recréée au centre.", "Information", 
+                CustomMessageBox.Show("Bulle Loot recréée au centre.", "Information", 
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Erreur: {ex.Message}", "Erreur", 
+                CustomMessageBox.Show($"Erreur: {ex.Message}", "Erreur", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -250,27 +267,58 @@ namespace GameOverlay.App
                 notifyIcon.Text = "Amaliassistant - Overlay de sites web";
                 notifyIcon.Visible = true;
 
-                // Créer le menu contextuel
+                // Créer le menu contextuel avec le style PluginManagerWindow - utiliser l'image de fond
                 var contextMenu = new ContextMenuStrip();
                 contextMenu.Renderer = new DarkMenuRenderer();
-                contextMenu.BackColor = System.Drawing.Color.FromArgb(246, 231, 169); // #FFF6E7A9 - fond
-                contextMenu.ForeColor = System.Drawing.Color.FromArgb(110, 92, 42); // #FF6E5C2A - contour
+                
+                // Charger l'image EndTurnWidgetBackground.png pour le fond depuis les ressources WPF
+                try
+                {
+                    // Utiliser WPF pour charger l'image depuis les ressources pack://
+                    var uri = new Uri("pack://application:,,,/EndTurnWidgetBackground.png");
+                    var streamResourceInfo = System.Windows.Application.GetResourceStream(uri);
+                    if (streamResourceInfo != null)
+                    {
+                        using (var stream = streamResourceInfo.Stream)
+                        {
+                            var bitmap = new System.Drawing.Bitmap(stream);
+                            contextMenu.BackgroundImage = bitmap;
+                            contextMenu.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Stretch;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Si l'image ne peut pas être chargée, utiliser une couleur de fallback
+                    contextMenu.BackColor = System.Drawing.Color.FromArgb(255, 222, 203, 161);
+                }
+                
+                // Texte plus clair pour être visible : #FF6E5C2A (RGB: 110, 92, 42)
+                contextMenu.ForeColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+                
+                // Forcer les couleurs de tous les items pour éviter le cyan
+                System.Drawing.Color textColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+                System.Drawing.Color hoverColor = System.Drawing.Color.FromArgb(150, 110, 92, 42);
                 
                 var kikimeterItem = new ToolStripMenuItem("📊 Ouvrir le Kikimeter");
+                kikimeterItem.ForeColor = textColor;
                 kikimeterItem.Click += (s, e) => ToggleKikimeter();
                 contextMenu.Items.Add(kikimeterItem);
 
                 var lootItem = new ToolStripMenuItem("💎 Ouvrir le Loot");
+                lootItem.ForeColor = textColor;
                 lootItem.Click += (s, e) => ToggleLoot();
                 contextMenu.Items.Add(lootItem);
 
                 contextMenu.Items.Add(new ToolStripSeparator());
 
                 var settingsItem = new ToolStripMenuItem("⚙️ Paramètres");
+                settingsItem.ForeColor = textColor;
                 settingsItem.Click += (s, e) => ToggleSettingsWindow();
                 contextMenu.Items.Add(settingsItem);
 
                 var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
+                pluginsItem.ForeColor = textColor;
                 pluginsItem.Click += (s, e) => TogglePluginManagerWindow();
                 contextMenu.Items.Add(pluginsItem);
 
@@ -278,6 +326,7 @@ namespace GameOverlay.App
 
                 // Option de lancement automatique
                 var startupItem = new ToolStripMenuItem("🚀 Lancer au démarrage");
+                startupItem.ForeColor = textColor;
                 startupItem.CheckOnClick = true;
                 startupItem.Checked = IsStartupEnabled();
                 startupItem.Click += (s, e) => ToggleStartup();
@@ -285,12 +334,14 @@ namespace GameOverlay.App
 
                 // Option de vérification des mises à jour
                 var updateItem = new ToolStripMenuItem("🔄 Vérifier les mises à jour");
+                updateItem.ForeColor = textColor;
                 updateItem.Click += (s, e) => CheckForUpdatesManually();
                 contextMenu.Items.Add(updateItem);
 
                 contextMenu.Items.Add(new ToolStripSeparator());
 
                 var exitItem = new ToolStripMenuItem("❌ Quitter");
+                exitItem.ForeColor = textColor;
                 exitItem.Click += (s, e) => ExitApplication();
                 contextMenu.Items.Add(exitItem);
 
@@ -305,6 +356,79 @@ namespace GameOverlay.App
             }
         }
 
+        private void InitializeMainWindowContextMenu()
+        {
+            try
+            {
+                // Créer le menu contextuel avec le même style que le NotifyIcon
+                var contextMenu = new ContextMenuStrip();
+                contextMenu.Renderer = new DarkMenuRenderer();
+                
+                // Charger l'image EndTurnWidgetBackground.png pour le fond
+                try
+                {
+                    var uri = new Uri("pack://application:,,,/EndTurnWidgetBackground.png");
+                    var streamResourceInfo = System.Windows.Application.GetResourceStream(uri);
+                    if (streamResourceInfo != null)
+                    {
+                        using (var stream = streamResourceInfo.Stream)
+                        {
+                            var bitmap = new System.Drawing.Bitmap(stream);
+                            contextMenu.BackgroundImage = bitmap;
+                            contextMenu.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Stretch;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Si l'image ne peut pas être chargée, utiliser une couleur de fallback
+                    contextMenu.BackColor = System.Drawing.Color.FromArgb(255, 222, 203, 161);
+                }
+                
+                // Texte : #FF6E5C2A (RGB: 110, 92, 42)
+                contextMenu.ForeColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+                
+                // Couleur du texte
+                System.Drawing.Color textColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+                
+                // Item "Masquer l'overlay"
+                var hideItem = new ToolStripMenuItem("Masquer l'overlay");
+                hideItem.ForeColor = textColor;
+                hideItem.Click += (s, e) => HideOverlay_Click(s, e);
+                contextMenu.Items.Add(hideItem);
+                
+                contextMenu.Items.Add(new ToolStripSeparator());
+                
+                // Item "Placer notification de vente"
+                var saleItem = new ToolStripMenuItem("📍 Placer notification de vente");
+                saleItem.ForeColor = textColor;
+                saleItem.Click += (s, e) => TestSaleNotification_Click(s, e);
+                contextMenu.Items.Add(saleItem);
+                
+                contextMenu.Items.Add(new ToolStripSeparator());
+                
+                // Item "Plugins"
+                var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
+                pluginsItem.ForeColor = textColor;
+                pluginsItem.Click += (s, e) => TogglePluginManagerWindow();
+                contextMenu.Items.Add(pluginsItem);
+                
+                contextMenu.Items.Add(new ToolStripSeparator());
+                
+                // Item "Quitter"
+                var exitItem = new ToolStripMenuItem("Quitter");
+                exitItem.ForeColor = textColor;
+                exitItem.Click += (s, e) => Exit_Click(s, e);
+                contextMenu.Items.Add(exitItem);
+                
+                mainWindowContextMenu = contextMenu;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erreur initialisation MainWindowContextMenu: {ex.Message}");
+            }
+        }
+
         // Renderer personnalisé pour le menu sombre
         private class DarkMenuRenderer : ToolStripProfessionalRenderer
         {
@@ -312,58 +436,83 @@ namespace GameOverlay.App
 
             protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
             {
-                // Fond : #FFF6E7A9 (RGB: 246, 231, 169)
-                var backgroundColor = System.Drawing.Color.FromArgb(246, 231, 169);
-                // Contour : #FF6E5C2A (RGB: 110, 92, 42)
-                var borderColor = System.Drawing.Color.FromArgb(110, 92, 42);
+                // Ne JAMAIS appeler la méthode de base - elle utilise les couleurs par défaut (cyan)!
+                // Le fond sera géré par l'image de fond du menu lui-même (BackgroundImage)
+                // Ici on ne fait que le survol pour correspondre exactement au menu WPF
                 
                 if (e.Item.Selected)
                 {
-                    // Couleur de survol : contour avec 15% d'opacité
-                    var hoverColor = System.Drawing.Color.FromArgb((int)(255 * 0.15), borderColor.R, borderColor.G, borderColor.B);
+                    // Couleur de survol brune exactement comme le menu WPF : #966E5C2A (RGB: 110, 92, 42 avec alpha 150)
+                    var hoverColor = System.Drawing.Color.FromArgb(150, 110, 92, 42);
                     e.Graphics.FillRectangle(new System.Drawing.SolidBrush(hoverColor), e.Item.ContentRectangle);
                 }
-                else
-                {
-                    // Fond
-                    e.Graphics.FillRectangle(new System.Drawing.SolidBrush(backgroundColor), e.Item.ContentRectangle);
-                }
+                // Sinon, on laisse l'image de fond du menu s'afficher
             }
+            
 
             protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
             {
-                // Séparateur couleur contour : #FF6E5C2A
-                var borderColor = System.Drawing.Color.FromArgb(110, 92, 42);
-                e.Graphics.DrawLine(new System.Drawing.Pen(borderColor), 
-                    e.Item.ContentRectangle.Left + 5, 
-                    e.Item.ContentRectangle.Height / 2, 
-                    e.Item.ContentRectangle.Right - 5, 
-                    e.Item.ContentRectangle.Height / 2);
+                // Séparateur transparent pour correspondre au style PluginManagerWindow
+                // Pas de ligne visible, juste de l'espace
+            }
+
+            protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
+            {
+                // Rendre la marge d'image transparente pour éviter le bandeau beige
+                // On ne dessine rien, ce qui permet à l'image de fond du menu de s'afficher
+            }
+
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                // Dessiner la bordure brune au lieu de la couleur par défaut
+                var borderColor = System.Drawing.Color.FromArgb(255, 110, 92, 42); // #FF6E5C2A
+                using (var pen = new System.Drawing.Pen(borderColor))
+                {
+                    e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+                }
             }
         }
 
-        // Table de couleurs personnalisée - couleurs de la fenêtre des paramètres (#FF6E5C2A et #FF4E421F)
+            // Table de couleurs personnalisée - exactement les mêmes couleurs que le menu WPF
         private class DarkColorTable : ProfessionalColorTable
         {
-            // Contour : #FF6E5C2A (RGB: 110, 92, 42)
-            private static readonly System.Drawing.Color BorderColor = System.Drawing.Color.FromArgb(110, 92, 42);
-            // Fond : #FFF6E7A9 (RGB: 246, 231, 169)
-            private static readonly System.Drawing.Color BackgroundColor = System.Drawing.Color.FromArgb(246, 231, 169);
+            // Contour : #FF6E5C2A (RGB: 110, 92, 42) - exactement comme le menu WPF
+            private static readonly System.Drawing.Color BorderColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+            // Fond : beige/jaune-marron comme l'image EndTurnWidgetBackground.png (utilisé comme fallback si l'image ne charge pas)
+            private static readonly System.Drawing.Color BackgroundColor = System.Drawing.Color.FromArgb(255, 222, 203, 161);
+            // Couleur de survol brune exactement comme le menu WPF : #966E5C2A (RGB: 110, 92, 42 avec alpha 150)
+            private static readonly System.Drawing.Color HoverColor = System.Drawing.Color.FromArgb(150, 110, 92, 42);
             
             public override System.Drawing.Color MenuBorder => BorderColor;
             public override System.Drawing.Color MenuItemBorder => BorderColor;
-            // Couleur de survol : contour avec 15% d'opacité (RGB: 110, 92, 42 avec alpha 38 = 15% de 255)
-            private static readonly System.Drawing.Color HoverColor = System.Drawing.Color.FromArgb(38, 110, 92, 42);
             
             public override System.Drawing.Color MenuItemSelected => HoverColor;
             public override System.Drawing.Color MenuItemSelectedGradientBegin => HoverColor;
             public override System.Drawing.Color MenuItemSelectedGradientEnd => HoverColor;
-            public override System.Drawing.Color MenuItemPressedGradientBegin => BackgroundColor;
-            public override System.Drawing.Color MenuItemPressedGradientEnd => BackgroundColor;
+            public override System.Drawing.Color MenuItemPressedGradientBegin => HoverColor;
+            public override System.Drawing.Color MenuItemPressedGradientEnd => HoverColor;
+            // S'assurer que Checked aussi utilise la couleur brune
+            public override System.Drawing.Color CheckBackground => HoverColor;
+            public override System.Drawing.Color CheckPressedBackground => HoverColor;
+            public override System.Drawing.Color CheckSelectedBackground => HoverColor;
+            // Button
+            public override System.Drawing.Color ButtonSelectedHighlight => HoverColor;
+            public override System.Drawing.Color ButtonSelectedHighlightBorder => BorderColor;
+            public override System.Drawing.Color ButtonPressedHighlight => HoverColor;
+            public override System.Drawing.Color ButtonPressedHighlightBorder => BorderColor;
+            // Separator - transparent
+            public override System.Drawing.Color SeparatorDark => System.Drawing.Color.Transparent;
+            public override System.Drawing.Color SeparatorLight => System.Drawing.Color.Transparent;
+            // Grip
+            public override System.Drawing.Color GripLight => System.Drawing.Color.Transparent;
+            public override System.Drawing.Color GripDark => System.Drawing.Color.Transparent;
+            // Le fond sera géré par BackgroundImage du ContextMenuStrip, cette couleur est un fallback
             public override System.Drawing.Color ToolStripDropDownBackground => BackgroundColor;
-            public override System.Drawing.Color ImageMarginGradientBegin => BackgroundColor;
-            public override System.Drawing.Color ImageMarginGradientMiddle => BackgroundColor;
-            public override System.Drawing.Color ImageMarginGradientEnd => BackgroundColor;
+            // Rendre la marge d'image transparente pour éviter le bandeau beige dégueulasse
+            // Utiliser Transparent pour que l'image de fond du menu s'affiche
+            public override System.Drawing.Color ImageMarginGradientBegin => System.Drawing.Color.Transparent;
+            public override System.Drawing.Color ImageMarginGradientMiddle => System.Drawing.Color.Transparent;
+            public override System.Drawing.Color ImageMarginGradientEnd => System.Drawing.Color.Transparent;
         }
 
 
@@ -495,7 +644,7 @@ namespace GameOverlay.App
             catch (Exception ex)
             {
                 Logger.Error("MainWindow", $"Erreur lors de la vérification manuelle des mises à jour: {ex.Message}");
-                System.Windows.MessageBox.Show(
+                CustomMessageBox.Show(
                     $"Erreur lors de la vérification des mises à jour:\n{ex.Message}",
                     "Erreur",
                     MessageBoxButton.OK,
@@ -527,8 +676,17 @@ namespace GameOverlay.App
                 uint extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
                 // Ajouter WS_EX_TOOLWINDOW pour exclure de Alt+Tab
                 extendedStyle |= WS_EX_TOOLWINDOW;
-                // Appliquer le nouveau style
-                SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle);
+                // Appliquer le nouveau style et vérifier le résultat
+                int result = SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle);
+                if (result == 0)
+                {
+                    // Vérifier s'il y a eu une erreur
+                    int error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                    if (error != 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Erreur SetWindowLong: {error}");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -756,7 +914,7 @@ namespace GameOverlay.App
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Erreur chargement config: {ex.Message}");
+                CustomMessageBox.Show($"Erreur chargement config: {ex.Message}");
                 config = new Config();
             }
         }
@@ -879,11 +1037,7 @@ namespace GameOverlay.App
                 string logPath = config.KikimeterLogPath ?? "";
                 KikimeterIndividualMode individualMode = new KikimeterIndividualMode();
                 kikimeterBubble = new GameOverlay.Windows.KikimeterBubble(logPath, individualMode, config, posX, posY, opacity, size);
-                if (kikimeterBubble.ContextMenu != null)
-                {
-                    kikimeterBubble.ContextMenu.Opened += (_, _) => NotifyContextMenuOpened();
-                    kikimeterBubble.ContextMenu.Closed += (_, _) => NotifyContextMenuClosed();
-                }
+                // Le menu contextuel est maintenant géré par Windows Forms dans OnContextMenuOpening
                 // Le fond est déjà appliqué dans le constructeur
 
                 // Événements
@@ -896,7 +1050,7 @@ namespace GameOverlay.App
                     catch (Exception ex)
                     {
                         Logger.Error("MainWindow", $"Erreur dans OnOpenKikimeter: {ex.Message}");
-                        System.Windows.MessageBox.Show($"Erreur lors de l'ouverture du kikimeter: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        CustomMessageBox.Show($"Erreur lors de l'ouverture du kikimeter: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 };
                 kikimeterBubble.OnOpenLoot += (sender, e) =>
@@ -908,7 +1062,7 @@ namespace GameOverlay.App
                     catch (Exception ex)
                     {
                         Logger.Error("MainWindow", $"Erreur dans OnOpenLoot (depuis KikimeterBubble): {ex.Message}");
-                        System.Windows.MessageBox.Show($"Erreur lors de l'ouverture du loot: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        CustomMessageBox.Show($"Erreur lors de l'ouverture du loot: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 };
                 kikimeterBubble.OnOpenWeb += (sender, e) =>
@@ -920,7 +1074,7 @@ namespace GameOverlay.App
                     catch (Exception ex)
                     {
                         Logger.Error("MainWindow", $"Erreur dans OnOpenWeb: {ex.Message}");
-                        System.Windows.MessageBox.Show($"Erreur lors de l'ouverture du navigateur web: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        CustomMessageBox.Show($"Erreur lors de l'ouverture du navigateur web: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 };
                 kikimeterBubble.OnOpenSettings += (sender, e) =>
@@ -932,7 +1086,7 @@ namespace GameOverlay.App
                     catch (Exception ex)
                     {
                         Logger.Error("MainWindow", $"Erreur dans OnOpenSettings: {ex.Message}");
-                        System.Windows.MessageBox.Show($"Erreur lors de l'ouverture des paramètres: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        CustomMessageBox.Show($"Erreur lors de l'ouverture des paramètres: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 };
                 // OnConfigurePath supprimé (menu contextuel retiré)
@@ -1337,7 +1491,7 @@ namespace GameOverlay.App
                         ShowKikimeter();
                     }
                     
-                    System.Windows.MessageBox.Show(
+                    CustomMessageBox.Show(
                         "Le chemin a été configuré avec succès. La fenêtre Kikimeter sera redémarrée pour utiliser le nouveau chemin.",
                         "Configuration sauvegardée",
                         MessageBoxButton.OK,
@@ -1346,7 +1500,7 @@ namespace GameOverlay.App
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show(
+                CustomMessageBox.Show(
                     $"Erreur lors de la configuration: {ex.Message}",
                     "Erreur",
                     MessageBoxButton.OK,
@@ -1371,7 +1525,7 @@ namespace GameOverlay.App
                     config.LootChatLogPath = dialog.LogPath;
                     SaveConfiguration();
                     
-                    System.Windows.MessageBox.Show(
+                    CustomMessageBox.Show(
                         "Le chemin a été configuré avec succès.",
                         "Configuration sauvegardée",
                         MessageBoxButton.OK,
@@ -1380,7 +1534,7 @@ namespace GameOverlay.App
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show(
+                CustomMessageBox.Show(
                     $"Erreur lors de la configuration: {ex.Message}",
                     "Erreur",
                     MessageBoxButton.OK,
@@ -1924,7 +2078,7 @@ namespace GameOverlay.App
             catch (Exception ex)
             {
                 Logger.Error("MainWindow", $"Erreur ToggleWeb: {ex.Message}");
-                System.Windows.MessageBox.Show($"Erreur lors de l'ouverture du navigateur web: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                CustomMessageBox.Show($"Erreur lors de l'ouverture du navigateur web: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -2182,13 +2336,19 @@ namespace GameOverlay.App
             catch (Exception ex)
             {
                 Logger.Error("MainWindow", $"Erreur lors de la sauvegarde de la configuration: {ex.Message}");
-                System.Windows.MessageBox.Show($"Erreur sauvegarde: {ex.Message}");
+                CustomMessageBox.Show($"Erreur sauvegarde: {ex.Message}");
             }
         }
 
         private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            this.ContextMenu.IsOpen = true;
+            // Afficher le menu contextuel Windows Forms (comme le NotifyIcon)
+            if (mainWindowContextMenu != null)
+            {
+                // Convertir la position WPF en position écran
+                var point = this.PointToScreen(e.GetPosition(this));
+                mainWindowContextMenu.Show((int)point.X, (int)point.Y);
+            }
         }
 
         private void Window_KeyDown(object sender, WpfKeyEventArgs e)
@@ -2204,17 +2364,17 @@ namespace GameOverlay.App
         // Méthodes supprimées : ToggleAllMinimizedWindows, AddSite_Click - fonctionnalité sites web retirée
 
 
-        public void HideOverlay_Click(object sender, RoutedEventArgs e)
+        public void HideOverlay_Click(object sender, EventArgs e)
         {
             ToggleOverlay();
         }
         
-        public void TestSaleNotification_Click(object sender, RoutedEventArgs e)
+        public void TestSaleNotification_Click(object sender, EventArgs e)
         {
             TestSaleNotification();
         }
 
-        public void Exit_Click(object sender, RoutedEventArgs e)
+        public void Exit_Click(object sender, EventArgs e)
         {
             ExitApplication();
         }
@@ -2282,7 +2442,7 @@ namespace GameOverlay.App
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Erreur lors de la sélection de couleur : {ex.Message}",
+                CustomMessageBox.Show($"Erreur lors de la sélection de couleur : {ex.Message}",
                     "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }

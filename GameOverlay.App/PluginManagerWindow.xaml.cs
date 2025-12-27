@@ -10,6 +10,7 @@ using System.Windows.Media;
 using GameOverlay.App.Services;
 using GameOverlay.Models;
 using GameOverlay.Themes;
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
 using Point = System.Windows.Point;
 
 namespace GameOverlay.App
@@ -212,7 +213,7 @@ namespace GameOverlay.App
                 catch (Exception ex)
                 {
                     Logger.Error("PluginManagerWindow", $"Erreur lors de l'activation/désactivation du plugin: {ex.Message}");
-                    System.Windows.MessageBox.Show(
+                    CustomMessageBox.Show(
                         $"Erreur lors de l'activation/désactivation du plugin:\n{ex.Message}",
                         "Erreur",
                         MessageBoxButton.OK,
@@ -234,7 +235,7 @@ namespace GameOverlay.App
                 {
                     if (string.IsNullOrEmpty(pluginViewModel.DownloadUrl))
                     {
-                        System.Windows.MessageBox.Show(
+                        CustomMessageBox.Show(
                             "URL de téléchargement non disponible pour ce plugin.",
                             "Erreur",
                             MessageBoxButton.OK,
@@ -243,7 +244,7 @@ namespace GameOverlay.App
                     }
                     
                     // Demander confirmation
-                    var result = System.Windows.MessageBox.Show(
+                    var result = CustomMessageBox.Show(
                         $"Voulez-vous installer le plugin \"{pluginViewModel.Name}\" version {pluginViewModel.Version} ?",
                         "Confirmation d'installation",
                         MessageBoxButton.YesNo,
@@ -266,7 +267,7 @@ namespace GameOverlay.App
                     
                     if (downloadResult)
                     {
-                        System.Windows.MessageBox.Show(
+                        CustomMessageBox.Show(
                             $"Plugin \"{pluginViewModel.Name}\" installé avec succès !\nVeuillez actualiser la liste des plugins locaux.",
                             "Installation réussie",
                             MessageBoxButton.OK,
@@ -278,7 +279,7 @@ namespace GameOverlay.App
                     }
                     else
                     {
-                        System.Windows.MessageBox.Show(
+                        CustomMessageBox.Show(
                             "Erreur lors du téléchargement du plugin.",
                             "Erreur",
                             MessageBoxButton.OK,
@@ -288,7 +289,7 @@ namespace GameOverlay.App
                 catch (Exception ex)
                 {
                     Logger.Error("PluginManagerWindow", $"Erreur lors de l'installation du plugin: {ex.Message}");
-                    System.Windows.MessageBox.Show(
+                    CustomMessageBox.Show(
                         $"Erreur lors de l'installation du plugin:\n{ex.Message}",
                         "Erreur",
                         MessageBoxButton.OK,
@@ -301,7 +302,7 @@ namespace GameOverlay.App
         {
             _pluginManager.ScanAndLoadPlugins();
             RefreshLocalPluginsList();
-            System.Windows.MessageBox.Show(
+            CustomMessageBox.Show(
                 "Liste des plugins locaux actualisée.",
                 "Actualisation",
                 MessageBoxButton.OK,
@@ -311,7 +312,7 @@ namespace GameOverlay.App
         private async void RefreshAvailablePluginsButton_Click(object sender, RoutedEventArgs e)
         {
             await LoadAvailablePluginsAsync();
-            System.Windows.MessageBox.Show(
+            CustomMessageBox.Show(
                 "Liste des plugins disponibles actualisée.",
                 "Actualisation",
                 MessageBoxButton.OK,
@@ -334,7 +335,7 @@ namespace GameOverlay.App
             catch (Exception ex)
             {
                 Logger.Error("PluginManagerWindow", $"Erreur lors de l'ouverture du dossier: {ex.Message}");
-                System.Windows.MessageBox.Show(
+                CustomMessageBox.Show(
                     $"Erreur lors de l'ouverture du dossier des plugins:\n{ex.Message}",
                     "Erreur",
                     MessageBoxButton.OK,

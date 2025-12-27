@@ -54,6 +54,7 @@
     <None Remove="Views\EndTurnWidgetBackground.png" />
     <None Remove="Views\kikimeter_empty.png" />
     <None Remove="Views\loot.png" />
+    <None Remove="Views\messagebox.png" />
     <None Remove="Views\loot_watcher_checked.png" />
     <None Remove="Views\menu_mono.png" />
     <None Remove="Views\NP-BG-3.png" />
@@ -76,6 +77,7 @@
     <Resource Include="Views\EndTurnWidgetBackground.png" />
     <Resource Include="Views\kikimeter_empty.png" />
     <Resource Include="Views\loot.png" />
+    <Resource Include="Views\messagebox.png" />
     <Resource Include="Views\loot_watcher_checked.png" />
     <Resource Include="Views\menu_mono.png" />
     <Resource Include="Views\NP-BG-3.png" />

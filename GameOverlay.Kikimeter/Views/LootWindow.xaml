@@ -5,183 +5,88 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         mc:Ignorable="d"
         Title="Loot"
-        Height="592"
-        Width="304"
+        Height="550"
+        Width="300"
         WindowStyle="None"
         AllowsTransparency="True"
-        ResizeMode="NoResize"
+        ResizeMode="CanResize"
         Topmost="True"
         ShowInTaskbar="False"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         RenderOptions.BitmapScalingMode="HighQuality"
-        RenderOptions.ClearTypeHint="Enabled"
-        RenderOptions.EdgeMode="Aliased"
-        Foreground="{x:Null}" Cursor="">
-    <FrameworkElement.Resources>
-        <ResourceDictionary>
-            <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A" />
-            <SolidColorBrush x:Key="SectionBackgroundBrush" Color="#80000000" />
-            <!-- LinearGradientBrush pour le titre et les textes d'item -->
-            <LinearGradientBrush x:Key="TitleGradientBrush" EndPoint="0.5,1" StartPoint="0.5,0">
-                <GradientStop Color="#FF986F34"/>
-                <GradientStop Color="#FFE2911A" Offset="1"/>
-                <GradientStop Color="#FFA47839" Offset="0.488"/>
-            </LinearGradientBrush>
-            <Style x:Key="{x:Type CheckBox}" TargetType="{x:Type CheckBox}">
-                <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}" />
-                <Setter Property="FontSize" Value="12" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="{x:Type CheckBox}">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="18" Height="18"
-                                        BorderThickness="2"
-                                        CornerRadius="2"
-                                        Margin="0,0,6,0" Background="#FFA27780" BorderBrush="#FF5D353C">
-                                    <Path x:Name="CheckMark"
-                                          Data="M0,3 L3,6 L8,1"
-                                          Stroke="{DynamicResource CyanAccentBrush}"
-                                          StrokeThickness="2"
-                                          Visibility="Collapsed"
-                                          Margin="3" />
-                                </Border>
-                                <ContentPresenter VerticalAlignment="Center" />
-                            </StackPanel>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="ToggleButton.IsChecked" Value="True">
-                                    <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-            <!-- Style pour la ScrollBar -->
-            <Style TargetType="ScrollBar">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="ScrollBar">
-                            <Grid x:Name="GridRoot" Background="{TemplateBinding Background}">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition MaxHeight="18"/>
-                                    <RowDefinition Height="0.00001*"/>
-                                    <RowDefinition MaxHeight="18"/>
-                                </Grid.RowDefinitions>
-                                <Border Grid.Row="1" Background="{DynamicResource TitleGradientBrush}" CornerRadius="2" Opacity="0.3" />
-                                <Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="True" Focusable="False">
-                                    <Track.Thumb>
-                                        <Thumb>
-                                            <Thumb.Style>
-                                                <Style TargetType="Thumb">
-                                                    <Setter Property="Background" Value="{DynamicResource TitleGradientBrush}" />
-                                                    <Setter Property="BorderThickness" Value="0" />
-                                                    <Setter Property="Template">
-                                                        <Setter.Value>
-                                                            <ControlTemplate TargetType="Thumb">
-                                                                <Border Background="{TemplateBinding Background}" CornerRadius="2" Opacity="0.8" />
-                                                            </ControlTemplate>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </Style>
-                                            </Thumb.Style>
-                                        </Thumb>
-                                    </Track.Thumb>
-                                </Track>
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-        </ResourceDictionary>
-    </FrameworkElement.Resources>
+        MinWidth="300"
+        MinHeight="500" Cursor="">
+    <Window.Resources>
+        <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A" />
+        <SolidColorBrush x:Key="SectionBackgroundBrush" Color="#80000000" />
+    </Window.Resources>
     <Window.Background>
-        <SolidColorBrush Color="Transparent"/>
+        <ImageBrush ImageSource="/GameOverlay.Kikimeter;component/Views/EndTurnWidgetBackground.png" Stretch="Fill"/>
     </Window.Background>
+    <FrameworkElement.LayoutTransform>
+        <ScaleTransform x:Name="WindowScale" ScaleX="1" ScaleY="1" />
+    </FrameworkElement.LayoutTransform>
     <Border x:Name="MainBorder"
-            BorderThickness="2"
-            CornerRadius="5"
+            BorderThickness="1"
+            BorderBrush="#FF6E5C2A"
+            CornerRadius="10"
+            Padding="0"
+            SnapsToDevicePixels="True"
             Background="Transparent"
-            RenderOptions.BitmapScalingMode="HighQuality"
-            UseLayoutRounding="True" Cursor="Hand">
-        <Grid x:Name="MainGrid"
-              UseLayoutRounding="True"
-              RenderOptions.BitmapScalingMode="HighQuality" Margin="-2,25,-2,0" Cursor="Hand">
-            <FrameworkElement.LayoutTransform>
-                <ScaleTransform x:Name="WindowScale" ScaleX="1" ScaleY="1" />
-            </FrameworkElement.LayoutTransform>
+            MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+        <Grid x:Name="MainGrid" Background="Transparent">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" MinHeight="118" />
-                <RowDefinition Height="341*" />
-                <RowDefinition Height="104*"/>
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <!-- Image de fond - en arrière-plan, n'interfère pas avec le contenu -->
-            <Image Source="/GameOverlay.Kikimeter;component/Views/loot_watcher_checked.png"
-                   Grid.RowSpan="3"
-                   Stretch="Uniform"
-                   Panel.ZIndex="0"
-                   IsHitTestVisible="False"
-                   Opacity="1.0" />
-            <!-- Header avec croix de déplacement et croix de fermeture -->
-            <Grid Grid.Row="0" Margin="0,-15,0,1" Cursor="Hand" Panel.ZIndex="1">
+
+            <!-- En-tête avec titre et bouton fermer -->
+            <Grid Grid.Row="0" Margin="4,10,15,15" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="254" />
-                    <ColumnDefinition Width="Auto" MinWidth="50" />
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <!-- Croix de déplacement -->
-                <Image x:Name="croix_deplacement" 
-                       Grid.Column="0"
-                       Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png"
-                       Width="45"
-                       Height="45"
-                       Stretch="Fill"
-                       Opacity="1.0"
-                       Cursor="Hand"
-                       IsHitTestVisible="True"
-                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
-                       Margin="0,0,209,87"
-                       Panel.ZIndex="10"/>
-                <!-- Titre -->
-                <TextBlock Text="Loot"
-                           FontSize="36"
+                <TextBlock Grid.Column="0"
+                           Text="Loot"
+                           FontSize="18"
                            FontWeight="Bold"
-                           HorizontalAlignment="Left"
-                           VerticalAlignment="Top" 
-                           Width="200" 
-                           Height="56" 
-                           Padding="0,0,0,2" 
-                           ScrollViewer.CanContentScroll="True" 
-                           Margin="60,45,0,0"
-                           Panel.ZIndex="0"
-                           ClipToBounds="True"
-                           IsHitTestVisible="False" Grid.ColumnSpan="2"/>
+                           Foreground="#FFDAC390"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,40,0"/>
+                <Image Grid.Column="1"
+                       Source="/GameOverlay.Kikimeter;component/Views/Assets/utilities/fermeture.png"
+                       Width="28"
+                       Height="28"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Cursor="Hand"
+                       MouseLeftButtonDown="CloseButton_Click"
+                       Stretch="Uniform" Margin="0,5,0,0"/>
             </Grid>
-            <Grid Panel.ZIndex="1" Margin="0,0,0,26" Grid.Row="1" Background="Transparent">
+
+            <!-- Liste des items de loot -->
+            <Border Grid.Row="1"
+                    BorderBrush="#FF6E5C2A"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Margin="15,0,15,15"
+                    Background="{DynamicResource SectionBackgroundBrush}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled" 
-                              Margin="45,0,35,0" 
-                              VerticalAlignment="Stretch"
-                              HorizontalAlignment="Stretch"
-                              Background="Transparent">
-                    <ItemsControl x:Name="LootItemsContainer" 
-                                  Margin="0,14,0,0" 
-                                  HorizontalAlignment="Stretch"
-                                  Background="Transparent">
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="10">
+                    <ItemsControl x:Name="LootItemsContainer">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Grid HorizontalAlignment="Stretch">
-                                    <Border BorderBrush="{DynamicResource TitleGradientBrush}"
-                                            BorderThickness="1"
-                                            Margin="0,2,0,2"
-                                            Padding="10,5"
-                                            Background="{DynamicResource SectionBackgroundBrush}"
-                                            Opacity="0.4"
-                                            CornerRadius="2"
-                                            HorizontalAlignment="Stretch" />
-                                    <Grid Background="Transparent" Margin="10,7,10,7">
+                                <Border BorderBrush="#FF6E5C2A"
+                                        BorderThickness="1"
+                                        Margin="0,2,0,2"
+                                        Padding="10,8"
+                                        Background="{DynamicResource SectionBackgroundBrush}"
+                                        CornerRadius="3">
+                                    <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" MinWidth="150" />
                                             <ColumnDefinition Width="Auto" />
@@ -190,29 +95,23 @@
                                         <TextBlock Grid.Column="0"
                                                    Text="{Binding ItemName}"
                                                    FontSize="14"
-                                                   FontWeight="Bold" 
-                                                   Foreground="{DynamicResource TitleGradientBrush}"
+                                                   FontWeight="Bold"
+                                                   Foreground="#FF4E421F"
                                                    TextWrapping="Wrap"
-                                                   TextTrimming="None"
                                                    VerticalAlignment="Center"
-                                                   Margin="0,0,5,0"
-                                                   Opacity="1.0"
-                                                   Background="Transparent"/>
+                                                   Margin="0,0,10,0"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding Quantity, StringFormat=x\{0\}}"
                                                    FontSize="16"
                                                    FontWeight="Bold"
+                                                   Foreground="#FF4E421F"
                                                    VerticalAlignment="Center"
-                                                   Margin="5,0,5,0" 
-                                                   Foreground="{DynamicResource TitleGradientBrush}"
-                                                   Opacity="1.0"
-                                                   Background="Transparent"/>
+                                                   Margin="5,0,10,0"/>
                                         <Button Grid.Column="2"
                                                 Width="30"
                                                 Height="30"
                                                 Background="Transparent"
                                                 BorderThickness="0"
-                                                BorderBrush="Transparent"
                                                 Padding="0"
                                                 Cursor="Hand"
                                                 Click="DeleteLootItem_Click"
@@ -220,8 +119,7 @@
                                                 ToolTip="Supprimer cet item"
                                                 VerticalAlignment="Center"
                                                 HorizontalAlignment="Center"
-                                                Focusable="False"
-                                                Opacity="1.0">
+                                                Focusable="False">
                                             <Button.Style>
                                                 <Style TargetType="Button">
                                                     <Setter Property="Template">
@@ -242,43 +140,31 @@
                                                    Width="25"
                                                    Height="25"
                                                    Stretch="Uniform"
-                                                   Opacity="1.0"
-                                                   RenderOptions.BitmapScalingMode="HighQuality"
-                                                   Panel.ZIndex="1001"
-                                                   Visibility="Visible">
-                                                <Image.Style>
-                                                    <Style TargetType="Image">
-                                                        <Setter Property="Opacity" Value="1.0"/>
-                                                    </Style>
-                                                </Image.Style>
-                                            </Image>
+                                                   RenderOptions.BitmapScalingMode="HighQuality"/>
                                         </Button>
                                     </Grid>
-                                </Grid>
+                                </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </ScrollViewer>
-            </Grid>
-            <Border Grid.Row="3"
+            </Border>
+
+            <!-- Barre de statut -->
+            <Border Grid.Row="2"
+                    BorderBrush="#FF6E5C2A"
                     BorderThickness="0,1,0,0"
-                    Padding="10,5"
-                    Panel.ZIndex="1" Margin="0,0,0,-27">
+                    Padding="15,10"
+                    Margin="15,0,15,15"
+                    Background="{DynamicResource SectionBackgroundBrush}">
                 <TextBlock x:Name="StatusText"
                            Text="Aucun loot détecté"
                            FontSize="12"
                            FontWeight="Normal"
+                           Foreground="#FF4E421F"
                            HorizontalAlignment="Left"
                            VerticalAlignment="Center"
-                           TextWrapping="Wrap"
-                           TextTrimming="None">
-                    <TextBlock.Foreground>
-                        <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0" Opacity="0">
-                            <GradientStop Color="Black"/>
-                            <GradientStop Color="White" Offset="1"/>
-                        </LinearGradientBrush>
-                    </TextBlock.Foreground>
-                </TextBlock>
+                           TextWrapping="Wrap"/>
             </Border>
         </Grid>
     </Border>

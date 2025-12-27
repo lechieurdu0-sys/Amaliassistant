@@ -1,0 +1,14 @@
+<UserControl x:Class="GameOverlay.Windows.CustomContextMenu"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             Visibility="Collapsed">
+    <Border x:Name="MenuBorder"
+            Background="{DynamicResource ContextMenuBackgroundBrush}"
+            BorderBrush="#FF6E5C2A"
+            BorderThickness="1"
+            CornerRadius="3">
+        <StackPanel x:Name="ItemsPanel" Margin="4"/>
+    </Border>
+</UserControl>
+

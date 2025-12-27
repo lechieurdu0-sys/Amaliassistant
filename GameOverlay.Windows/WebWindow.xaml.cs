@@ -14,6 +14,7 @@ using GameOverlay.Themes;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using Newtonsoft.Json;
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
 
 namespace GameOverlay.Windows;
 
@@ -325,7 +326,7 @@ public partial class WebWindow : Window
         catch (Exception ex)
         {
             Logger.Error("WebWindow", $"Erreur lors de l'initialisation de WebView2: {ex.Message}");
-            System.Windows.MessageBox.Show($"Erreur lors de l'initialisation du navigateur: {ex.Message}", 
+            CustomMessageBox.Show($"Erreur lors de l'initialisation du navigateur: {ex.Message}", 
                           "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
@@ -368,7 +369,7 @@ public partial class WebWindow : Window
         catch (Exception ex)
         {
             Logger.Error("WebWindow", $"Erreur lors de la navigation vers {url}: {ex.Message}");
-            System.Windows.MessageBox.Show($"Erreur lors de la navigation: {ex.Message}", 
+            CustomMessageBox.Show($"Erreur lors de la navigation: {ex.Message}", 
                           "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
@@ -850,7 +851,7 @@ public partial class WebWindow : Window
         catch (Exception ex)
         {
             Logger.Error("WebWindow", $"Erreur PipButton_Click: {ex.Message}");
-            System.Windows.MessageBox.Show($"Erreur lors du basculement du Picture-in-Picture: {ex.Message}", 
+            CustomMessageBox.Show($"Erreur lors du basculement du Picture-in-Picture: {ex.Message}", 
                           "Erreur PIP", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
@@ -1029,7 +1030,7 @@ public partial class WebWindow : Window
         catch (Exception ex)
         {
             Logger.Error("WebWindow", $"Erreur lors de l'ouverture du dialogue de style: {ex.Message}");
-            System.Windows.MessageBox.Show($"Erreur lors de l'ouverture des paramètres de style: {ex.Message}",
+            CustomMessageBox.Show($"Erreur lors de l'ouverture des paramètres de style: {ex.Message}",
                           "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }

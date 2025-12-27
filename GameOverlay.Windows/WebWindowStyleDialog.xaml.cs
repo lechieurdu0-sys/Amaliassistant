@@ -4,6 +4,8 @@ using System.Windows.Input;
 using GameOverlay.Models;
 using FormsColorDialog = System.Windows.Forms.ColorDialog;
 
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
+
 namespace GameOverlay.Windows;
 
 public partial class WebWindowStyleDialog : Window
@@ -152,7 +154,7 @@ public partial class WebWindowStyleDialog : Window
         catch (Exception ex)
         {
             Logger.Error("WebWindowStyleDialog", $"Erreur lors de la sélection de couleur: {ex.Message}");
-            MessageBox.Show($"Erreur lors de la sélection de couleur: {ex.Message}",
+            CustomMessageBox.Show($"Erreur lors de la sélection de couleur: {ex.Message}",
                           "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -193,7 +195,7 @@ public partial class WebWindowStyleDialog : Window
         catch (Exception ex)
         {
             Logger.Error("WebWindowStyleDialog", $"Erreur lors de la sélection de couleur: {ex.Message}");
-            MessageBox.Show($"Erreur lors de la sélection de couleur: {ex.Message}",
+            CustomMessageBox.Show($"Erreur lors de la sélection de couleur: {ex.Message}",
                           "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -210,7 +212,7 @@ public partial class WebWindowStyleDialog : Window
             }
             catch
             {
-                MessageBox.Show("Format de couleur invalide. Utilisez le format #AARRGGBB (ex: #FF1A1A1A)",
+                CustomMessageBox.Show("Format de couleur invalide. Utilisez le format #AARRGGBB (ex: #FF1A1A1A)",
                               "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
@@ -228,7 +230,7 @@ public partial class WebWindowStyleDialog : Window
             }
             catch
             {
-                MessageBox.Show("Format de couleur invalide. Utilisez le format #AARRGGBB (ex: #FF2A2A2A)",
+                CustomMessageBox.Show("Format de couleur invalide. Utilisez le format #AARRGGBB (ex: #FF2A2A2A)",
                               "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

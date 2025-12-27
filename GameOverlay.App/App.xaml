@@ -16,12 +16,22 @@
             <SolidColorBrush x:Key="TextBrush" Color="White"/>
             <SolidColorBrush x:Key="BorderBrush" Color="#FF444444"/>
             
-            <!-- Style pour les ContextMenu -->
+            <!-- Style pour les ContextMenu - style PluginManagerWindow -->
+            <ImageBrush x:Key="ContextMenuBackgroundBrush" ImageSource="/EndTurnWidgetBackground.png" Stretch="Fill"/>
+            <SolidColorBrush x:Key="ContextMenuTextBrush" Color="#FF6E5C2A"/>
+            <!-- Couleur de survol brune : #FF6E5C2A avec alpha 150 (RGB: 110, 92, 42 avec alpha 150) -->
+            <SolidColorBrush x:Key="ContextMenuHoverBrush" Color="#966E5C2A"/>
+            
+            <!-- Forcer les SystemColors pour les menus contextuels pour éviter le cyan -->
+            <SolidColorBrush x:Key="{x:Static SystemColors.MenuHighlightBrushKey}" Color="#966E5C2A"/>
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#966E5C2A"/>
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#966E5C2A"/>
+            
             <Style TargetType="ContextMenu">
-                <Setter Property="Background" Value="{StaticResource DarkBackgroundBrush}"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                <Setter Property="Background" Value="{StaticResource ContextMenuBackgroundBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource ContextMenuTextBrush}"/>
                 <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}"/>
-                <Setter Property="BorderThickness" Value="2"/>
+                <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="SnapsToDevicePixels" Value="True"/>
                 <Setter Property="Template">
                     <Setter.Value>
@@ -37,28 +47,64 @@
                 </Setter>
             </Style>
             
-            <!-- Style pour les MenuItem -->
+            <!-- Style pour les MenuItem - style PluginManagerWindow - FORCER LE SURVOL BRUN -->
             <Style TargetType="MenuItem">
-                <Setter Property="Background" Value="{StaticResource DarkBackgroundBrush}"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                <Setter Property="Background" Value="{StaticResource ContextMenuBackgroundBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource ContextMenuTextBrush}"/>
                 <Setter Property="Padding" Value="8,4"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="MenuItem">
-                            <Border Name="Border" Background="{TemplateBinding Background}"
-                                    BorderThickness="0" Padding="{TemplateBinding Padding}">
+                            <Border Name="Border" 
+                                    Background="{TemplateBinding Background}"
+                                    BorderThickness="0" 
+                                    Padding="{TemplateBinding Padding}">
                                 <Grid>
-                                    <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
-                                    <Popup Name="PART_Popup" Placement="Right" HorizontalOffset="-4" IsOpen="{TemplateBinding IsSubmenuOpen}" AllowsTransparency="True" Focusable="False">
-                                        <Border Background="{StaticResource DarkBackgroundBrush}" BorderBrush="{DynamicResource CyanAccentBrush}" BorderThickness="2" CornerRadius="3">
+                                    <!-- Rectangle de survol brun en arrière-plan -->
+                                    <Rectangle Name="HoverRectangle" 
+                                               Fill="#966E5C2A" 
+                                               Opacity="0"
+                                               IsHitTestVisible="False"/>
+                                    <ContentPresenter Name="ContentPresenter" 
+                                                      ContentSource="Header" 
+                                                      RecognizesAccessKey="True"/>
+                                    <Popup Name="PART_Popup" 
+                                           Placement="Right" 
+                                           HorizontalOffset="-4" 
+                                           IsOpen="{TemplateBinding IsSubmenuOpen}" 
+                                           AllowsTransparency="True" 
+                                           Focusable="False">
+                                        <Border Background="{StaticResource ContextMenuBackgroundBrush}" 
+                                                BorderBrush="{DynamicResource CyanAccentBrush}" 
+                                                BorderThickness="1" 
+                                                CornerRadius="3">
                                             <StackPanel IsItemsHost="True" Margin="4"/>
                                         </Border>
                                     </Popup>
                                 </Grid>
                             </Border>
+                            <ControlTemplate.Resources>
+                                <!-- FORCER les SystemColors dans le template pour éviter le cyan -->
+                                <SolidColorBrush x:Key="{x:Static SystemColors.MenuHighlightBrushKey}" Color="#966E5C2A"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#966E5C2A"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#966E5C2A"/>
+                            </ControlTemplate.Resources>
                             <ControlTemplate.Triggers>
+                                <!-- SURVOL : FORCER LE BRUN ABSOLUMENT -->
                                 <Trigger Property="IsHighlighted" Value="True">
-                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                    <!-- Afficher le rectangle de survol brun (opacité 1 = visible) -->
+                                    <Setter TargetName="HoverRectangle" Property="Opacity" Value="1"/>
+                                    <!-- Forcer aussi le fond brun sur le Border -->
+                                    <Setter TargetName="Border" Property="Background" Value="#966E5C2A"/>
+                                    <!-- Forcer le texte marron -->
+                                    <Setter TargetName="ContentPresenter" Property="TextElement.Foreground" Value="#FF6E5C2A"/>
+                                    <!-- Forcer les SystemColors -->
+                                    <Setter Property="Background" Value="#966E5C2A"/>
+                                </Trigger>
+                                <!-- Submenu ouvert : aussi brun -->
+                                <Trigger Property="IsSubmenuOpen" Value="True">
+                                    <Setter TargetName="HoverRectangle" Property="Opacity" Value="1"/>
+                                    <Setter TargetName="Border" Property="Background" Value="#966E5C2A"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -66,11 +112,24 @@
                 </Setter>
             </Style>
             
-            <!-- Style pour les Separator dans les menus -->
+            <!-- Style pour les Separator dans les menus - complètement invisible -->
             <Style TargetType="{x:Type Separator}">
-                <Setter Property="Height" Value="1"/>
-                <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
-                <Setter Property="Margin" Value="8,4"/>
+                <Setter Property="Height" Value="8"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="Margin" Value="0,2"/>
+                <Setter Property="Opacity" Value="0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Separator">
+                            <Border Background="Transparent" 
+                                    BorderBrush="Transparent"
+                                    Height="8" 
+                                    Margin="0,2"
+                                    Opacity="0"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             
             <!-- Style pour les boutons standards -->

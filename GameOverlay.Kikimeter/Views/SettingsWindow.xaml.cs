@@ -493,7 +493,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         // Déclencher le callback pour appliquer l'ordre immédiatement
         _onConfigChanged(_config);
         
-        MessageBox.Show(
+        CustomMessageBox.Show(
+            this,
             "L'ordre des joueurs a été appliqué au Kikimeter.",
             "Ordre sauvegardé",
             MessageBoxButton.OK,
@@ -1118,7 +1119,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         if (steamPath != null)
         {
             KikimeterLogPath = steamPath;
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 $"Fichier Steam détecté :\n{steamPath}",
                 "Détection Steam",
                 MessageBoxButton.OK,
@@ -1126,7 +1128,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
         else
         {
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Aucun fichier de log Wakfu n'a été trouvé dans les installations Steam.",
                 "Fichier Steam introuvable",
                 MessageBoxButton.OK,
@@ -1146,7 +1149,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         if (ankamaPath != null)
         {
             KikimeterLogPath = ankamaPath;
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 $"Fichier Ankama Launcher détecté :\n{ankamaPath}",
                 "Détection Ankama Launcher",
                 MessageBoxButton.OK,
@@ -1154,7 +1158,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
         else
         {
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Aucun fichier de log Wakfu n'a été trouvé dans les installations Ankama Launcher.",
                 "Fichier Ankama Launcher introuvable",
                 MessageBoxButton.OK,
@@ -1200,7 +1205,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             if (!string.IsNullOrEmpty(chatLogPath))
             {
                 LootChatLogPath = chatLogPath;
-                MessageBox.Show(
+                CustomMessageBox.Show(
+                    this,
                     $"Fichier Steam détecté :\n{chatLogPath}",
                     "Détection Steam",
                     MessageBoxButton.OK,
@@ -1208,7 +1214,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             }
             else
             {
-                MessageBox.Show(
+                CustomMessageBox.Show(
+                    this,
                     $"Fichier wakfu.log Steam trouvé :\n{steamPath}\n\nMais le fichier wakfu_chat.log correspondant est introuvable.",
                     "Fichier chat introuvable",
                     MessageBoxButton.OK,
@@ -1217,7 +1224,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
         else
         {
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Aucun fichier de log Wakfu n'a été trouvé dans les installations Steam.",
                 "Fichier Steam introuvable",
                 MessageBoxButton.OK,
@@ -1241,7 +1249,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             if (!string.IsNullOrEmpty(chatLogPath))
             {
                 LootChatLogPath = chatLogPath;
-                MessageBox.Show(
+                CustomMessageBox.Show(
+                    this,
                     $"Fichier Ankama Launcher détecté :\n{chatLogPath}",
                     "Détection Ankama Launcher",
                     MessageBoxButton.OK,
@@ -1249,7 +1258,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             }
             else
             {
-                MessageBox.Show(
+                CustomMessageBox.Show(
+                    this,
                     $"Fichier wakfu.log Ankama Launcher trouvé :\n{ankamaPath}\n\nMais le fichier wakfu_chat.log correspondant est introuvable.",
                     "Fichier chat introuvable",
                     MessageBoxButton.OK,
@@ -1258,7 +1268,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         }
         else
         {
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Aucun fichier de log Wakfu n'a été trouvé dans les installations Ankama Launcher.",
                 "Fichier Ankama Launcher introuvable",
                 MessageBoxButton.OK,
@@ -1298,7 +1309,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             
             Logger.Info("SettingsWindow", "Reset complet effectué : loot, liste des personnages et ordre réinitialisés");
             
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Reset effectué :\n- Liste des loots réinitialisée\n- Liste des personnages réinitialisée\n- Ordre des personnages réinitialisé",
                 "Reset effectué",
                 MessageBoxButton.OK,
@@ -1307,7 +1319,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         catch (Exception ex)
         {
             Logger.Error("SettingsWindow", $"Erreur lors du reset: {ex.Message}");
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 $"Erreur lors de la réinitialisation: {ex.Message}",
                 "Erreur",
                 MessageBoxButton.OK,
@@ -1320,7 +1333,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         // Valider les chemins si remplis
         if (!string.IsNullOrWhiteSpace(KikimeterLogPath) && !File.Exists(KikimeterLogPath))
         {
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Le fichier de log Kikimeter spécifié n'existe pas.",
                 "Fichier introuvable",
                 MessageBoxButton.OK,
@@ -1330,7 +1344,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         
         if (!string.IsNullOrWhiteSpace(LootChatLogPath) && !File.Exists(LootChatLogPath))
         {
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 "Le fichier de log Loot spécifié n'existe pas.",
                 "Fichier introuvable",
                 MessageBoxButton.OK,
@@ -1348,7 +1363,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         TryInitializeCharacterDetector();
         UpdateCharactersList();
         
-        MessageBox.Show(
+        CustomMessageBox.Show(
+            this,
             "Les chemins de logs ont été sauvegardés.",
             "Configuration sauvegardée",
             MessageBoxButton.OK,
@@ -1433,7 +1449,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             if (string.IsNullOrEmpty(exePath))
             {
                 Logger.Error("SettingsWindow", "Impossible de déterminer le chemin de l'exécutable");
-                MessageBox.Show(
+                CustomMessageBox.Show(
+                    this,
                     "Impossible de déterminer le chemin de l'application. Le démarrage automatique n'a pas pu être activé.",
                     "Erreur",
                     MessageBoxButton.OK,
@@ -1453,7 +1470,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         catch (Exception ex)
         {
             Logger.Error("SettingsWindow", $"Erreur lors de l'activation du démarrage automatique: {ex.Message}");
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 $"Erreur lors de l'activation du démarrage automatique: {ex.Message}",
                 "Erreur",
                 MessageBoxButton.OK,
@@ -1477,7 +1495,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         catch (Exception ex)
         {
             Logger.Error("SettingsWindow", $"Erreur lors de la désactivation du démarrage automatique: {ex.Message}");
-            MessageBox.Show(
+            CustomMessageBox.Show(
+                this,
                 $"Erreur lors de la désactivation du démarrage automatique: {ex.Message}",
                 "Erreur",
                 MessageBoxButton.OK,

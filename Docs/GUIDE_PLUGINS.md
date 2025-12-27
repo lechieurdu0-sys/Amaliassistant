@@ -151,3 +151,7 @@ Le gestionnaire permet de :
 
 Pour toute question ou problème avec les plugins, consultez la documentation ou contactez le support.
 
+
+
+
+

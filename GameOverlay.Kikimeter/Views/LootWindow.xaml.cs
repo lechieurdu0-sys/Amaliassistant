@@ -1161,6 +1161,8 @@ public partial class LootWindow : Window, INotifyPropertyChanged
                 ApplySectionBackgroundColor(_currentSectionColorHex);
             }
 
+            // Ne pas définir le Background si KikimeterWindowBackgroundEnabled est false
+            // Cela permet au background défini dans le XAML (ImageBrush) d'être visible
             if (config.KikimeterWindowBackgroundEnabled && !string.IsNullOrEmpty(config.KikimeterWindowBackgroundColor))
             {
                 try
@@ -1169,19 +1171,14 @@ public partial class LootWindow : Window, INotifyPropertyChanged
                     color.A = (byte)(config.KikimeterWindowBackgroundOpacity * 255);
                     var brush = new SolidColorBrush(color);
                     Background = brush;
-                    MainBorder.Background = brush;
+                    // MainBorder reste transparent pour laisser voir le background de la fenêtre
                 }
                 catch
                 {
-                    Background = Brushes.Transparent;
-                    MainBorder.Background = Brushes.Transparent;
+                    // En cas d'erreur, ne pas définir de background pour laisser celui du XAML
                 }
             }
-            else
-            {
-                Background = Brushes.Transparent;
-                MainBorder.Background = Brushes.Transparent;
-            }
+            // Si KikimeterWindowBackgroundEnabled est false, on laisse le background du XAML (ImageBrush)
         }
         catch (Exception ex)
         {
@@ -1310,3 +1307,4 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         public double Height { get; set; }
     }
 }
+

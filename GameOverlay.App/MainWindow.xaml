@@ -14,15 +14,4 @@
     <Grid>
         <Canvas x:Name="MainCanvas" Background="Transparent"/>
     </Grid>
-    
-    <Window.ContextMenu>
-        <ContextMenu>
-            <!-- Menu "Ajouter" et "Opacité bulles" supprimés - fonctionnalité sites web retirée -->
-            <MenuItem Header="Masquer l'overlay" Click="HideOverlay_Click"/>
-            <Separator/>
-            <MenuItem Header="📍 Placer notification de vente" Click="TestSaleNotification_Click"/>
-            <Separator/>
-            <MenuItem Header="Quitter" Click="Exit_Click"/>
-        </ContextMenu>
-    </Window.ContextMenu>
 </Window>

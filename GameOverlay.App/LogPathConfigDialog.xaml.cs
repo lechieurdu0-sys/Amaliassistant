@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using Point = System.Windows.Point;
 using Microsoft.Win32;
+using CustomMessageBox = GameOverlay.Kikimeter.Views.CustomMessageBox;
 
 namespace GameOverlay.App
 {
@@ -120,7 +121,7 @@ namespace GameOverlay.App
             {
                 if (!File.Exists(path))
                 {
-                    System.Windows.MessageBox.Show(
+                    CustomMessageBox.Show(
                         "Le fichier spécifié n'existe pas. Veuillez vérifier le chemin.",
                         "Fichier introuvable",
                         MessageBoxButton.OK,

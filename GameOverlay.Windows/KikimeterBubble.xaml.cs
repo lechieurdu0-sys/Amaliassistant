@@ -52,7 +52,8 @@ public partial class KikimeterBubble : UserControl
         // On utilise maintenant l'image de fond définie dans le XAML
         
         // Le déplacement se fait uniquement via la croix (DragHandle), pas sur toute la bulle
-        // Menu contextuel supprimé
+        // Créer un menu contextuel explicite avec style forcé pour éviter le cyan
+        CreateContextMenu();
         
         // Synchroniser avec le thème (couleur d'accent)
         UpdateAccentBrushResource();
@@ -78,7 +79,13 @@ public partial class KikimeterBubble : UserControl
         catch { }
     }
     
-    // Menu contextuel supprimé
+    private void CreateContextMenu()
+    {
+        // Créer un menu contextuel vide (on utilisera celui du MainWindow via l'événement)
+        // Mais on s'assure qu'il ne bloque pas l'héritage du menu parent
+        // On va plutôt intercepter l'ouverture et forcer les couleurs
+        this.ContextMenu = null; // Permettre l'héritage du menu du MainWindow
+    }
     
     public void UpdateSize(double size)
     {
@@ -452,6 +459,134 @@ public partial class KikimeterBubble : UserControl
             {
                 // Image non trouvée - l'utilisateur devra l'ajouter
             }
+        }
+        
+        // Appliquer le thème au menu contextuel s'il existe
+        if (this.ContextMenu != null)
+        {
+            ThemeManager.ApplyContextMenuTheme(this.ContextMenu);
+            // Forcer le thème à chaque ouverture pour éviter le cyan
+            this.ContextMenu.Opened += (s, args) =>
+            {
+                if (s is System.Windows.Controls.ContextMenu menu)
+                {
+                    ThemeManager.ApplyContextMenuTheme(menu);
+                }
+            };
+        }
+    }
+    
+    protected override void OnContextMenuOpening(ContextMenuEventArgs e)
+    {
+        // Annuler l'ouverture du menu WPF par défaut
+        e.Handled = true;
+        
+        // Utiliser le menu Windows Forms du MainWindow
+        var window = Window.GetWindow(this);
+        if (window != null)
+        {
+            // Utiliser la réflexion pour appeler GetMainWindowContextMenu si disponible
+            var getMenuMethod = window.GetType().GetMethod("GetMainWindowContextMenu");
+            if (getMenuMethod != null)
+            {
+                var contextMenu = getMenuMethod.Invoke(window, null) as System.Windows.Forms.ContextMenuStrip;
+                if (contextMenu != null)
+                {
+                    // Obtenir la position de la souris à l'écran
+                    var mousePos = System.Windows.Forms.Control.MousePosition;
+                    contextMenu.Show(mousePos.X, mousePos.Y);
+                }
+            }
+        }
+    }
+    
+    private void ForceBrownTheme(System.Windows.Controls.ContextMenu menu)
+    {
+        if (menu == null) return;
+        
+        // Couleur de survol brune
+        var brownHover = new SolidColorBrush(Color.FromArgb(150, 110, 92, 42)); // #966E5C2A
+        
+        // Forcer dans TOUS les ResourceDictionary possibles
+        menu.Resources[SystemColors.MenuHighlightBrushKey] = brownHover;
+        menu.Resources[SystemColors.HighlightBrushKey] = brownHover;
+        menu.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = brownHover;
+        
+        // Appliquer le thème via ThemeManager
+        ThemeManager.ApplyContextMenuTheme(menu);
+        
+        // Forcer sur chaque MenuItem avec un style inline
+        foreach (var item in menu.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            ForceBrownThemeOnMenuItem(item);
+        }
+        
+        // S'abonner à l'événement Opened pour forcer à chaque ouverture
+        menu.Opened -= Menu_Opened_ForceBrown;
+        menu.Opened += Menu_Opened_ForceBrown;
+    }
+    
+    private void Menu_Opened_ForceBrown(object? sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ContextMenu menu)
+        {
+            ForceBrownTheme(menu);
+        }
+    }
+    
+    private void ForceBrownThemeOnMenuItem(System.Windows.Controls.MenuItem item)
+    {
+        if (item == null) return;
+        
+        var brownHover = new SolidColorBrush(Color.FromArgb(150, 110, 92, 42));
+        
+        // Forcer dans les ressources
+        item.Resources[SystemColors.MenuHighlightBrushKey] = brownHover;
+        item.Resources[SystemColors.HighlightBrushKey] = brownHover;
+        item.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = brownHover;
+        
+        // Créer un style inline qui surcharge TOUT
+        var style = new Style(typeof(MenuItem));
+        
+        // ImageBrush pour le fond
+        var imageBrush = new ImageBrush();
+        imageBrush.ImageSource = new System.Windows.Media.Imaging.BitmapImage(
+            new Uri("pack://application:,,,/EndTurnWidgetBackground.png"));
+        imageBrush.Stretch = Stretch.Fill;
+        imageBrush.Freeze();
+        
+        style.Setters.Add(new Setter(MenuItem.BackgroundProperty, imageBrush));
+        style.Setters.Add(new Setter(MenuItem.ForegroundProperty, new SolidColorBrush(Color.FromRgb(110, 92, 42))));
+        
+        // Trigger IsHighlighted avec couleur brune FORCÉE
+        var trigger = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
+        trigger.Setters.Add(new Setter(MenuItem.BackgroundProperty, brownHover));
+        style.Triggers.Add(trigger);
+        
+        // Appliquer le style
+        item.Style = style;
+        
+        // Récursif pour les sous-menus
+        foreach (var subItem in item.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            ForceBrownThemeOnMenuItem(subItem);
+        }
+    }
+    
+    private void ApplyMenuItemThemeRecursive(System.Windows.Controls.MenuItem menuItem)
+    {
+        if (menuItem == null) return;
+        
+        // Forcer les SystemColors dans les ressources de chaque MenuItem
+        var hoverBrush = new SolidColorBrush(Color.FromArgb(150, 110, 92, 42)); // #966E5C2A
+        menuItem.Resources[SystemColors.MenuHighlightBrushKey] = hoverBrush;
+        menuItem.Resources[SystemColors.HighlightBrushKey] = hoverBrush;
+        menuItem.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = hoverBrush;
+        
+        // Appliquer récursivement aux sous-menus
+        foreach (var subItem in menuItem.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            ApplyMenuItemThemeRecursive(subItem);
         }
     }
 }

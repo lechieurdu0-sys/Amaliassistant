@@ -145,26 +145,10 @@
             <Grid Grid.Row="0"
                   Margin="15,49,15,621">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <!-- Icône de déplacement (petite croix/grip) -->
-                <Viewbox Grid.Column="0"
-                         Width="16"
-                         Height="16"
-                         VerticalAlignment="Center"
-                         Margin="0,0,12,0"
-                         Cursor="SizeAll"
-                         MouseLeftButtonDown="DragHandle_MouseLeftButtonDown"
-                         MouseMove="DragHandle_MouseMove"
-                         MouseLeftButtonUp="DragHandle_MouseLeftButtonUp">
-                    <Canvas Width="24" Height="24">
-                        <Path Data="M3,7H5V9H3M7,7H9V9H7M11,7H13V9H11M3,11H5V13H3M7,11H9V13H7M11,11H13V13H11M3,15H5V17H3M7,15H9V17H7M11,15H13V17H11Z"
-                              Fill="{DynamicResource CyanAccentBrush}" />
-                    </Canvas>
-                </Viewbox>
-                <Image Grid.Column="1"
+                <Image Grid.Column="0"
                        Source="/GameOverlay.Kikimeter;component/Views/Assets/kikimeter/croix_deplacement.png"
                        Width="20"
                        Height="20"
@@ -172,8 +156,8 @@
                        HorizontalAlignment="Left"
                        Cursor="SizeAll"
                        MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
-                       Stretch="Uniform" Margin="12,0,0,0"/>
-                <Image Grid.Column="2"
+                       Stretch="Uniform" Margin="0,0,0,0"/>
+                <Image Grid.Column="1"
                        Source="/GameOverlay.Kikimeter;component/Views/Assets/utilities/fermeture.png"
                        Width="28"
                        Height="28"
