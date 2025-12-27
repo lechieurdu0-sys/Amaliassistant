@@ -1,0 +1,11 @@
+[
+  {
+    "Id": "DigitalClockPlugin_DigitalClockPlugin",
+    "Name": "Horloge Digitale",
+    "Version": "1.0.0",
+    "Description": "Affiche une horloge digitale déplaçable et redimensionnable. Déplacer avec la souris. Ctrl + Molette pour changer la taille.",
+    "Author": "Amaliassistant",
+    "DownloadUrl": "https://github.com/lechieurdu0-sys/Amaliassistant/releases/download/plugins-v1.0.0/DigitalClockPlugin.dll"
+  }
+]
+

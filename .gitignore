@@ -198,6 +198,7 @@ InstallerAppData/
 !config.json
 !*.csproj.user.json
 !*.pubxml.json
+!plugins.json
 
 # Secrets and tokens (NE JAMAIS COMMITER)
 TokenGitHub.txt
