@@ -35,8 +35,8 @@ namespace DigitalClockPlugin
             Width = 200;
             Height = 80;
             
-            // Position par défaut (centre de l'écran)
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            // Ne pas utiliser WindowStartupLocation pour permettre le chargement depuis la config
+            WindowStartupLocation = WindowStartupLocation.Manual;
             
             // Créer le contenu simple
             var grid = new Grid();
@@ -77,8 +77,15 @@ namespace DigitalClockPlugin
             _timer.Tick += Timer_Tick;
             _timer.Start();
             
-            // Charger la configuration
+            // Charger la configuration AVANT d'afficher la fenêtre
             LoadConfiguration();
+            
+            // Si aucune position n'a été chargée, centrer l'écran
+            if (Left == 0 && Top == 0)
+            {
+                Left = (SystemParameters.PrimaryScreenWidth - Width) / 2;
+                Top = (SystemParameters.PrimaryScreenHeight - Height) / 2;
+            }
             
             // Forcer la couleur après le chargement de la config (au cas où elle serait écrasée)
             _timeDisplay.Foreground = new SolidColorBrush(Colors.White);
@@ -91,6 +98,13 @@ namespace DigitalClockPlugin
         {
             try
             {
+                // Créer le dossier si nécessaire
+                var configDir = Path.GetDirectoryName(_configPath);
+                if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
+                {
+                    Directory.CreateDirectory(configDir);
+                }
+                
                 if (File.Exists(_configPath))
                 {
                     var configJson = File.ReadAllText(_configPath);
@@ -99,13 +113,22 @@ namespace DigitalClockPlugin
                     if (config != null)
                     {
                         // Utiliser les coordonnées sauvegardées si elles sont valides
-                        if (config.X >= 0 && config.Y >= 0)
+                        // Vérifier que la position est dans les limites de l'écran
+                        var screenWidth = SystemParameters.PrimaryScreenWidth;
+                        var screenHeight = SystemParameters.PrimaryScreenHeight;
+                        
+                        if (config.X >= 0 && config.Y >= 0 && 
+                            config.X < screenWidth && config.Y < screenHeight)
                         {
                             Left = config.X;
                             Top = config.Y;
                         }
-                        _fontSize = config.FontSize;
-                        ApplyFontSize(_fontSize);
+                        
+                        if (config.FontSize > 0)
+                        {
+                            _fontSize = config.FontSize;
+                            ApplyFontSize(_fontSize);
+                        }
                         
                         // La couleur est maintenant fixe (blanc)
                         // On ignore la couleur de la config et on force la couleur
@@ -124,6 +147,13 @@ namespace DigitalClockPlugin
         {
             try
             {
+                // Créer le dossier si nécessaire
+                var configDir = Path.GetDirectoryName(_configPath);
+                if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
+                {
+                    Directory.CreateDirectory(configDir);
+                }
+                
                 var config = new ClockConfig
                 {
                     X = Left,
@@ -209,8 +239,17 @@ namespace DigitalClockPlugin
             if (_isDragging && e.LeftButton == MouseButtonState.Pressed)
             {
                 var currentPosition = PointToScreen(e.GetPosition(this));
-                Left = currentPosition.X - _dragStartPoint.X;
-                Top = currentPosition.Y - _dragStartPoint.Y;
+                var newLeft = currentPosition.X - _dragStartPoint.X;
+                var newTop = currentPosition.Y - _dragStartPoint.Y;
+                
+                // Limiter aux bounds de l'écran
+                var screenWidth = SystemParameters.PrimaryScreenWidth;
+                var screenHeight = SystemParameters.PrimaryScreenHeight;
+                newLeft = Math.Max(0, Math.Min(newLeft, screenWidth - Width));
+                newTop = Math.Max(0, Math.Min(newTop, screenHeight - Height));
+                
+                Left = newLeft;
+                Top = newTop;
             }
         }
 

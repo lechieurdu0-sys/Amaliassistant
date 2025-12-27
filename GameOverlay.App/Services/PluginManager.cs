@@ -320,6 +320,7 @@ namespace GameOverlay.App.Services
                 if (_applicationConfig != null && !_applicationConfig.PluginConfig.EnabledPlugins.Contains(pluginId))
                 {
                     _applicationConfig.PluginConfig.EnabledPlugins.Add(pluginId);
+                    SavePluginConfig();
                 }
                 
                 Logger.Info("PluginManager", $"Plugin activé: {pluginId}");
@@ -349,6 +350,7 @@ namespace GameOverlay.App.Services
                 if (_applicationConfig != null)
                 {
                     _applicationConfig.PluginConfig.EnabledPlugins.Remove(pluginId);
+                    SavePluginConfig();
                 }
                 
                 Logger.Info("PluginManager", $"Plugin désactivé: {pluginId}");
@@ -359,6 +361,7 @@ namespace GameOverlay.App.Services
             if (_applicationConfig != null)
             {
                 _applicationConfig.PluginConfig.EnabledPlugins.Remove(pluginId);
+                SavePluginConfig();
             }
             
             return true;
@@ -386,6 +389,38 @@ namespace GameOverlay.App.Services
         public IPlugin? GetPlugin(string pluginId)
         {
             return _loadedPlugins.TryGetValue(pluginId, out var plugin) ? plugin : null;
+        }
+        
+        /// <summary>
+        /// Action de sauvegarde de la configuration (doit être définie depuis MainWindow)
+        /// </summary>
+        private Action? _saveConfigAction;
+        
+        /// <summary>
+        /// Définit l'action de sauvegarde de la configuration
+        /// </summary>
+        public void SetSaveConfigAction(Action saveConfigAction)
+        {
+            _saveConfigAction = saveConfigAction;
+        }
+        
+        /// <summary>
+        /// Sauvegarde la configuration des plugins
+        /// </summary>
+        private void SavePluginConfig()
+        {
+            if (_saveConfigAction != null)
+            {
+                try
+                {
+                    _saveConfigAction.Invoke();
+                    Logger.Debug("PluginManager", "Configuration des plugins sauvegardée");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("PluginManager", $"Erreur lors de la sauvegarde de la configuration: {ex.Message}");
+                }
+            }
         }
         
         /// <summary>

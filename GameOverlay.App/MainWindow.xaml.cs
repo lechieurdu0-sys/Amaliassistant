@@ -2882,6 +2882,8 @@ namespace GameOverlay.App
                 {
                     _pluginManager = new PluginManager();
                     _pluginManager.Initialize(config);
+                    // Passer l'action de sauvegarde pour que les changements de plugins soient sauvegardés
+                    _pluginManager.SetSaveConfigAction(SaveConfiguration);
                     Logger.Info("MainWindow", "PluginManager initialisé");
                 }
             }
