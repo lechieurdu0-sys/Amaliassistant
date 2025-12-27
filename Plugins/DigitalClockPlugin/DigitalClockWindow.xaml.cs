@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using GameOverlay.Models;
 using Newtonsoft.Json;
 
 namespace DigitalClockPlugin
@@ -12,14 +13,17 @@ namespace DigitalClockPlugin
     public class DigitalClockWindow : Window
     {
         private readonly DispatcherTimer _timer;
+        private readonly IPluginContext _context;
         private readonly string _configPath;
         private bool _isDragging = false;
         private Point _dragStartPoint;
         private double _fontSize = 48;
         private TextBlock _timeDisplay;
+        private const string WindowId = "ClockWindow";
 
-        public DigitalClockWindow(string configPath)
+        public DigitalClockWindow(IPluginContext context, string configPath)
         {
+            _context = context;
             _configPath = configPath;
             
             // Configuration de la fenêtre
@@ -77,6 +81,9 @@ namespace DigitalClockPlugin
             _timer.Tick += Timer_Tick;
             _timer.Start();
             
+            // Charger la position de la fenêtre depuis le système générique
+            LoadWindowPosition();
+            
             // Charger la configuration AVANT d'afficher la fenêtre
             LoadConfiguration();
             
@@ -92,6 +99,45 @@ namespace DigitalClockPlugin
             
             // Mettre à jour l'heure immédiatement
             UpdateTime();
+        }
+        
+        private void LoadWindowPosition()
+        {
+            try
+            {
+                var position = _context.LoadWindowPosition(WindowId);
+                if (position != null)
+                {
+                    // Vérifier que la position est valide (dans les limites de l'écran)
+                    var screenWidth = SystemParameters.PrimaryScreenWidth;
+                    var screenHeight = SystemParameters.PrimaryScreenHeight;
+                    
+                    if (position.Left >= 0 && position.Top >= 0 && 
+                        position.Left < screenWidth && position.Top < screenHeight)
+                    {
+                        Left = position.Left;
+                        Top = position.Top;
+                        if (position.Width.HasValue) Width = position.Width.Value;
+                        if (position.Height.HasValue) Height = position.Height.Value;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erreur chargement position fenêtre: {ex.Message}");
+            }
+        }
+        
+        private void SaveWindowPosition()
+        {
+            try
+            {
+                _context.SaveWindowPosition(WindowId, Left, Top, Width, Height);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erreur sauvegarde position fenêtre: {ex.Message}");
+            }
         }
 
         private void LoadConfiguration()
@@ -112,17 +158,8 @@ namespace DigitalClockPlugin
                     
                     if (config != null)
                     {
-                        // Utiliser les coordonnées sauvegardées si elles sont valides
-                        // Vérifier que la position est dans les limites de l'écran
-                        var screenWidth = SystemParameters.PrimaryScreenWidth;
-                        var screenHeight = SystemParameters.PrimaryScreenHeight;
-                        
-                        if (config.X >= 0 && config.Y >= 0 && 
-                            config.X < screenWidth && config.Y < screenHeight)
-                        {
-                            Left = config.X;
-                            Top = config.Y;
-                        }
+                        // Ne plus charger la position depuis config.json, elle est gérée par le système générique
+                        // Charger uniquement les paramètres spécifiques (fontSize, couleur)
                         
                         if (config.FontSize > 0)
                         {
@@ -147,6 +184,9 @@ namespace DigitalClockPlugin
         {
             try
             {
+                // Sauvegarder la position via le système générique
+                SaveWindowPosition();
+                
                 // Créer le dossier si nécessaire
                 var configDir = Path.GetDirectoryName(_configPath);
                 if (!string.IsNullOrEmpty(configDir) && !Directory.Exists(configDir))
@@ -154,10 +194,10 @@ namespace DigitalClockPlugin
                     Directory.CreateDirectory(configDir);
                 }
                 
+                // Ne plus sauvegarder la position dans config.json, elle est gérée par le système générique
+                // Sauvegarder uniquement les paramètres spécifiques (fontSize, couleur)
                 var config = new ClockConfig
                 {
-                    X = Left,
-                    Y = Top,
                     FontSize = _fontSize,
                     ForegroundColor = GetColorFromBrush(_timeDisplay.Foreground)
                 };
@@ -275,8 +315,7 @@ namespace DigitalClockPlugin
 
     public class ClockConfig
     {
-        public double X { get; set; }
-        public double Y { get; set; }
+        // Position X et Y retirées - maintenant gérées par le système générique de plugins
         public double FontSize { get; set; } = 48;
         public ColorRGB? ForegroundColor { get; set; }
     }

@@ -40,6 +40,8 @@ Le `IPluginContext` fourni lors de l'initialisation donne accès à :
 - `Logger` : Logger pour enregistrer des messages
 - `ApplicationConfig` : Configuration de l'application
 - `PluginsDirectory` : Chemin du dossier des plugins
+- `SaveWindowPosition(windowId, left, top, width?, height?)` : Sauvegarde la position d'une fenêtre
+- `LoadWindowPosition(windowId)` : Charge la position sauvegardée d'une fenêtre
 
 ## Exemple de Plugin Simple
 
@@ -132,14 +134,63 @@ Le gestionnaire permet de :
 - Actualiser la liste des plugins
 - Ouvrir le dossier des plugins
 
+## Sauvegarde de Position des Fenêtres
+
+Si votre plugin crée des fenêtres WPF, vous pouvez utiliser le système générique de sauvegarde de position fourni par `IPluginContext` :
+
+```csharp
+public class MyPluginWindow : Window
+{
+    private IPluginContext _context;
+    private const string WindowId = "MainWindow"; // Identifiant unique de la fenêtre
+    
+    public MyPluginWindow(IPluginContext context)
+    {
+        _context = context;
+        
+        // Charger la position sauvegardée au démarrage
+        LoadWindowPosition();
+        
+        // Sauvegarder la position lors du déplacement
+        LocationChanged += (s, e) => SaveWindowPosition();
+        
+        // Sauvegarder la position à la fermeture
+        Closed += (s, e) => SaveWindowPosition();
+    }
+    
+    private void LoadWindowPosition()
+    {
+        var position = _context.LoadWindowPosition(WindowId);
+        if (position != null)
+        {
+            Left = position.Left;
+            Top = position.Top;
+            if (position.Width.HasValue) Width = position.Width.Value;
+            if (position.Height.HasValue) Height = position.Height.Value;
+        }
+    }
+    
+    private void SaveWindowPosition()
+    {
+        _context.SaveWindowPosition(WindowId, Left, Top, Width, Height);
+    }
+}
+```
+
+**Avantages** :
+- Position automatiquement sauvegardée dans `%APPDATA%\Amaliassistant\Plugins\{PluginId}\windows.json`
+- Fonctionne pour toutes les fenêtres d'un plugin
+- Pas besoin de gérer la sauvegarde manuellement dans votre fichier de configuration
+
 ## Bonnes Pratiques
 
 1. **Nommage** : Utilisez des noms de plugins uniques et descriptifs
 2. **Gestion d'erreurs** : Toujours gérer les exceptions et logger les erreurs
 3. **Ressources** : Nettoyez toutes les ressources dans `Cleanup()`
 4. **Configuration** : Utilisez `PluginDataDirectory` pour stocker les fichiers de configuration
-5. **Logging** : Utilisez le logger fourni pour toutes les opérations importantes
-6. **Thread Safety** : Assurez-vous que votre plugin est thread-safe si nécessaire
+5. **Position des fenêtres** : Utilisez `SaveWindowPosition` / `LoadWindowPosition` pour sauvegarder la position des fenêtres
+6. **Logging** : Utilisez le logger fourni pour toutes les opérations importantes
+7. **Thread Safety** : Assurez-vous que votre plugin est thread-safe si nécessaire
 
 ## Limitations
 

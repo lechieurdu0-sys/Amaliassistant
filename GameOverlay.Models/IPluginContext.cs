@@ -1,4 +1,5 @@
 using System;
+using System.Windows;
 
 namespace GameOverlay.Models
 {
@@ -26,6 +27,23 @@ namespace GameOverlay.Models
         /// Chemin du dossier des plugins
         /// </summary>
         string PluginsDirectory { get; }
+        
+        /// <summary>
+        /// Sauvegarde la position d'une fenêtre du plugin
+        /// </summary>
+        /// <param name="windowId">Identifiant unique de la fenêtre (ex: "MainWindow", "ClockWindow")</param>
+        /// <param name="left">Position X</param>
+        /// <param name="top">Position Y</param>
+        /// <param name="width">Largeur (optionnel)</param>
+        /// <param name="height">Hauteur (optionnel)</param>
+        void SaveWindowPosition(string windowId, double left, double top, double? width = null, double? height = null);
+        
+        /// <summary>
+        /// Charge la position sauvegardée d'une fenêtre du plugin
+        /// </summary>
+        /// <param name="windowId">Identifiant unique de la fenêtre</param>
+        /// <returns>La position sauvegardée ou null si aucune position n'est sauvegardée</returns>
+        PluginWindowPosition? LoadWindowPosition(string windowId);
     }
     
     /// <summary>

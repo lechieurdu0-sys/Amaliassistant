@@ -38,7 +38,7 @@ namespace DigitalClockPlugin
                     
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        _clockWindow = new DigitalClockWindow(configPath);
+                        _clockWindow = new DigitalClockWindow(_context, configPath);
                         _clockWindow.Closed += (s, e) => 
                         { 
                             // Si la fenêtre se ferme, ne pas la mettre à null si le plugin est toujours actif
