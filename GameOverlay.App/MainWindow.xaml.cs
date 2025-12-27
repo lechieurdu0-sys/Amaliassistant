@@ -1583,19 +1583,20 @@ namespace GameOverlay.App
                         lootWindow.Loaded += LootWindow_LoadedForResetHook;
                         
                         // Démarrer le tracking IMMÉDIATEMENT, même si la fenêtre n'est pas visible
+                        // Ne pas vérifier File.Exists - LootTracker surveille même si le fichier n'existe pas encore
                         string chatLogPath = config.LootChatLogPath ?? "";
                         string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                        if (!string.IsNullOrEmpty(chatLogPath) && System.IO.File.Exists(chatLogPath))
+                        if (!string.IsNullOrEmpty(chatLogPath))
                         {
                             lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                            Logger.Info("MainWindow", "LootWindow.StartWatching appelé dès la création de la fenêtre");
+                            Logger.Info("MainWindow", $"LootWindow.StartWatching appelé dès la création de la fenêtre sur {chatLogPath}");
                             
                             // Initialiser le suivi des ventes
                             InitializeSaleTracker();
                         }
                         else
                         {
-                            Logger.Info("MainWindow", "Chemin du log chat non configuré ou fichier introuvable - StartWatching non démarré");
+                            Logger.Info("MainWindow", "Chemin du log chat non configuré - StartWatching non démarré");
                         }
                     }
                     else
@@ -1605,13 +1606,13 @@ namespace GameOverlay.App
                         {
                             string chatLogPath = config.LootChatLogPath ?? "";
                             string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                            if (!string.IsNullOrEmpty(chatLogPath) && System.IO.File.Exists(chatLogPath))
+                            if (!string.IsNullOrEmpty(chatLogPath))
                             {
                                 // Vérifier si StartWatching n'a pas encore été appelé
                                 try
                                 {
                                     lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                                    Logger.Info("MainWindow", "LootWindow.StartWatching appelé pour une fenêtre existante non visible");
+                                    Logger.Info("MainWindow", $"LootWindow.StartWatching appelé pour une fenêtre existante non visible sur {chatLogPath}");
                                 }
                                 catch (Exception ex)
                                 {
@@ -2172,7 +2173,8 @@ namespace GameOverlay.App
                 }
                 
                 // Initialiser LootWindow si elle n'existe pas encore
-                if (lootWindow == null && !string.IsNullOrEmpty(config.LootChatLogPath) && File.Exists(config.LootChatLogPath))
+                // Initialiser LootWindow même si le fichier de log n'existe pas encore
+                if (lootWindow == null && !string.IsNullOrEmpty(config.LootChatLogPath))
                 {
                     try
                     {
@@ -2194,13 +2196,13 @@ namespace GameOverlay.App
                         
                         LoadLootWindowPosition();
                         
-                        // Démarrer la surveillance immédiatement
+                        // Démarrer la surveillance immédiatement - LootTracker surveille même si le fichier n'existe pas encore
                         string chatLogPath = config.LootChatLogPath ?? "";
                         string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                        if (!string.IsNullOrEmpty(chatLogPath) && File.Exists(chatLogPath))
+                        if (!string.IsNullOrEmpty(chatLogPath))
                         {
                             lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                            Logger.Info("MainWindow", "LootWindow créée en arrière-plan - StartWatching démarré");
+                            Logger.Info("MainWindow", $"LootWindow créée en arrière-plan - StartWatching démarré sur {chatLogPath}");
                             
                             // Initialiser le suivi des ventes
                             InitializeSaleTracker();

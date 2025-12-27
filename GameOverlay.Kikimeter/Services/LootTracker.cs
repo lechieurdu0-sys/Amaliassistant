@@ -38,29 +38,31 @@ public class LootTracker : IDisposable
     {
         _logFilePath = logFilePath ?? throw new ArgumentNullException(nameof(logFilePath));
         
-        if (!File.Exists(_logFilePath))
+        // Initialiser la position à la fin du fichier si le fichier existe (ne pas lire l'historique)
+        if (File.Exists(_logFilePath))
         {
-            Logger.Warning("LootTracker", $"Fichier de log non trouvé: {_logFilePath}");
-            return;
-        }
-        
-        // Initialiser la position à la fin du fichier (ne pas lire l'historique)
-        try
-        {
-            var fileInfo = new FileInfo(_logFilePath);
-            if (fileInfo.Length > 0)
+            try
             {
-                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-                reader.BaseStream.Seek(0, SeekOrigin.End);
-                _lastPosition = reader.BaseStream.Position;
+                var fileInfo = new FileInfo(_logFilePath);
+                if (fileInfo.Length > 0)
+                {
+                    using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+                    reader.BaseStream.Seek(0, SeekOrigin.End);
+                    _lastPosition = reader.BaseStream.Position;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("LootTracker", $"Erreur lors de l'initialisation: {ex.Message}");
             }
         }
-        catch (Exception ex)
+        else
         {
-            Logger.Error("LootTracker", $"Erreur lors de l'initialisation: {ex.Message}");
+            Logger.Info("LootTracker", $"Fichier de log n'existe pas encore: {_logFilePath} - La surveillance attendra sa création");
         }
         
-        // Créer le FileSystemWatcher
+        // Créer le FileSystemWatcher même si le fichier n'existe pas encore
+        // Il détectera la création du fichier via l'événement Created
         try
         {
             var directory = Path.GetDirectoryName(_logFilePath);
@@ -70,11 +72,13 @@ public class LootTracker : IDisposable
             {
                 _fileWatcher = new FileSystemWatcher(directory, fileName)
                 {
-                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite
+                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.FileName
                 };
                 
                 _fileWatcher.Changed += OnFileChanged;
+                _fileWatcher.Created += OnFileChanged; // Détecter la création du fichier
                 _fileWatcher.EnableRaisingEvents = true;
+                Logger.Info("LootTracker", $"FileSystemWatcher initialisé pour {_logFilePath} (fichier peut ne pas exister encore)");
             }
         }
         catch (Exception ex)
@@ -87,6 +91,13 @@ public class LootTracker : IDisposable
     
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
+        // Si le fichier vient d'être créé, réinitialiser la position
+        if (e.ChangeType == WatcherChangeTypes.Created)
+        {
+            _lastPosition = 0;
+            Logger.Info("LootTracker", $"Fichier de log créé détecté: {_logFilePath}");
+        }
+        
         // Délai pour éviter les lectures multiples lors d'une écriture en cours
         System.Threading.Tasks.Task.Delay(50).ContinueWith(_ => ReadNewLines());
     }
@@ -94,7 +105,11 @@ public class LootTracker : IDisposable
     private void ReadNewLines()
     {
         if (!File.Exists(_logFilePath))
+        {
+            // Si le fichier n'existe pas encore, réinitialiser la position pour qu'il soit lu depuis le début quand il sera créé
+            _lastPosition = 0;
             return;
+        }
         
         lock (_lockObject)
         {

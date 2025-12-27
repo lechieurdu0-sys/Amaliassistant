@@ -754,12 +754,22 @@ public partial class LootWindow : Window, INotifyPropertyChanged
     {
         _filteredLootItems.Clear();
 
+        string? mainCharacter = _characterDetector?.GetConfig().MainCharacter;
+
+        // S'assurer qu'au moins le personnage principal est sélectionné
         if (_selectedCharacters.Count == 0)
         {
-            return;
+            if (!string.IsNullOrEmpty(mainCharacter))
+            {
+                _selectedCharacters.Add(mainCharacter);
+                Logger.Info("LootWindow", $"Personnage principal {mainCharacter} ajouté automatiquement dans ApplyFilters");
+            }
+            else
+            {
+                // Si aucun personnage principal n'est défini, on ne peut pas filtrer
+                return;
+            }
         }
-
-        string? mainCharacter = _characterDetector?.GetConfig().MainCharacter;
 
         foreach (var item in _allLootItems.OrderByDescending(i => i.LastObtained))
         {
@@ -902,6 +912,13 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         foreach (var name in previousSelection)
         {
             _selectedCharacters.Add(name);
+        }
+
+        // S'assurer qu'au moins le personnage principal est sélectionné si aucun personnage n'est sélectionné
+        if (_selectedCharacters.Count == 0 && !string.IsNullOrEmpty(mainCharacter))
+        {
+            _selectedCharacters.Add(mainCharacter);
+            Logger.Info("LootWindow", $"Personnage principal {mainCharacter} ajouté automatiquement car aucun personnage n'était sélectionné");
         }
 
         ApplyFilters();
