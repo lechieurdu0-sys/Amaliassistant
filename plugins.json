@@ -6,6 +6,15 @@
     "Description": "Affiche une horloge digitale déplaçable et redimensionnable. Déplacer avec la souris. Ctrl + Molette pour changer la taille.",
     "Author": "Amaliassistant",
     "DownloadUrl": "https://github.com/lechieurdu0-sys/Amaliassistant/releases/download/plugins-v1.0.2/DigitalClockPlugin.dll"
+  },
+  {
+    "Id": "NotesPlugin_NotesPlugin",
+    "Name": "Notes Rapides",
+    "Version": "1.0.0",
+    "Description": "Affiche une fenêtre de notes rapides pour prendre des notes pendant le jeu. Déplaçable, redimensionnable et minimisable.",
+    "Author": "Amaliassistant",
+    "DownloadUrl": "https://github.com/lechieurdu0-sys/Amaliassistant/releases/download/notesplugin-v1.0.0/NotesPlugin.dll"
   }
 ]
+
 
