@@ -239,3 +239,74 @@ WEBVIEW2_DISTRIBUTION.md
 
 -Clean/
 
+#############################################
+# Sorties générées (map/tiles) à la racine
+# (évite de polluer le dépôt avec des milliers de fichiers)
+#############################################
+
+# Dossiers générés (ex: "-1/", "-2/", ...)
+/-[0-9]*/
+
+# Fichiers de tuiles générées (ex: "-100_-94", "0_-1", "12_34", etc.) à la racine
+/[0-9-]*_[0-9-]*
+
+# Fichiers de map générés à la racine
+/map.dds
+/map.xml
+/map_def.xml
+/mask*.png
+
+# SQL d'import générés à la racine
+/import_*.sql
+
+#############################################
+# Dumps / extractions de fichiers du jeu (local)
+#############################################
+
+# Dossiers extraits à la racine (JAR décompressés, assets, etc.)
+/Atlas/
+/META-INF/
+/com/
+/org/
+/poi/
+/gfx/
+/coord/
+/coord
+
+# Répertoires de données extraites
+/extracted_encyclopedia_game/
+/extracted_worldmap_data/
+/wakfu_encyclopedia_data/
+/methodwakfu_data/
+/methodwakfu_db_data/
+
+# Fichiers extraits à la racine (tuiles/ressources)
+/[0-9]*.dds
+/[0-9]*.xml
+/[0-9]*.anm
+/*.class
+/module-info.class
+/*.dat
+/*.lib
+/*.amd
+
+# Quelques fichiers XML extraits à la racine
+/chat.xml
+/dayLight.xml
+/graphics.xml
+/shortcuts.xml
+/tutorials.xml
+
+#############################################
+# Projets/artefacts futurs non “de base”
+#############################################
+
+# Outils et prototypes (gros, en évolution) — à garder en local
+/Tools/
+
+# Plugins (si générés/local)
+/Plugins/
+
+# Patches générés
+/Patches/
+

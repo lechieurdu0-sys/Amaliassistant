@@ -237,6 +237,9 @@ public class SaleTracker : IDisposable
     
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
+        // Vérifier que le watcher est toujours actif
+        VerifyWatcherStatus();
+        
         // Si le fichier vient d'être créé, réinitialiser la position
         if (e.ChangeType == WatcherChangeTypes.Created)
         {
@@ -244,14 +247,51 @@ public class SaleTracker : IDisposable
             Logger.Info("SaleTracker", $"Fichier de log créé détecté: {_logFilePath}");
         }
         
-        // Délai réduit pour une détection plus rapide (25ms au lieu de 50ms)
+        // Log pour diagnostic (désactivé pour éviter le spam)
+        // Logger.Debug("SaleTracker", $"Événement FileSystemWatcher détecté: {e.ChangeType} pour {e.FullPath}");
+        
+        // Délai réduit pour une détection en temps réel (10ms)
         // Le FileSystemWatcher peut manquer des événements, donc on s'appuie aussi sur le timer
-        System.Threading.Tasks.Task.Delay(25).ContinueWith(_ => ReadNewLines());
+        System.Threading.Tasks.Task.Delay(10).ContinueWith(_ => ReadNewLines());
     }
     
     private void OnFileWatcherError(object sender, ErrorEventArgs e)
     {
         Logger.Error("SaleTracker", $"Erreur du FileSystemWatcher: {e.GetException().Message}");
+        
+        // Réinitialiser le FileSystemWatcher en cas d'erreur
+        try
+        {
+            if (_fileWatcher != null)
+            {
+                Logger.Info("SaleTracker", "Tentative de réinitialisation du FileSystemWatcher après erreur...");
+                
+                // Désactiver temporairement
+                _fileWatcher.EnableRaisingEvents = false;
+                
+                // Attendre un peu avant de réactiver
+                System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
+                {
+                    try
+                    {
+                        if (_fileWatcher != null)
+                        {
+                            _fileWatcher.EnableRaisingEvents = true;
+                            Logger.Info("SaleTracker", "FileSystemWatcher réinitialisé et réactivé après erreur");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("SaleTracker", $"Erreur lors de la réactivation du FileSystemWatcher: {ex.Message}");
+                    }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SaleTracker", $"Erreur lors de la gestion de l'erreur du FileSystemWatcher: {ex.Message}");
+        }
+        
         // Le timer continuera à fonctionner même si le FileSystemWatcher échoue
         // Cela garantit qu'on ne rate pas de ventes
     }
@@ -267,12 +307,12 @@ public class SaleTracker : IDisposable
         }
         
         // Utiliser TryEnter pour éviter les blocages si une autre lecture est en cours
-        if (!System.Threading.Monitor.TryEnter(_lockObject, 100))
+        // Timeout réduit à 5ms car le timer est maintenant à 10ms
+        if (!System.Threading.Monitor.TryEnter(_lockObject, 5))
         {
             // Si on ne peut pas acquérir le lock rapidement, on ignore cette lecture
-            // Le timer rappellera bientôt (25ms)
-            Logger.Debug("SaleTracker", "Lock non disponible, lecture ignorée");
-            return;
+            // Le timer rappellera bientôt (10ms)
+            return; // Pas de log pour éviter le spam
         }
         
         try
@@ -556,6 +596,9 @@ public class SaleTracker : IDisposable
     /// </summary>
     public void ManualRead()
     {
+        // Vérifier que le FileSystemWatcher est toujours actif
+        VerifyWatcherStatus();
+        
         // Ne pas bloquer le thread principal, mais s'assurer que la lecture se fait
         System.Threading.Tasks.Task.Run(() =>
         {
@@ -568,6 +611,55 @@ public class SaleTracker : IDisposable
                 Logger.Error("SaleTracker", $"Erreur dans ManualRead: {ex.Message}");
             }
         });
+    }
+    
+    /// <summary>
+    /// Vérifie que le FileSystemWatcher est toujours actif et le réactive si nécessaire
+    /// </summary>
+    private void VerifyWatcherStatus()
+    {
+        try
+        {
+            if (_fileWatcher != null)
+            {
+                bool wasInactive = !_fileWatcher.EnableRaisingEvents;
+                
+                if (wasInactive)
+                {
+                    Logger.Warning("SaleTracker", "FileSystemWatcher n'est plus actif, réactivation...");
+                    
+                    // Réinitialiser complètement le watcher si possible
+                    var directory = Path.GetDirectoryName(_logFilePath);
+                    var fileName = Path.GetFileName(_logFilePath);
+                    
+                    if (directory != null && File.Exists(_logFilePath))
+                    {
+                        try
+                        {
+                            // Désactiver et réactiver pour réinitialiser l'état interne
+                            _fileWatcher.EnableRaisingEvents = false;
+                            System.Threading.Thread.Sleep(10); // Petit délai pour s'assurer que la désactivation est prise en compte
+                            _fileWatcher.EnableRaisingEvents = true;
+                            Logger.Info("SaleTracker", "FileSystemWatcher réactivé avec succès");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("SaleTracker", $"Erreur lors de la réactivation du FileSystemWatcher: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        // Si le fichier n'existe pas encore, juste réactiver le watcher pour qu'il détecte la création
+                        _fileWatcher.EnableRaisingEvents = true;
+                        Logger.Info("SaleTracker", "FileSystemWatcher réactivé (en attente de création du fichier)");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SaleTracker", $"Erreur lors de la vérification du statut du FileSystemWatcher: {ex.Message}");
+        }
     }
     
     public void Dispose()

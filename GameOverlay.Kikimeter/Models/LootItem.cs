@@ -10,6 +10,7 @@ namespace GameOverlay.Kikimeter.Models;
 public class LootItem : INotifyPropertyChanged
 {
     private int _quantity;
+    private bool _isFavorite;
     
     /// <summary>
     /// Nom du personnage qui a ramassé l'item ("Vous" pour le perso principal, ou le pseudo)
@@ -20,6 +21,19 @@ public class LootItem : INotifyPropertyChanged
     /// Nom de l'item
     /// </summary>
     public string ItemName { get; }
+    
+    /// <summary>
+    /// Indique si l'item est en favoris
+    /// </summary>
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set
+        {
+            _isFavorite = value;
+            OnPropertyChanged();
+        }
+    }
     
     /// <summary>
     /// Quantité totale ramassée
@@ -69,6 +83,16 @@ public class LootItem : INotifyPropertyChanged
     {
         Quantity += additionalQuantity;
         LastObtained = DateTime.Now;
+    }
+    
+    /// <summary>
+    /// Retire une quantité de cet item (retourne true si la quantité atteint 0 ou moins)
+    /// </summary>
+    public bool RemoveQuantity(int quantityToRemove)
+    {
+        Quantity = Math.Max(0, Quantity - quantityToRemove);
+        LastObtained = DateTime.Now;
+        return Quantity <= 0;
     }
     
     public event PropertyChangedEventHandler? PropertyChanged;

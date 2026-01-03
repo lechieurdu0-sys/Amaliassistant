@@ -23,7 +23,11 @@ param(
     [switch]$SkipInstaller,
     
     [Parameter(Mandatory=$false)]
-    [switch]$SkipUpload
+    [switch]$SkipUpload,
+
+    # Évite tout prompt interactif (utile en CI / exécution automatisée)
+    [Parameter(Mandatory=$false)]
+    [switch]$NoPrompt
 )
 
 $ErrorActionPreference = "Stop"
@@ -390,7 +394,7 @@ if (Test-Path $installerFile) {
 }
 
 # Ouvrir le dossier de l'installateur
-if (Test-Path $installerFile) {
+if (-not $NoPrompt -and (Test-Path $installerFile)) {
     Write-Host "Souhaitez-vous ouvrir le dossier de l installateur ? (O/N)" -ForegroundColor Yellow
     $response = Read-Host
     if ($response -eq "O" -or $response -eq "o") {

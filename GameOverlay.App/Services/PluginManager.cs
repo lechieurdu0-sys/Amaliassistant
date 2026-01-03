@@ -313,18 +313,30 @@ namespace GameOverlay.App.Services
             // Activer le plugin
             if (_loadedPlugins.TryGetValue(pluginId, out var plugin))
             {
-                plugin.Activate();
-                pluginInfo.IsEnabled = true;
-                
-                // Ajouter à la liste des plugins activés dans la config
-                if (_applicationConfig != null && !_applicationConfig.PluginConfig.EnabledPlugins.Contains(pluginId))
+                try
                 {
-                    _applicationConfig.PluginConfig.EnabledPlugins.Add(pluginId);
-                    SavePluginConfig();
+                    Logger.Info("PluginManager", $"Tentative d'activation du plugin: {pluginId}");
+                    plugin.Activate();
+                    pluginInfo.IsEnabled = true;
+                    
+                    // Ajouter à la liste des plugins activés dans la config
+                    if (_applicationConfig != null && !_applicationConfig.PluginConfig.EnabledPlugins.Contains(pluginId))
+                    {
+                        _applicationConfig.PluginConfig.EnabledPlugins.Add(pluginId);
+                        SavePluginConfig();
+                    }
+                    
+                    Logger.Info("PluginManager", $"Plugin activé avec succès: {pluginId}");
+                    return true;
                 }
-                
-                Logger.Info("PluginManager", $"Plugin activé: {pluginId}");
-                return true;
+                catch (Exception ex)
+                {
+                    pluginInfo.ErrorMessage = $"Erreur lors de l'activation: {ex.Message}";
+                    Logger.Error("PluginManager", $"Erreur lors de l'activation du plugin {pluginId}: {ex.Message}");
+                    Logger.Error("PluginManager", $"Stack trace: {ex.StackTrace}");
+                    PluginError?.Invoke(pluginInfo, pluginInfo.ErrorMessage);
+                    return false;
+                }
             }
             
             return false;

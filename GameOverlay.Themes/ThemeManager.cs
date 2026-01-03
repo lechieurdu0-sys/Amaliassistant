@@ -235,11 +235,8 @@ namespace GameOverlay.Themes
                 ApplyMenuItemsTheme(contextMenu.Items.OfType<MenuItem>(), imageBrush, accentBrushClone, highlightTextBrush);
                 
                 // S'assurer que la couleur de survol brune est bien appliquée via les SystemColors
-                // Forcer l'override pour éviter que le cyan ne s'affiche
-                var hoverBrush = new SolidColorBrush(Color.FromArgb(150, 110, 92, 42)); // #966E5C2A - brun semi-transparent
-                contextMenu.Resources[SystemColors.MenuHighlightBrushKey] = hoverBrush;
-                contextMenu.Resources[SystemColors.HighlightBrushKey] = hoverBrush;
-                contextMenu.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = hoverBrush;
+                // Effets de survol désactivés pour meilleure lisibilité
+                // Les SystemColors ne sont plus définis pour éviter tout effet de survol
                 
                 // Rendre tous les séparateurs invisibles
                 foreach (var separator in contextMenu.Items.OfType<Separator>())

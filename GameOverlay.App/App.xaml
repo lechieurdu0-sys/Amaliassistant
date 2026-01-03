@@ -90,17 +90,7 @@
                                 <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#966E5C2A"/>
                             </ControlTemplate.Resources>
                             <ControlTemplate.Triggers>
-                                <!-- SURVOL : FORCER LE BRUN ABSOLUMENT -->
-                                <Trigger Property="IsHighlighted" Value="True">
-                                    <!-- Afficher le rectangle de survol brun (opacité 1 = visible) -->
-                                    <Setter TargetName="HoverRectangle" Property="Opacity" Value="1"/>
-                                    <!-- Forcer aussi le fond brun sur le Border -->
-                                    <Setter TargetName="Border" Property="Background" Value="#966E5C2A"/>
-                                    <!-- Forcer le texte marron -->
-                                    <Setter TargetName="ContentPresenter" Property="TextElement.Foreground" Value="#FF6E5C2A"/>
-                                    <!-- Forcer les SystemColors -->
-                                    <Setter Property="Background" Value="#966E5C2A"/>
-                                </Trigger>
+                                <!-- Survol désactivé pour meilleure lisibilité -->
                                 <!-- Submenu ouvert : aussi brun -->
                                 <Trigger Property="IsSubmenuOpen" Value="True">
                                     <Setter TargetName="HoverRectangle" Property="Opacity" Value="1"/>

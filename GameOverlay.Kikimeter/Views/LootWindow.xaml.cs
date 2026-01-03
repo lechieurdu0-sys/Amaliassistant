@@ -38,6 +38,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
     private const string WindowPositionsFileName = "window_positions.json";
     private const string AppDataFolderName = "Amaliassistant";
     private const string LootFolderName = "Loot";
+    private const string FavoritesFileName = "loot_favorites.json";
 
     private bool _lootFramesOpaque;
     private bool _isLoadingLootFramesOpaque;
@@ -57,6 +58,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
     private readonly ObservableCollection<LootItem> _filteredLootItems = new();
     private readonly HashSet<string> _selectedCharacters = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _hiddenLootKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _favoriteKeys = new(StringComparer.OrdinalIgnoreCase);
 
     private DispatcherTimer? _updateTimer;
     private bool _focusReturnPending;
@@ -86,9 +88,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         {
             LoadSectionBackgroundColor();
             HookFocusReturnHandlers();
-            // Forcer la taille normale de la fenêtre
-            Width = 400;
-            Height = 734;
+            LoadFavorites();
         };
 
         Logger.Info("LootWindow", "LootWindow cree");
@@ -403,25 +403,29 @@ public partial class LootWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            // Charger uniquement la position, pas la taille (pour conserver la taille définie dans le XAML)
+            // Charger la position
             if (stored.LootWindow.Left > 0)
             {
-            Left = stored.LootWindow.Left;
+                Left = stored.LootWindow.Left;
             }
             if (stored.LootWindow.Top > 0)
             {
-            Top = stored.LootWindow.Top;
+                Top = stored.LootWindow.Top;
             }
-            // Forcer explicitement la taille normale - ne JAMAIS charger Width et Height depuis le fichier
-            Width = 400;
-            Height = 734;
+            
+            // Charger la taille si elle a été sauvegardée
+            if (stored.LootWindow.Width > 0 && stored.LootWindow.Width >= MinWidth)
+            {
+                Width = stored.LootWindow.Width;
+            }
+            if (stored.LootWindow.Height > 0 && stored.LootWindow.Height >= MinHeight)
+            {
+                Height = stored.LootWindow.Height;
+            }
         }
         catch (Exception ex)
         {
             Logger.Warning("LootWindow", $"Impossible de charger les positions: {ex.Message}");
-            // En cas d'erreur, forcer quand même la taille normale
-            Width = 400;
-            Height = 734;
         }
     }
 
@@ -435,7 +439,6 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             {
                 Left = Left,
                 Top = Top,
-                // Sauvegarder la taille actuelle pour référence, mais ne pas la recharger
                 Width = Width,
                 Height = Height
             };
@@ -506,6 +509,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             _lootTracker = new LootTracker(chatLogPath);
             _lootTracker.LootItemAdded += OnLootItemAdded;
             _lootTracker.LootItemUpdated += OnLootItemUpdated;
+            _lootTracker.LootItemRemoved += OnLootItemRemoved;
 
             _updateTimer = new DispatcherTimer
             {
@@ -592,6 +596,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         {
             _lootTracker.LootItemAdded -= OnLootItemAdded;
             _lootTracker.LootItemUpdated -= OnLootItemUpdated;
+            _lootTracker.LootItemRemoved -= OnLootItemRemoved;
             _lootTracker.Dispose();
             _lootTracker = null;
         }
@@ -659,6 +664,8 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             }
             else
             {
+                // Appliquer l'état favoris si l'item existe dans les favoris
+                lootItem.IsFavorite = _favoriteKeys.Contains(key);
                 _allLootItems.Add(lootItem);
             }
 
@@ -680,12 +687,53 @@ public partial class LootWindow : Window, INotifyPropertyChanged
 
             if (existing == null)
             {
+                // Appliquer l'état favoris si l'item existe dans les favoris
+                lootItem.IsFavorite = _favoriteKeys.Contains(key);
                 _allLootItems.Add(lootItem);
             }
             else if (!ReferenceEquals(existing, lootItem))
             {
                 existing.Quantity = lootItem.Quantity;
                 existing.LastObtained = lootItem.LastObtained;
+                // Conserver l'état favoris
+                existing.IsFavorite = _favoriteKeys.Contains(key);
+            }
+
+            ApplyFilters();
+            UpdateStatus();
+        });
+    }
+
+    private void OnLootItemRemoved(object? sender, LootItem lootItem)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
+            
+            // Si l'item est favoris, le garder dans la liste même si la quantité est 0
+            if (_favoriteKeys.Contains(key))
+            {
+                var existing = _allLootItems.FirstOrDefault(i =>
+                    string.Equals(i.CharacterName, lootItem.CharacterName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(i.ItemName, lootItem.ItemName, StringComparison.OrdinalIgnoreCase));
+
+                if (existing != null)
+                {
+                    existing.Quantity = 0;
+                    existing.LastObtained = DateTime.Now;
+                }
+            }
+            else
+            {
+                // Retirer l'item de la liste s'il n'est pas favoris
+                var itemToRemove = _allLootItems.FirstOrDefault(i =>
+                    string.Equals(i.CharacterName, lootItem.CharacterName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(i.ItemName, lootItem.ItemName, StringComparison.OrdinalIgnoreCase));
+
+                if (itemToRemove != null)
+                {
+                    _allLootItems.Remove(itemToRemove);
+                }
             }
 
             ApplyFilters();
@@ -740,6 +788,9 @@ public partial class LootWindow : Window, INotifyPropertyChanged
                 _allLootItems.Clear();
                 foreach (var item in trackerItems)
                 {
+                    // Appliquer l'état favoris
+                    var key = $"{item.CharacterName}|{item.ItemName}";
+                    item.IsFavorite = _favoriteKeys.Contains(key);
                     _allLootItems.Add(item);
                 }
             }
@@ -766,19 +817,26 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             }
             else
             {
-                // Si aucun personnage principal n'est défini, on ne peut pas filtrer
-                return;
+                // Si aucun personnage principal n'est défini, utiliser "Vous" comme fallback
+                _selectedCharacters.Add("Vous");
+                Logger.Info("LootWindow", "Aucun personnage principal défini, utilisation de 'Vous' comme fallback");
             }
         }
 
-        foreach (var item in _allLootItems.OrderByDescending(i => i.LastObtained))
+        // Trier: favoris en premier, puis par date
+        var sortedItems = _allLootItems.OrderByDescending(i => i.IsFavorite)
+                                       .ThenByDescending(i => i.LastObtained);
+
+        foreach (var item in sortedItems)
         {
             var actualName = item.CharacterName;
+            // Si l'item a "Vous" comme nom et qu'un personnage principal est défini, utiliser le nom du personnage
             if (string.Equals(actualName, "Vous", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrEmpty(mainCharacter))
             {
                 actualName = mainCharacter;
             }
+            // Sinon, garder "Vous" tel quel si aucun personnage principal n'est défini
 
             var key = $"{item.CharacterName}|{item.ItemName}";
             if (_hiddenLootKeys.Contains(key))
@@ -786,6 +844,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
                 continue;
             }
 
+            // Ne pas filtrer les favoris même si la quantité est 0
             if (_selectedCharacters.Contains(actualName))
             {
                 _filteredLootItems.Add(item);
@@ -807,11 +866,146 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        // Ne pas supprimer si l'item est favoris
+        if (lootItem.IsFavorite)
+        {
+            return;
+        }
+
         var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
         _hiddenLootKeys.Add(key);
 
         ApplyFilters();
         UpdateStatus();
+        ScheduleFocusReturn();
+    }
+
+    private void ToggleFavorite_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // Empêcher la propagation pour éviter les conflits avec le drag de la fenêtre
+        e.Handled = true;
+        
+        if (sender is not Button button || button.Tag is not LootItem lootItem)
+        {
+            return;
+        }
+
+        ToggleFavoriteInternal(lootItem);
+        
+        // Éviter que le clic ne déclenche d'autres événements
+        e.Handled = true;
+    }
+
+    private void ToggleFavoriteInternal(LootItem lootItem)
+    {
+        var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
+        
+        if (lootItem.IsFavorite)
+        {
+            // Si c'est un favori détruit (quantité 0), le supprimer complètement
+            if (lootItem.Quantity == 0)
+            {
+                // Retirer des favoris
+                _favoriteKeys.Remove(key);
+                lootItem.IsFavorite = false;
+                
+                // Supprimer l'item de la liste
+                _allLootItems.Remove(lootItem);
+                
+                // Supprimer aussi du LootTracker si nécessaire
+                _lootTracker?.RemoveItem(lootItem.CharacterName, lootItem.ItemName);
+                
+                Logger.Info("LootWindow", $"Favori détruit supprimé: {lootItem.CharacterName}: {lootItem.ItemName}");
+            }
+            else
+            {
+                // Retirer des favoris normalement (mais garder l'item car quantité > 0)
+                _favoriteKeys.Remove(key);
+                lootItem.IsFavorite = false;
+            }
+        }
+        else
+        {
+            // Ajouter aux favoris
+            _favoriteKeys.Add(key);
+            lootItem.IsFavorite = true;
+        }
+
+        SaveFavorites();
+        ApplyFilters();
+        UpdateStatus();
+        ScheduleFocusReturn();
+    }
+
+    private void ToggleFavorite_Click(object sender, RoutedEventArgs e)
+    {
+        // Garder cette méthode pour compatibilité mais utiliser PreviewMouseDown de préférence
+        if (sender is not Button button || button.Tag is not LootItem lootItem)
+        {
+            return;
+        }
+
+        ToggleFavoriteInternal(lootItem);
+    }
+
+    private void LoadFavorites()
+    {
+        try
+        {
+            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppDataFolderName, LootFolderName);
+            Directory.CreateDirectory(appData);
+            
+            var favoritesPath = Path.Combine(appData, FavoritesFileName);
+            if (!File.Exists(favoritesPath))
+            {
+                return;
+            }
+
+            var json = File.ReadAllText(favoritesPath);
+            var favorites = JsonConvert.DeserializeObject<List<string>>(json);
+            
+            if (favorites != null)
+            {
+                _favoriteKeys.Clear();
+                foreach (var key in favorites)
+                {
+                    _favoriteKeys.Add(key);
+                }
+
+                // Appliquer l'état favoris aux items existants
+                foreach (var item in _allLootItems)
+                {
+                    var key = $"{item.CharacterName}|{item.ItemName}";
+                    item.IsFavorite = _favoriteKeys.Contains(key);
+                }
+
+                Logger.Info("LootWindow", $"Favoris chargés: {_favoriteKeys.Count} items");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning("LootWindow", $"Impossible de charger les favoris: {ex.Message}");
+        }
+    }
+
+    private void SaveFavorites()
+    {
+        try
+        {
+            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppDataFolderName, LootFolderName);
+            Directory.CreateDirectory(appData);
+            
+            var favoritesPath = Path.Combine(appData, FavoritesFileName);
+            var favorites = _favoriteKeys.ToList();
+            var json = JsonConvert.SerializeObject(favorites, Formatting.Indented);
+            File.WriteAllText(favoritesPath, json);
+            
+            Logger.Debug("LootWindow", $"Favoris sauvegardés: {_favoriteKeys.Count} items");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning("LootWindow", $"Impossible de sauvegarder les favoris: {ex.Message}");
+        }
     }
 
     private void ResetAllLoot(string reason)
@@ -825,6 +1019,7 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         _filteredLootItems.Clear();
         _selectedCharacters.Clear();
         _hiddenLootKeys.Clear();
+        // Ne pas effacer les favoris lors d'un reset
 
         UpdateCharactersList();
         UpdateStatus();
@@ -915,10 +1110,19 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         }
 
         // S'assurer qu'au moins le personnage principal est sélectionné si aucun personnage n'est sélectionné
-        if (_selectedCharacters.Count == 0 && !string.IsNullOrEmpty(mainCharacter))
+        if (_selectedCharacters.Count == 0)
         {
-            _selectedCharacters.Add(mainCharacter);
-            Logger.Info("LootWindow", $"Personnage principal {mainCharacter} ajouté automatiquement car aucun personnage n'était sélectionné");
+            if (!string.IsNullOrEmpty(mainCharacter))
+            {
+                _selectedCharacters.Add(mainCharacter);
+                Logger.Info("LootWindow", $"Personnage principal {mainCharacter} ajouté automatiquement car aucun personnage n'était sélectionné");
+            }
+            else
+            {
+                // Si aucun personnage principal n'est défini, utiliser "Vous" comme fallback
+                _selectedCharacters.Add("Vous");
+                Logger.Info("LootWindow", "Aucun personnage principal défini, utilisation de 'Vous' comme fallback dans UpdateCharactersList");
+            }
         }
 
         ApplyFilters();

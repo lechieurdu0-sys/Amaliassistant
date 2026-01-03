@@ -15,7 +15,7 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         RenderOptions.BitmapScalingMode="HighQuality"
-        MinWidth="300"
+        MinWidth="280"
         MinHeight="500" Cursor="">
     <Window.Resources>
         <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A" />
@@ -80,45 +80,49 @@
                     <ItemsControl x:Name="LootItemsContainer">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border BorderBrush="#FF6E5C2A"
-                                        BorderThickness="1"
+                                <Border BorderThickness="1"
                                         Margin="0,2,0,2"
                                         Padding="10,8"
                                         Background="{DynamicResource SectionBackgroundBrush}"
                                         CornerRadius="3">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="#FF6E5C2A"/>
+                                            <Setter Property="Opacity" Value="1.0"/>
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsFavorite}" Value="True"/>
+                                                        <Condition Binding="{Binding Quantity}" Value="0"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="BorderBrush" Value="#FF888888"/>
+                                                    <Setter Property="Opacity" Value="0.6"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" MinWidth="150" />
+                                            <ColumnDefinition Width="Auto" MinWidth="44" />
+                                            <ColumnDefinition Width="*" MinWidth="120" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding ItemName}"
-                                                   FontSize="14"
-                                                   FontWeight="Bold"
-                                                   Foreground="#FF4E421F"
-                                                   TextWrapping="Wrap"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,10,0"/>
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding Quantity, StringFormat=x\{0\}}"
-                                                   FontSize="16"
-                                                   FontWeight="Bold"
-                                                   Foreground="#FF4E421F"
-                                                   VerticalAlignment="Center"
-                                                   Margin="5,0,10,0"/>
-                                        <Button Grid.Column="2"
-                                                Width="30"
-                                                Height="30"
+                                        <Button Grid.Column="0"
+                                                Width="40"
+                                                Height="40"
+                                                MinWidth="40"
+                                                MinHeight="40"
                                                 Background="Transparent"
                                                 BorderThickness="0"
-                                                Padding="0"
+                                                Padding="8"
                                                 Cursor="Hand"
-                                                Click="DeleteLootItem_Click"
+                                                PreviewMouseDown="ToggleFavorite_PreviewMouseDown"
                                                 Tag="{Binding}"
-                                                ToolTip="Supprimer cet item"
+                                                ToolTip="Marquer comme favoris"
                                                 VerticalAlignment="Center"
                                                 HorizontalAlignment="Center"
+                                                Margin="0,0,5,0"
                                                 Focusable="False">
                                             <Button.Style>
                                                 <Style TargetType="Button">
@@ -134,11 +138,108 @@
                                                             </ControlTemplate>
                                                         </Setter.Value>
                                                     </Setter>
+                                                    <Setter Property="Foreground" Value="#FF888888"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FFFFD700"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <TextBlock Text="★"
+                                                       FontSize="22"
+                                                       FontWeight="Bold"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"/>
+                                        </Button>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding ItemName}"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   TextWrapping="Wrap"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#FF4E421F"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsFavorite}" Value="True"/>
+                                                                <Condition Binding="{Binding Quantity}" Value="0"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Foreground" Value="#FF888888"/>
+                                                            <Setter Property="FontStyle" Value="Italic"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding Quantity, StringFormat=x\{0\}}"
+                                                   FontSize="16"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="5,0,5,0"
+                                                   MinWidth="35">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#FF4E421F"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsFavorite}" Value="True"/>
+                                                                <Condition Binding="{Binding Quantity}" Value="0"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Foreground" Value="#FF888888"/>
+                                                            <Setter Property="FontStyle" Value="Italic"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <Button Grid.Column="3"
+                                                Width="32"
+                                                Height="32"
+                                                MinWidth="32"
+                                                MinHeight="32"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="4"
+                                                Cursor="Hand"
+                                                Click="DeleteLootItem_Click"
+                                                Tag="{Binding}"
+                                                ToolTip="Supprimer cet item"
+                                                VerticalAlignment="Center"
+                                                HorizontalAlignment="Center"
+                                                Margin="5,0,0,0"
+                                                Focusable="False">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent"
+                                                                        BorderThickness="0"
+                                                                        CornerRadius="0">
+                                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center" />
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
                                                 </Style>
                                             </Button.Style>
                                             <Image Source="/GameOverlay.Kikimeter;component/Views/Assets/loot/cross.png"
-                                                   Width="25"
-                                                   Height="25"
+                                                   Width="24"
+                                                   Height="24"
                                                    Stretch="Uniform"
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                                         </Button>

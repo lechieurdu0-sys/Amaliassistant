@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using GameOverlay.Kikimeter.Models;
 
@@ -31,8 +32,93 @@ public class LootTracker : IDisposable
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
     );
     
+    // Regex pour "Vous avez retiré Xx NomItem ."
+    private static readonly Regex PlayerRemovedRegex = new Regex(
+        @"Vous avez retiré\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "[Pseudo] a retiré Xx NomItem ."
+    private static readonly Regex OtherPlayerRemovedRegex = new Regex(
+        @"^([\p{L}0-9\-_'’ ]+?)\s+a retiré\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "Vous avez perdu Xx NomItem ." (utilisé pour destruction/bris/dépôt)
+    private static readonly Regex PlayerLostRegex = new Regex(
+        @"Vous avez perdu\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "[Pseudo] a perdu Xx NomItem ."
+    private static readonly Regex OtherPlayerLostRegex = new Regex(
+        @"^([\p{L}0-9\-_'’ ]+?)\s+a perdu\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "Vous avez détruit Xx NomItem ."
+    private static readonly Regex PlayerDestroyedRegex = new Regex(
+        @"Vous avez détruit\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "[Pseudo] a détruit Xx NomItem ."
+    private static readonly Regex OtherPlayerDestroyedRegex = new Regex(
+        @"^([\p{L}0-9\-_'’ ]+?)\s+a détruit\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "Vous avez brisé Xx NomItem ."
+    private static readonly Regex PlayerBrokeRegex = new Regex(
+        @"Vous avez brisé\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "[Pseudo] a brisé Xx NomItem ."
+    private static readonly Regex OtherPlayerBrokeRegex = new Regex(
+        @"^([\p{L}0-9\-_'’ ]+?)\s+a brisé\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "Vous avez supprimé Xx NomItem ."
+    private static readonly Regex PlayerDeletedRegex = new Regex(
+        @"Vous avez supprimé\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "[Pseudo] a supprimé Xx NomItem ."
+    private static readonly Regex OtherPlayerDeletedRegex = new Regex(
+        @"^([\p{L}0-9\-_'' ]+?)\s+a supprimé\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour dépôt en coffre: "Vous avez déposé Xx NomItem dans votre coffre ."
+    private static readonly Regex PlayerDepositedChestRegex = new Regex(
+        @"Vous avez déposé\s+(\d+)x\s+(.+?)\s+(?:dans votre coffre|en coffre)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex pour "[Pseudo] a déposé Xx NomItem dans son coffre ."
+    private static readonly Regex OtherPlayerDepositedChestRegex = new Regex(
+        @"^([\p{L}0-9\-_'’ ]+?)\s+a déposé\s+(\d+)x\s+(.+?)\s+(?:dans son coffre|en coffre)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex générique pour "Vous avez déposé Xx NomItem"
+    private static readonly Regex PlayerDepositedGenericRegex = new Regex(
+        @"Vous avez déposé\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
+    // Regex générique pour "[Pseudo] a déposé Xx NomItem"
+    private static readonly Regex OtherPlayerDepositedGenericRegex = new Regex(
+        @"^([\p{L}0-9\-_'’ ]+?)\s+a déposé\s+(\d+)x\s+(.+?)\s*\.\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    
     public event EventHandler<LootItem>? LootItemAdded;
     public event EventHandler<LootItem>? LootItemUpdated;
+    public event EventHandler<LootItem>? LootItemRemoved;
     
     public LootTracker(string logFilePath)
     {
@@ -99,7 +185,8 @@ public class LootTracker : IDisposable
         }
         
         // Délai pour éviter les lectures multiples lors d'une écriture en cours
-        System.Threading.Tasks.Task.Delay(50).ContinueWith(_ => ReadNewLines());
+        // Augmenter légèrement le délai pour s'assurer que l'écriture est terminée
+        System.Threading.Tasks.Task.Delay(100).ContinueWith(_ => ReadNewLines());
     }
     
     private void ReadNewLines()
@@ -129,6 +216,7 @@ public class LootTracker : IDisposable
                     return; // Pas de nouvelles lignes
                 
                 string? line;
+                int linesProcessed = 0;
                 while (true)
                 {
                     line = reader.ReadLine();
@@ -138,9 +226,15 @@ public class LootTracker : IDisposable
                     }
 
                     ProcessLine(line);
+                    linesProcessed++;
                 }
                 
                 _lastPosition = reader.BaseStream.Position;
+                
+                if (linesProcessed > 0)
+                {
+                    Logger.Debug("LootTracker", $"{linesProcessed} ligne(s) traitée(s) depuis la position {_lastPosition - (linesProcessed * 50)}");
+                }
             }
             catch (Exception ex)
             {
@@ -193,6 +287,189 @@ public class LootTracker : IDisposable
             string itemName = match.Groups[3].Value.Trim();
             ProcessLoot(characterName, itemName, quantity, line);
             return;
+        }
+        
+        // Vérifier "Vous avez perdu Xx NomItem" EN PREMIER (pattern principal utilisé par Wakfu pour destruction/bris/dépôt)
+        match = PlayerLostRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item perdu détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les retraits/destructions pour "Vous"
+        match = PlayerRemovedRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item retiré détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        match = PlayerDestroyedRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item détruit détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les bris d'items pour "Vous"
+        match = PlayerBrokeRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item brisé détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les suppressions d'items pour "Vous"
+        match = PlayerDeletedRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item supprimé détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les dépôts en coffre pour "Vous" (spécifique coffre)
+        match = PlayerDepositedChestRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item déposé en coffre détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les dépôts génériques pour "Vous" (si le pattern spécifique n'a pas matché)
+        match = PlayerDepositedGenericRegex.Match(cleanLine);
+        if (match.Success && (cleanLine.Contains("coffre", StringComparison.OrdinalIgnoreCase) || 
+                             cleanLine.Contains("havre", StringComparison.OrdinalIgnoreCase) ||
+                             cleanLine.Contains("déposé", StringComparison.OrdinalIgnoreCase)))
+        {
+            int quantity = int.Parse(match.Groups[1].Value);
+            string itemName = match.Groups[2].Value.Trim();
+            string characterName = _mainCharacterName ?? "Vous";
+            Logger.Debug("LootTracker", $"Item déposé (générique) détecté: {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les retraits/destructions pour les autres personnages
+        match = OtherPlayerRemovedRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item retiré détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier "[Pseudo] a perdu Xx NomItem"
+        match = OtherPlayerLostRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item perdu détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        match = OtherPlayerDestroyedRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item détruit détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les bris d'items pour les autres personnages
+        match = OtherPlayerBrokeRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item brisé détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les suppressions d'items pour les autres personnages
+        match = OtherPlayerDeletedRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item supprimé détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les dépôts en coffre pour les autres personnages
+        match = OtherPlayerDepositedChestRegex.Match(cleanLine);
+        if (match.Success)
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item déposé en coffre détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Vérifier les dépôts génériques pour les autres personnages
+        match = OtherPlayerDepositedGenericRegex.Match(cleanLine);
+        if (match.Success && (cleanLine.Contains("coffre", StringComparison.OrdinalIgnoreCase) || 
+                             cleanLine.Contains("havre", StringComparison.OrdinalIgnoreCase) ||
+                             cleanLine.Contains("déposé", StringComparison.OrdinalIgnoreCase)))
+        {
+            string characterName = match.Groups[1].Value.Trim();
+            int quantity = int.Parse(match.Groups[2].Value);
+            string itemName = match.Groups[3].Value.Trim();
+            Logger.Debug("LootTracker", $"Item déposé (générique) détecté (autre): {characterName}: {itemName} x{quantity}");
+            ProcessRemoval(characterName, itemName, quantity);
+            return;
+        }
+        
+        // Log les lignes contenant des mots-clés mais non reconnues pour déboguer
+        if (cleanLine.Contains("retiré", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("détruit", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("brisé", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("supprimé", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("déposé", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("coffre", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("havre", StringComparison.OrdinalIgnoreCase) ||
+            cleanLine.Contains("perdu", StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.Debug("LootTracker", $"Ligne non reconnue (potentiel retrait/dépôt/perte): {cleanLine}");
         }
     }
     
@@ -306,6 +583,43 @@ public class LootTracker : IDisposable
         lock (_lockObject)
         {
             _items.Remove(key);
+        }
+    }
+    
+    private void ProcessRemoval(string characterName, string itemName, int quantity)
+    {
+        string key = $"{characterName}|{itemName}";
+        
+        lock (_lockObject)
+        {
+            if (_items.TryGetValue(key, out LootItem? existingItem))
+            {
+                bool shouldRemove = existingItem.RemoveQuantity(quantity);
+                
+                if (shouldRemove && !existingItem.IsFavorite)
+                {
+                    // Retirer l'item seulement s'il n'est pas favoris
+                    _items.Remove(key);
+                    LootItemRemoved?.Invoke(this, existingItem);
+                    Logger.Debug("LootTracker", $"Item retiré/détruit: {characterName}: {itemName} x{quantity} (quantité atteint 0)");
+                }
+                else if (shouldRemove && existingItem.IsFavorite)
+                {
+                    // Garder l'item mais mettre la quantité à 0
+                    Logger.Debug("LootTracker", $"Item favoris retiré/détruit (conservé): {characterName}: {itemName} x{quantity} (quantité = 0 mais favoris)");
+                    LootItemUpdated?.Invoke(this, existingItem);
+                }
+                else
+                {
+                    // Mise à jour de la quantité
+                    Logger.Debug("LootTracker", $"Quantité mise à jour: {characterName}: {itemName} - retiré: {quantity}, nouvelle quantité: {existingItem.Quantity}");
+                    LootItemUpdated?.Invoke(this, existingItem);
+                }
+            }
+            else
+            {
+                Logger.Debug("LootTracker", $"Tentative de retrait d'un item non trouvé: {characterName}: {itemName} x{quantity}");
+            }
         }
     }
     

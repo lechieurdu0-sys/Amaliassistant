@@ -43,15 +43,7 @@ namespace GameOverlay.Windows
                     FontSize = 12
                 };
 
-                // Gestion du survol BRUN (#966E5C2A) - GARANTI BRUN
-                item.MouseEnter += (s, e) =>
-                {
-                    item.Background = new SolidColorBrush(Color.FromArgb(150, 110, 92, 42)); // #966E5C2A - BRUN
-                };
-                item.MouseLeave += (s, e) =>
-                {
-                    item.Background = Brushes.Transparent;
-                };
+                // Effets de survol désactivés pour meilleure lisibilité
                 item.MouseLeftButtonUp += (s, e) =>
                 {
                     itemInfo.OnClick?.Invoke();

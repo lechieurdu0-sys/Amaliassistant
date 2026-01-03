@@ -133,7 +133,8 @@ namespace GameOverlay.App
                         InitializeWindowsInBackground();
                         
                         // Initialiser le SaleTracker après le chargement de la configuration
-                        if (!string.IsNullOrEmpty(config.LootChatLogPath) && File.Exists(config.LootChatLogPath))
+                        // Ne pas vérifier File.Exists - le SaleTracker surveille même si le fichier n'existe pas encore
+                        if (!string.IsNullOrEmpty(config.LootChatLogPath))
                         {
                             InitializeSaleTracker();
                         }
@@ -388,44 +389,245 @@ namespace GameOverlay.App
                 // Texte : #FF6E5C2A (RGB: 110, 92, 42)
                 contextMenu.ForeColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
                 
-                // Couleur du texte
-                System.Drawing.Color textColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
-                
-                // Item "Masquer l'overlay"
-                var hideItem = new ToolStripMenuItem("Masquer l'overlay");
-                hideItem.ForeColor = textColor;
-                hideItem.Click += (s, e) => HideOverlay_Click(s, e);
-                contextMenu.Items.Add(hideItem);
-                
-                contextMenu.Items.Add(new ToolStripSeparator());
-                
-                // Item "Placer notification de vente"
-                var saleItem = new ToolStripMenuItem("📍 Placer notification de vente");
-                saleItem.ForeColor = textColor;
-                saleItem.Click += (s, e) => TestSaleNotification_Click(s, e);
-                contextMenu.Items.Add(saleItem);
-                
-                contextMenu.Items.Add(new ToolStripSeparator());
-                
-                // Item "Plugins"
-                var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
-                pluginsItem.ForeColor = textColor;
-                pluginsItem.Click += (s, e) => TogglePluginManagerWindow();
-                contextMenu.Items.Add(pluginsItem);
-                
-                contextMenu.Items.Add(new ToolStripSeparator());
-                
-                // Item "Quitter"
-                var exitItem = new ToolStripMenuItem("Quitter");
-                exitItem.ForeColor = textColor;
-                exitItem.Click += (s, e) => Exit_Click(s, e);
-                contextMenu.Items.Add(exitItem);
+                // S'abonner à l'événement Opening pour mettre à jour les plugins à chaque ouverture
+                contextMenu.Opening += (s, e) => UpdateContextMenuWithPlugins(contextMenu);
                 
                 mainWindowContextMenu = contextMenu;
+                
+                // Construire le menu initial
+                BuildContextMenuItems(contextMenu);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Erreur initialisation MainWindowContextMenu: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Construit les items de base du menu contextuel
+        /// </summary>
+        private void BuildContextMenuItems(ContextMenuStrip contextMenu)
+        {
+            // Couleur du texte
+            System.Drawing.Color textColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+            
+            // Nettoyer les items existants (sauf les plugins qui seront ajoutés dynamiquement)
+            var itemsToRemove = new List<ToolStripItem>();
+            foreach (ToolStripItem item in contextMenu.Items)
+            {
+                // Garder les séparateurs et les plugins (tag "Plugin")
+                if (item.Tag?.ToString() != "Plugin")
+                {
+                    itemsToRemove.Add(item);
+                }
+            }
+            foreach (var item in itemsToRemove)
+            {
+                contextMenu.Items.Remove(item);
+            }
+            
+            // Trouver l'index où insérer les items (après les plugins)
+            int insertIndex = 0;
+            for (int i = 0; i < contextMenu.Items.Count; i++)
+            {
+                if (contextMenu.Items[i].Tag?.ToString() == "Plugin")
+                {
+                    insertIndex = i + 1;
+                }
+            }
+            
+            // Item "Masquer l'overlay"
+            var hideItem = new ToolStripMenuItem("Masquer l'overlay");
+            hideItem.ForeColor = textColor;
+            hideItem.Click += (s, e) => HideOverlay_Click(s, e);
+            contextMenu.Items.Insert(insertIndex++, hideItem);
+            
+            contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
+            
+            // Item "Placer notification de vente"
+            var saleItem = new ToolStripMenuItem("📍 Placer notification de vente");
+            saleItem.ForeColor = textColor;
+            saleItem.Click += (s, e) => TestSaleNotification_Click(s, e);
+            contextMenu.Items.Insert(insertIndex++, saleItem);
+            
+            contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
+            
+            // Item "Plugins"
+            var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
+            pluginsItem.ForeColor = textColor;
+            pluginsItem.Click += (s, e) => TogglePluginManagerWindow();
+            contextMenu.Items.Insert(insertIndex++, pluginsItem);
+            
+            contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
+            
+            // Item "Quitter"
+            var exitItem = new ToolStripMenuItem("Quitter");
+            exitItem.ForeColor = textColor;
+            exitItem.Click += (s, e) => Exit_Click(s, e);
+            contextMenu.Items.Insert(insertIndex++, exitItem);
+        }
+        
+        /// <summary>
+        /// Met à jour le menu contextuel avec les plugins activés
+        /// </summary>
+        private void UpdateContextMenuWithPlugins(ContextMenuStrip contextMenu)
+        {
+            try
+            {
+                // S'assurer que le PluginManager est initialisé
+                if (_pluginManager == null)
+                {
+                    InitializePluginManager();
+                }
+                
+                if (_pluginManager == null)
+                {
+                    return;
+                }
+                
+                // Couleur du texte
+                System.Drawing.Color textColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
+                
+                // Retirer tous les items de plugins existants
+                var pluginItemsToRemove = new List<ToolStripItem>();
+                foreach (ToolStripItem item in contextMenu.Items)
+                {
+                    if (item.Tag?.ToString() == "Plugin")
+                    {
+                        pluginItemsToRemove.Add(item);
+                    }
+                }
+                foreach (var item in pluginItemsToRemove)
+                {
+                    contextMenu.Items.Remove(item);
+                }
+                
+                // Les séparateurs associés aux plugins seront aussi retirés avec les items de plugins
+                
+                // Obtenir tous les plugins activés
+                var enabledPlugins = _pluginManager.GetAllPlugins()
+                    .Where(p => p.IsEnabled)
+                    .OrderBy(p => p.Name)
+                    .ToList();
+                
+                if (enabledPlugins.Count > 0)
+                {
+                    // Trouver l'index de l'item "🔌 Plugins" (gestionnaire de plugins)
+                    int pluginsManagerIndex = -1;
+                    for (int i = 0; i < contextMenu.Items.Count; i++)
+                    {
+                        var item = contextMenu.Items[i];
+                        if (item is ToolStripMenuItem menuItem && menuItem.Text == "🔌 Plugins")
+                        {
+                            pluginsManagerIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    // Si on n'a pas trouvé l'item, insérer avant le dernier séparateur (avant "Quitter")
+                    if (pluginsManagerIndex == -1)
+                    {
+                        for (int i = contextMenu.Items.Count - 1; i >= 0; i--)
+                        {
+                            if (contextMenu.Items[i] is ToolStripSeparator)
+                            {
+                                pluginsManagerIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Si toujours pas trouvé, insérer à la fin
+                    if (pluginsManagerIndex == -1)
+                    {
+                        pluginsManagerIndex = contextMenu.Items.Count;
+                    }
+                    
+                    // Ajouter un séparateur avant les plugins si nécessaire
+                    int insertIndex = pluginsManagerIndex;
+                    if (insertIndex > 0 && !(contextMenu.Items[insertIndex - 1] is ToolStripSeparator))
+                    {
+                        var separatorBefore = new ToolStripSeparator();
+                        separatorBefore.Tag = "Plugin";
+                        contextMenu.Items.Insert(insertIndex++, separatorBefore);
+                    }
+                    
+                    // Ajouter chaque plugin activé
+                    foreach (var pluginInfo in enabledPlugins)
+                    {
+                        // Obtenir le plugin chargé pour vérifier son état
+                        var plugin = _pluginManager.GetPlugin(pluginInfo.Id);
+                        
+                        // Si le plugin n'est pas chargé, essayer de le charger
+                        if (plugin == null)
+                        {
+                            try
+                            {
+                                if (_pluginManager.GetPluginInfo(pluginInfo.Id) != null)
+                                {
+                                    _pluginManager.EnablePlugin(pluginInfo.Id);
+                                    plugin = _pluginManager.GetPlugin(pluginInfo.Id);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Error("MainWindow", $"Erreur lors du chargement du plugin {pluginInfo.Name}: {ex.Message}");
+                            }
+                        }
+                        
+                        // Créer l'item de menu avec indication visuelle si le plugin est actif
+                        bool isActive = plugin?.IsActive ?? false;
+                        string menuText = isActive ? $"✓ {pluginInfo.Name}" : pluginInfo.Name;
+                        var pluginItem = new ToolStripMenuItem(menuText);
+                        pluginItem.ForeColor = textColor;
+                        pluginItem.Tag = "Plugin";
+                        pluginItem.Checked = isActive; // Ajouter une coche si actif
+                        
+                        if (plugin != null)
+                        {
+                            // Capturer les variables pour le closure
+                            var pluginId = pluginInfo.Id;
+                            var pluginName = pluginInfo.Name;
+                            
+                            pluginItem.Click += (s, e) =>
+                            {
+                                try
+                                {
+                                    // Toggle : si actif, désactiver, sinon activer
+                                    var currentPlugin = _pluginManager.GetPlugin(pluginId);
+                                    if (currentPlugin != null)
+                                    {
+                                        if (currentPlugin.IsActive)
+                                        {
+                                            currentPlugin.Deactivate();
+                                            Logger.Info("MainWindow", $"Plugin {pluginName} désactivé via le menu contextuel");
+                                        }
+                                        else
+                                        {
+                                            currentPlugin.Activate();
+                                            Logger.Info("MainWindow", $"Plugin {pluginName} activé via le menu contextuel");
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error("MainWindow", $"Erreur lors du toggle du plugin {pluginName}: {ex.Message}");
+                                }
+                            };
+                        }
+                        else
+                        {
+                            // Si le plugin n'est toujours pas chargé après tentative, désactiver l'item
+                            pluginItem.Enabled = false;
+                        }
+                        
+                        contextMenu.Items.Insert(insertIndex++, pluginItem);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de la mise à jour du menu contextuel avec les plugins: {ex.Message}");
             }
         }
 
@@ -436,17 +638,9 @@ namespace GameOverlay.App
 
             protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
             {
-                // Ne JAMAIS appeler la méthode de base - elle utilise les couleurs par défaut (cyan)!
+                // Effets de survol désactivés pour meilleure lisibilité
                 // Le fond sera géré par l'image de fond du menu lui-même (BackgroundImage)
-                // Ici on ne fait que le survol pour correspondre exactement au menu WPF
-                
-                if (e.Item.Selected)
-                {
-                    // Couleur de survol brune exactement comme le menu WPF : #966E5C2A (RGB: 110, 92, 42 avec alpha 150)
-                    var hoverColor = System.Drawing.Color.FromArgb(150, 110, 92, 42);
-                    e.Graphics.FillRectangle(new System.Drawing.SolidBrush(hoverColor), e.Item.ContentRectangle);
-                }
-                // Sinon, on laisse l'image de fond du menu s'afficher
+                // Ne rien dessiner pour éviter tout effet de survol
             }
             
 
@@ -480,25 +674,26 @@ namespace GameOverlay.App
             private static readonly System.Drawing.Color BorderColor = System.Drawing.Color.FromArgb(255, 110, 92, 42);
             // Fond : beige/jaune-marron comme l'image EndTurnWidgetBackground.png (utilisé comme fallback si l'image ne charge pas)
             private static readonly System.Drawing.Color BackgroundColor = System.Drawing.Color.FromArgb(255, 222, 203, 161);
-            // Couleur de survol brune exactement comme le menu WPF : #966E5C2A (RGB: 110, 92, 42 avec alpha 150)
-            private static readonly System.Drawing.Color HoverColor = System.Drawing.Color.FromArgb(150, 110, 92, 42);
+            // Effets de survol désactivés - toutes les couleurs de survol sont transparentes
+            private static readonly System.Drawing.Color TransparentColor = System.Drawing.Color.Transparent;
             
             public override System.Drawing.Color MenuBorder => BorderColor;
             public override System.Drawing.Color MenuItemBorder => BorderColor;
             
-            public override System.Drawing.Color MenuItemSelected => HoverColor;
-            public override System.Drawing.Color MenuItemSelectedGradientBegin => HoverColor;
-            public override System.Drawing.Color MenuItemSelectedGradientEnd => HoverColor;
-            public override System.Drawing.Color MenuItemPressedGradientBegin => HoverColor;
-            public override System.Drawing.Color MenuItemPressedGradientEnd => HoverColor;
-            // S'assurer que Checked aussi utilise la couleur brune
-            public override System.Drawing.Color CheckBackground => HoverColor;
-            public override System.Drawing.Color CheckPressedBackground => HoverColor;
-            public override System.Drawing.Color CheckSelectedBackground => HoverColor;
+            // Toutes les couleurs de survol sont transparentes pour retirer les effets
+            public override System.Drawing.Color MenuItemSelected => TransparentColor;
+            public override System.Drawing.Color MenuItemSelectedGradientBegin => TransparentColor;
+            public override System.Drawing.Color MenuItemSelectedGradientEnd => TransparentColor;
+            public override System.Drawing.Color MenuItemPressedGradientBegin => TransparentColor;
+            public override System.Drawing.Color MenuItemPressedGradientEnd => TransparentColor;
+            // Checked aussi transparent
+            public override System.Drawing.Color CheckBackground => TransparentColor;
+            public override System.Drawing.Color CheckPressedBackground => TransparentColor;
+            public override System.Drawing.Color CheckSelectedBackground => TransparentColor;
             // Button
-            public override System.Drawing.Color ButtonSelectedHighlight => HoverColor;
+            public override System.Drawing.Color ButtonSelectedHighlight => TransparentColor;
             public override System.Drawing.Color ButtonSelectedHighlightBorder => BorderColor;
-            public override System.Drawing.Color ButtonPressedHighlight => HoverColor;
+            public override System.Drawing.Color ButtonPressedHighlight => TransparentColor;
             public override System.Drawing.Color ButtonPressedHighlightBorder => BorderColor;
             // Separator - transparent
             public override System.Drawing.Color SeparatorDark => System.Drawing.Color.Transparent;
@@ -1525,6 +1720,26 @@ namespace GameOverlay.App
                     config.LootChatLogPath = dialog.LogPath;
                     SaveConfiguration();
                     
+                    // Démarrer le watcher si la LootWindow existe déjà
+                    if (lootWindow != null && !string.IsNullOrEmpty(config.LootChatLogPath))
+                    {
+                        try
+                        {
+                            string chatLogPath = config.LootChatLogPath ?? "";
+                            string kikimeterLogPath = config.KikimeterLogPath ?? "";
+                            lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
+                            Logger.Info("MainWindow", $"Watcher démarré après configuration du chemin: {chatLogPath}");
+                            
+                            // Initialiser le suivi des ventes
+                            InitializeSaleTracker();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("MainWindow", $"Erreur lors du démarrage du watcher après configuration: {ex.Message}");
+                        }
+                    }
+                    // Si la fenêtre n'existe pas encore, elle sera créée au prochain appel à InitializeWindowsInBackground() ou ToggleLoot()
+                    
                     CustomMessageBox.Show(
                         "Le chemin a été configuré avec succès.",
                         "Configuration sauvegardée",
@@ -1984,8 +2199,7 @@ namespace GameOverlay.App
                                 }
                                 
                                 if (!string.IsNullOrEmpty(updatedConfig.LootChatLogPath) && 
-                                    lootWindow != null && 
-                                    lootWindow.IsVisible)
+                                    lootWindow != null)
                                 {
                                     try
                                     {
@@ -2173,8 +2387,9 @@ namespace GameOverlay.App
                 }
                 
                 // Initialiser LootWindow si elle n'existe pas encore
-                // Initialiser LootWindow même si le fichier de log n'existe pas encore
-                if (lootWindow == null && !string.IsNullOrEmpty(config.LootChatLogPath))
+                // TOUJOURS créer la fenêtre au démarrage pour démarrer le watcher immédiatement
+                // Même si le chemin n'est pas encore configuré, on peut le démarrer plus tard
+                if (lootWindow == null)
                 {
                     try
                     {
@@ -2196,16 +2411,18 @@ namespace GameOverlay.App
                         
                         LoadLootWindowPosition();
                         
-                        // Démarrer la surveillance immédiatement - LootTracker surveille même si le fichier n'existe pas encore
+                        // Démarrer la surveillance immédiatement si le chemin est configuré
+                        // LootTracker surveille même si le fichier n'existe pas encore
                         string chatLogPath = config.LootChatLogPath ?? "";
                         string kikimeterLogPath = config.KikimeterLogPath ?? "";
                         if (!string.IsNullOrEmpty(chatLogPath))
                         {
                             lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
                             Logger.Info("MainWindow", $"LootWindow créée en arrière-plan - StartWatching démarré sur {chatLogPath}");
-                            
-                            // Initialiser le suivi des ventes
-                            InitializeSaleTracker();
+                        }
+                        else
+                        {
+                            Logger.Info("MainWindow", "LootWindow créée en arrière-plan mais chemin du log non configuré - StartWatching sera démarré quand le chemin sera configuré");
                         }
                     }
                     catch (Exception ex)
@@ -2215,7 +2432,8 @@ namespace GameOverlay.App
                 }
                 
                 // Initialiser le SaleTracker même si la LootWindow n'est pas créée (si le chemin du log est configuré)
-                if (_saleTracker == null && !string.IsNullOrEmpty(config.LootChatLogPath) && File.Exists(config.LootChatLogPath))
+                // Ne pas vérifier File.Exists - le SaleTracker surveille même si le fichier n'existe pas encore
+                if (_saleTracker == null && !string.IsNullOrEmpty(config.LootChatLogPath))
                 {
                     try
                     {
@@ -2949,15 +3167,15 @@ namespace GameOverlay.App
                 _saleTracker.SaleDetected += SaleTracker_SaleDetected;
                 
                 // Créer et démarrer le timer pour la lecture périodique
-                // Interval réduit à 25ms pour une détection plus rapide et ne rien rater
+                // Interval réduit à 10ms pour une détection en temps réel et ne rien rater
                 _saleTrackerTimer = new System.Windows.Threading.DispatcherTimer
                 {
-                    Interval = TimeSpan.FromMilliseconds(25)
+                    Interval = TimeSpan.FromMilliseconds(10)
                 };
                 _saleTrackerTimer.Tick += SaleTrackerTimer_Tick;
                 _saleTrackerTimer.Start();
                 
-                Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath})");
+                Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath}, interval: 10ms)");
             }
             catch (Exception ex)
             {
