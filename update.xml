@@ -1,8 +1,8 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <item>
-  <version>1.9.0.15</version>
-  <url>https://github.com/lechieurdu0-sys/Amaliassistant/releases/latest/download/Amaliassistant_Setup.exe</url>
-  <patch_url>https://github.com/lechieurdu0-sys/Amaliassistant/releases/download/v1.9.0.15/Amaliassistant_Patch_1.9.0.14_to_1.9.0.15.zip</patch_url>
-  <changelog>https://github.com/lechieurdu0-sys/Amaliassistant/releases/latest</changelog>
-  <mandatory>false</mandatory>
+    <version>1.9.0.14</version>
+    <url>https://github.com/lechieurdu0-sys/Amaliassistant/releases/latest/download/Amaliassistant_Setup.exe</url>
+    <patch_url></patch_url>
+    <changelog>https://github.com/lechieurdu0-sys/Amaliassistant/releases/latest</changelog>
+    <mandatory>false</mandatory>
 </item>
