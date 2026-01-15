@@ -281,17 +281,40 @@ namespace GameOverlay.App.Services
                     throw new Exception("Impossible de déterminer le répertoire d'installation");
                 }
 
-                if (string.IsNullOrEmpty(updateInfo.PatchUrl))
-                {
-                    throw new Exception("Aucune URL de patch disponible pour cette mise à jour");
-                }
-
                 var assemblyLocation = Assembly.GetExecutingAssembly().Location;
                 var exePath = assemblyLocation.Replace(".dll", ".exe", StringComparison.OrdinalIgnoreCase);
                 
                 if (!File.Exists(exePath))
                 {
                     throw new Exception($"Le fichier exécutable est introuvable: {exePath}");
+                }
+
+                // Si aucun patch n'est disponible, basculer automatiquement vers l'installateur complet.
+                // (Le système de release peut ne pas générer de patch, mais on veut quand même que la MAJ fonctionne.)
+                if (string.IsNullOrWhiteSpace(updateInfo.PatchUrl))
+                {
+                    Logger.Info("UpdateService", "Aucun patch_url fourni dans update.xml, basculement vers l'installateur complet");
+
+                    // Afficher une fenêtre de progression et télécharger l'installateur complet
+                    if (WpfApplication.Current?.Dispatcher != null)
+                    {
+                        WpfApplication.Current.Dispatcher.Invoke(() =>
+                        {
+                            var progressWindow = new UpdateProgressWindow();
+                            progressWindow.Show();
+
+                            _ = Task.Run(async () =>
+                            {
+                                await DownloadAndInstallFull(updateInfo, progressWindow);
+                            });
+                        });
+
+                        return;
+                    }
+
+                    // Fallback sans UI (ne devrait quasiment jamais arriver)
+                    await DownloadAndInstallFull(updateInfo, progressWindow: null);
+                    return;
                 }
                 
                 // Trouver l'exécutable UpdateInstaller dans le même dossier que l'application
@@ -775,7 +798,7 @@ REM Attendre un court instant supplémentaire
 timeout /t 1 /nobreak >nul 2>&1
 
 REM Lancer l'installateur en mode très silencieux
-start /WAIT """" ""{escapedTempPath}"" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES /UPGRADE
+start /WAIT """" ""{escapedTempPath}"" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES
 
 REM Attendre que l'installateur se termine complètement
 :WAIT_INSTALLER

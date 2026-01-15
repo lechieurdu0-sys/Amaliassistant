@@ -78,6 +78,9 @@ namespace GameOverlay.App
         // Plugin System
         private GameOverlay.App.Services.PluginManager? _pluginManager;
         private PluginManagerWindow? _pluginManagerWindow;
+        
+        // Interactive Map Window
+        private InteractiveMapWindow? _interactiveMapWindow;
 
         private int _openContextMenus;
         private bool _focusReturnPending;
@@ -124,13 +127,67 @@ namespace GameOverlay.App
                             };
                         }
                         LoadWindowPositionsFromFile();
-                        LoadConfiguration();
+                        bool pathsWereUpdated = LoadConfiguration();
                         
                         // Message de bienvenue désactivé (demandé par l'utilisateur)
                         // CheckAndShowWelcomeMessage();
                         
+                        // Créer la bulle Kikimeter si elle n'existe pas déjà
+                        // Cette partie était après un return dans LoadConfiguration() et n'était jamais exécutée
+                        if (kikimeterBubble == null)
+                        {
+                            double centerX = SystemParameters.PrimaryScreenWidth / 2;
+                            double centerY = SystemParameters.PrimaryScreenHeight / 2;
+                            CreateKikimeterBubble((int)centerX, (int)centerY + 100);
+                            Logger.Info("MainWindow", "Bulle Kikimeter créée au démarrage");
+                        }
+                        
+                        // Ne plus créer LootBubble séparée, elle est maintenant intégrée dans KikimeterBubble
+                        // Cacher ou supprimer LootBubble si elle existe
+                        if (lootBubble != null)
+                        {
+                            try
+                            {
+                                MainCanvas.Children.Remove(lootBubble);
+                                lootBubble = null;
+                                // Réinitialiser la position sauvegardée
+                                config.LootBubbleX = -1;
+                                config.LootBubbleY = -1;
+                                SaveConfiguration();
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Error("MainWindow", $"Erreur lors de la suppression de LootBubble: {ex.Message}");
+                            }
+                        }
+                        
                         // Créer les fenêtres au démarrage pour démarrer la surveillance même si elles ne sont pas visibles
                         InitializeWindowsInBackground();
+                        
+                        // Si les chemins ont été mis à jour, redémarrer les watchers avec les nouveaux chemins
+                        if (pathsWereUpdated)
+                        {
+                            Logger.Info("MainWindow", "Les chemins de log ont été mis à jour, redémarrage des watchers...");
+                            RestartWatchersWithNewPaths();
+                        }
+                        
+                        // S'assurer que la bulle Kikimeter est visible après l'initialisation
+                        // Les fenêtres KikimeterWindow et LootWindow doivent rester cachées par défaut
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            try
+                            {
+                                if (kikimeterBubble != null && kikimeterBubble.Visibility != Visibility.Visible)
+                                {
+                                    Logger.Info("MainWindow", "Affichage de la bulle Kikimeter au démarrage");
+                                    kikimeterBubble.Visibility = Visibility.Visible;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Error("MainWindow", $"Erreur lors de l'affichage de la bulle au démarrage: {ex.Message}");
+                            }
+                        }), DispatcherPriority.Loaded);
                         
                         // Initialiser le SaleTracker après le chargement de la configuration
                         // Ne pas vérifier File.Exists - le SaleTracker surveille même si le fichier n'existe pas encore
@@ -310,6 +367,11 @@ namespace GameOverlay.App
                 lootItem.ForeColor = textColor;
                 lootItem.Click += (s, e) => ToggleLoot();
                 contextMenu.Items.Add(lootItem);
+                
+                var mapItem = new ToolStripMenuItem("🗺️ Carte interactive Wakfu");
+                mapItem.ForeColor = textColor;
+                mapItem.Click += (s, e) => ToggleInteractiveMap();
+                contextMenu.Items.Add(mapItem);
 
                 contextMenu.Items.Add(new ToolStripSeparator());
 
@@ -943,7 +1005,7 @@ namespace GameOverlay.App
 
         // Méthode supprimée : RemoveBubble - fonctionnalité sites web retirée
 
-        private void LoadConfiguration()
+        private bool LoadConfiguration()
         {
             try
             {
@@ -1070,47 +1132,29 @@ namespace GameOverlay.App
                         }
                     }
 
+                    // Valider et corriger automatiquement les chemins de log
+                    bool pathsUpdated = ValidateAndFixLogPaths();
+                    return pathsUpdated;
+
                 }
                 else
                 {
                     config = new Config();
                     Logger.Info("MainWindow", "Fichier de configuration non trouvé, utilisation de la configuration par défaut");
+                    
+                    // Essayer de trouver automatiquement les chemins de log
+                    bool pathsUpdated = ValidateAndFixLogPaths();
+                    return pathsUpdated;
                 }
                 
-                // Créer ou ignorer les bulles principales selon la configuration persistée
-                double centerX = SystemParameters.PrimaryScreenWidth / 2;
-                double centerY = SystemParameters.PrimaryScreenHeight / 2;
-                
-                // Créer la bulle Kikimeter seulement si elle n'existe pas déjà
-                // La bulle fait maintenant 60x180 (3 carrés empilés : Kikimeter, Loot, Paramètres)
-                if (kikimeterBubble == null)
-                {
-                    CreateKikimeterBubble((int)centerX, (int)centerY + 100);
-                }
-                
-                // Ne plus créer LootBubble séparée, elle est maintenant intégrée dans KikimeterBubble
-                // Cacher ou supprimer LootBubble si elle existe
-                if (lootBubble != null)
-                {
-                    try
-                    {
-                        MainCanvas.Children.Remove(lootBubble);
-                        lootBubble = null;
-                        // Réinitialiser la position sauvegardée
-                        config.LootBubbleX = -1;
-                        config.LootBubbleY = -1;
-                        SaveConfiguration();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors de la suppression de LootBubble: {ex.Message}");
-                    }
-                }
+                // NOTE: La création de la bulle Kikimeter a été déplacée dans le Loaded event handler
+                // pour être exécutée après LoadConfiguration()
             }
             catch (Exception ex)
             {
                 CustomMessageBox.Show($"Erreur chargement config: {ex.Message}");
                 config = new Config();
+                return false;
             }
         }
 
@@ -2124,6 +2168,42 @@ namespace GameOverlay.App
             }
         }
 
+        private void ToggleInteractiveMap()
+        {
+            try
+            {
+                if (_interactiveMapWindow == null || !_interactiveMapWindow.IsVisible)
+                {
+                    if (_interactiveMapWindow == null)
+                    {
+                        _interactiveMapWindow = new InteractiveMapWindow(config, SaveConfiguration);
+                    }
+                    
+                    _interactiveMapWindow.Show();
+                    _interactiveMapWindow.Activate();
+                    
+                    // Gérer la fermeture de la fenêtre
+                    _interactiveMapWindow.Closed += (s, e) => { _interactiveMapWindow = null; };
+                    
+                    Logger.Info("MainWindow", "Carte interactive Wakfu ouverte");
+                }
+                else
+                {
+                    _interactiveMapWindow.Hide();
+                    Logger.Info("MainWindow", "Carte interactive Wakfu masquée");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur ToggleInteractiveMap: {ex.Message}");
+                CustomMessageBox.Show(
+                    $"Erreur lors de l'ouverture de la carte interactive:\n\n{ex.Message}",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
         private void ToggleSettingsWindow()
         {
             try
@@ -2345,8 +2425,9 @@ namespace GameOverlay.App
                 Logger.Info("MainWindow", "Initialisation des fenêtres en arrière-plan pour démarrer la surveillance");
                 
                 // Initialiser KikimeterWindow si elle n'existe pas encore
-                // Créer la fenêtre même si le fichier n'existe pas encore - LogFileWatcher détectera sa création
-                if (kikimeterWindow == null && !string.IsNullOrEmpty(config.KikimeterLogPath))
+                // Créer la fenêtre même si le chemin est vide - on peut le mettre à jour plus tard
+                // Si le chemin est vide, ValidateAndFixLogPaths() le trouvera et UpdateLogPath() sera appelé
+                if (kikimeterWindow == null)
                 {
                     try
                     {
@@ -2358,9 +2439,25 @@ namespace GameOverlay.App
                             individualMode = Newtonsoft.Json.JsonConvert.DeserializeObject<KikimeterIndividualMode>(json) ?? new KikimeterIndividualMode();
                         }
                         
-                        kikimeterWindow = new GameOverlay.Kikimeter.KikimeterWindow(config.KikimeterLogPath, individualMode);
-                        kikimeterWindow.Visibility = Visibility.Hidden; // Créer mais cacher
+                        // Utiliser le chemin si disponible, sinon chaîne vide (sera mis à jour par ValidateAndFixLogPaths si nécessaire)
+                        string logPath = config.KikimeterLogPath ?? "";
+                        kikimeterWindow = new GameOverlay.Kikimeter.KikimeterWindow(logPath, individualMode);
+                        kikimeterWindow.Visibility = Visibility.Hidden; // Créer mais cacher - la fenêtre ne doit pas être visible par défaut
                         kikimeterWindow.ShowInTaskbar = false;
+                        
+                        // Si le chemin était vide, essayer de le trouver maintenant
+                        if (string.IsNullOrEmpty(logPath))
+                        {
+                            Logger.Info("MainWindow", "Le chemin du log Kikimeter était vide, recherche automatique...");
+                            string? foundLogPath = GameOverlay.Kikimeter.Services.WakfuLogFinder.FindFirstLogFile();
+                            if (!string.IsNullOrEmpty(foundLogPath))
+                            {
+                                Logger.Info("MainWindow", $"Chemin du log trouvé automatiquement: {foundLogPath}");
+                                config.KikimeterLogPath = foundLogPath;
+                                SaveConfiguration();
+                                kikimeterWindow.UpdateLogPath(foundLogPath);
+                            }
+                        }
                         
                         // Configurer la fermeture pour utiliser Hide()
                         kikimeterWindow.Closing += (s, e) =>
@@ -2394,7 +2491,7 @@ namespace GameOverlay.App
                     try
                     {
                         lootWindow = new GameOverlay.Kikimeter.Views.LootWindow();
-                        lootWindow.Visibility = Visibility.Hidden; // Créer mais cacher
+                        lootWindow.Visibility = Visibility.Hidden; // Créer mais cacher - la fenêtre ne doit pas être visible par défaut
                         lootWindow.ShowInTaskbar = false;
                         lootWindow.ServerSwitched += LootWindow_ServerSwitched;
                         
@@ -2517,6 +2614,161 @@ namespace GameOverlay.App
 
         // Méthodes supprimées : CreateBubble, CreateAddSiteBubble, CreateDefaultBubbles, etc. - fonctionnalité sites web retirée
         // Méthode supprimée : CreateBubble - fonctionnalité sites web retirée
+
+        /// <summary>
+        /// Valide et corrige automatiquement les chemins de log si les fichiers n'existent pas
+        /// </summary>
+        private bool ValidateAndFixLogPaths()
+        {
+            bool configChanged = false;
+
+            try
+            {
+                // Vérifier et corriger le chemin du log Kikimeter (wakfu.log)
+                if (string.IsNullOrEmpty(config.KikimeterLogPath) || !File.Exists(config.KikimeterLogPath))
+                {
+                    Logger.Info("MainWindow", "Le chemin du log Kikimeter est invalide ou vide, recherche automatique...");
+                    string? foundLogPath = GameOverlay.Kikimeter.Services.WakfuLogFinder.FindFirstLogFile();
+                    
+                    if (!string.IsNullOrEmpty(foundLogPath) && File.Exists(foundLogPath))
+                    {
+                        Logger.Info("MainWindow", $"Chemin du log Kikimeter trouvé automatiquement: {foundLogPath}");
+                        config.KikimeterLogPath = foundLogPath;
+                        configChanged = true;
+                    }
+                    else
+                    {
+                        GameOverlay.Models.Logger.Warning("MainWindow", "Aucun fichier wakfu.log trouvé automatiquement. Veuillez le configurer manuellement dans les paramètres.");
+                    }
+                }
+                else
+                {
+                    Logger.Debug("MainWindow", $"Chemin du log Kikimeter valide: {config.KikimeterLogPath}");
+                }
+
+                // Vérifier et corriger le chemin du log Loot (wakfu_chat.log)
+                if (string.IsNullOrEmpty(config.LootChatLogPath) || !File.Exists(config.LootChatLogPath))
+                {
+                    Logger.Info("MainWindow", "Le chemin du log Loot est invalide ou vide, recherche automatique...");
+                    
+                    // Essayer de trouver wakfu_chat.log à partir du chemin wakfu.log si disponible
+                    string? chatLogPath = null;
+                    if (!string.IsNullOrEmpty(config.KikimeterLogPath))
+                    {
+                        chatLogPath = GameOverlay.Kikimeter.Services.WakfuLogFinder.FindChatLogFile(config.KikimeterLogPath);
+                    }
+                    
+                    // Si pas trouvé, chercher tous les fichiers de log et essayer de trouver wakfu_chat.log
+                    if (string.IsNullOrEmpty(chatLogPath) || !File.Exists(chatLogPath))
+                    {
+                        var allLogFiles = GameOverlay.Kikimeter.Services.WakfuLogFinder.FindAllLogFiles();
+                        foreach (var logFile in allLogFiles)
+                        {
+                            string candidateChatLog = logFile.Replace("wakfu.log", "wakfu_chat.log");
+                            if (File.Exists(candidateChatLog))
+                            {
+                                chatLogPath = candidateChatLog;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!string.IsNullOrEmpty(chatLogPath) && File.Exists(chatLogPath))
+                    {
+                        Logger.Info("MainWindow", $"Chemin du log Loot trouvé automatiquement: {chatLogPath}");
+                        config.LootChatLogPath = chatLogPath;
+                        configChanged = true;
+                    }
+                    else
+                    {
+                        GameOverlay.Models.Logger.Warning("MainWindow", "Aucun fichier wakfu_chat.log trouvé automatiquement. Veuillez le configurer manuellement dans les paramètres.");
+                    }
+                }
+                else
+                {
+                    Logger.Debug("MainWindow", $"Chemin du log Loot valide: {config.LootChatLogPath}");
+                }
+
+                // Sauvegarder la configuration si des changements ont été faits
+                if (configChanged)
+                {
+                    SaveConfiguration();
+                    Logger.Info("MainWindow", "Configuration mise à jour avec les nouveaux chemins de log");
+                }
+                
+                return configChanged;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors de la validation des chemins de log: {ex.Message}\n{ex.StackTrace}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Redémarre les watchers avec les nouveaux chemins après une mise à jour automatique
+        /// </summary>
+        private void RestartWatchersWithNewPaths()
+        {
+            try
+            {
+                // Redémarrer KikimeterWindow si elle existe
+                if (kikimeterWindow != null && !string.IsNullOrEmpty(config.KikimeterLogPath))
+                {
+                    try
+                    {
+                        Logger.Info("MainWindow", $"Redémarrage du watcher Kikimeter avec le nouveau chemin: {config.KikimeterLogPath}");
+                        kikimeterWindow.UpdateLogPath(config.KikimeterLogPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors du redémarrage du watcher Kikimeter: {ex.Message}");
+                    }
+                }
+                
+                // Redémarrer LootWindow si elle existe
+                if (lootWindow != null && !string.IsNullOrEmpty(config.LootChatLogPath))
+                {
+                    try
+                    {
+                        Logger.Info("MainWindow", $"Redémarrage du watcher Loot avec les nouveaux chemins: {config.LootChatLogPath}, {config.KikimeterLogPath}");
+                        string chatLogPath = config.LootChatLogPath ?? "";
+                        string kikimeterLogPath = config.KikimeterLogPath ?? "";
+                        lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors du redémarrage du watcher Loot: {ex.Message}");
+                    }
+                }
+                
+                // Redémarrer SaleTracker si nécessaire
+                if (!string.IsNullOrEmpty(config.LootChatLogPath))
+                {
+                    try
+                    {
+                        // Arrêter l'ancien tracker s'il existe
+                        if (_saleTracker != null)
+                        {
+                            _saleTracker.Dispose();
+                            _saleTracker = null;
+                        }
+                        
+                        // Recréer le tracker avec le nouveau chemin
+                        InitializeSaleTracker();
+                        Logger.Info("MainWindow", $"SaleTracker redémarré avec le nouveau chemin: {config.LootChatLogPath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("MainWindow", $"Erreur lors du redémarrage du SaleTracker: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur lors du redémarrage des watchers: {ex.Message}");
+            }
+        }
 
         public void SaveConfiguration()
         {
@@ -3167,15 +3419,16 @@ namespace GameOverlay.App
                 _saleTracker.SaleDetected += SaleTracker_SaleDetected;
                 
                 // Créer et démarrer le timer pour la lecture périodique
-                // Interval réduit à 10ms pour une détection en temps réel et ne rien rater
+                // Interval augmenté à 100ms pour mieux gérer les verrouillages de fichier
+                // Le FileSystemWatcher s'occupe des événements rapides, le timer est un backup
                 _saleTrackerTimer = new System.Windows.Threading.DispatcherTimer
                 {
-                    Interval = TimeSpan.FromMilliseconds(10)
+                    Interval = TimeSpan.FromMilliseconds(100)
                 };
                 _saleTrackerTimer.Tick += SaleTrackerTimer_Tick;
                 _saleTrackerTimer.Start();
                 
-                Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath}, interval: 10ms)");
+                Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath}, interval: 100ms)");
             }
             catch (Exception ex)
             {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using GameOverlay.Kikimeter.Models;
 
 namespace GameOverlay.Kikimeter.Services;
@@ -13,11 +14,16 @@ namespace GameOverlay.Kikimeter.Services;
 /// </summary>
 public class LootTracker : IDisposable
 {
+    private const int PollingIntervalMs = 300; // 300ms entre chaque vérification
+    
     private readonly string _logFilePath;
     private readonly Dictionary<string, LootItem> _items = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lockObject = new object();
     private long _lastPosition = 0;
+    private long _lastKnownFileLength = 0;
     private readonly FileSystemWatcher? _fileWatcher;
+    private System.Threading.Timer? _pollingTimer;
+    private bool _isReading = false;
     private string? _mainCharacterName = null; // Nom du personnage principal (remplace "Vous")
     
     // Regex pour "Vous avez ramassé Xx NomItem ."
@@ -124,7 +130,8 @@ public class LootTracker : IDisposable
     {
         _logFilePath = logFilePath ?? throw new ArgumentNullException(nameof(logFilePath));
         
-        // Initialiser la position à la fin du fichier si le fichier existe (ne pas lire l'historique)
+        // Initialiser _lastPosition à la fin du fichier si le fichier existe
+        // On attendra les nouvelles écritures et on les lira uniquement
         if (File.Exists(_logFilePath))
         {
             try
@@ -140,10 +147,12 @@ public class LootTracker : IDisposable
             catch (Exception ex)
             {
                 Logger.Error("LootTracker", $"Erreur lors de l'initialisation: {ex.Message}");
+                _lastPosition = 0;
             }
         }
         else
         {
+            _lastPosition = 0;
             Logger.Info("LootTracker", $"Fichier de log n'existe pas encore: {_logFilePath} - La surveillance attendra sa création");
         }
         
@@ -156,15 +165,35 @@ public class LootTracker : IDisposable
             
             if (directory != null)
             {
-                _fileWatcher = new FileSystemWatcher(directory, fileName)
+                // Surveiller le dossier, pas le fichier unique
+                _fileWatcher = new FileSystemWatcher(directory)
                 {
-                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.FileName
+                    Filter = "*.log",
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
                 };
                 
-                _fileWatcher.Changed += OnFileChanged;
-                _fileWatcher.Created += OnFileChanged; // Détecter la création du fichier
+                _fileWatcher.Changed += (sender, e) =>
+                {
+                    // Vérifier que c'est bien notre fichier
+                    if (Path.GetFileName(e.FullPath).Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Réveil optionnel : déclencher une lecture immédiate (mais le polling continue)
+                        Logger.Debug("LootTracker", $"Événement FileSystemWatcher détecté (réveil optionnel): {e.FullPath}");
+                        System.Threading.Tasks.Task.Run(() => PollAndRead());
+                    }
+                };
+                _fileWatcher.Created += (sender, e) =>
+                {
+                    if (Path.GetFileName(e.FullPath).Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Logger.Info("LootTracker", $"Fichier de log créé détecté (réveil optionnel): {e.FullPath}");
+                        _lastPosition = 0;
+                        _lastKnownFileLength = 0;
+                        System.Threading.Tasks.Task.Run(() => PollAndRead());
+                    }
+                };
                 _fileWatcher.EnableRaisingEvents = true;
-                Logger.Info("LootTracker", $"FileSystemWatcher initialisé pour {_logFilePath} (fichier peut ne pas exister encore)");
+                Logger.Info("LootTracker", $"FileSystemWatcher initialisé pour surveiller le dossier {directory} (fichier cible: {fileName})");
             }
         }
         catch (Exception ex)
@@ -172,23 +201,84 @@ public class LootTracker : IDisposable
             Logger.Error("LootTracker", $"Erreur lors de la création du FileSystemWatcher: {ex.Message}");
         }
         
+        // POLLING ROBUSTE : source de vérité principale
+        // Ne dépend plus de FileSystemWatcher - le polling lit toujours les données
+        _pollingTimer = new System.Threading.Timer(PollingTimerCallback, null, PollingIntervalMs, PollingIntervalMs);
+        Logger.Info("LootTracker", $"Polling robuste démarré (intervalle: {PollingIntervalMs}ms) - source de vérité principale");
+        
+        if (File.Exists(_logFilePath))
+        {
+            try
+            {
+                var fileInfo = new FileInfo(_logFilePath);
+                _lastKnownFileLength = fileInfo.Length;
+            }
+            catch
+            {
+                // Ignorer
+            }
+        }
+        
         Logger.Info("LootTracker", $"LootTracker initialisé pour: {_logFilePath}");
     }
     
-    private void OnFileChanged(object sender, FileSystemEventArgs e)
+    /// <summary>
+    /// Callback du timer de polling - méthode principale de lecture
+    /// </summary>
+    private void PollingTimerCallback(object? state)
     {
-        // Si le fichier vient d'être créé, réinitialiser la position
-        if (e.ChangeType == WatcherChangeTypes.Created)
-        {
-            _lastPosition = 0;
-            Logger.Info("LootTracker", $"Fichier de log créé détecté: {_logFilePath}");
-        }
-        
-        // Délai pour éviter les lectures multiples lors d'une écriture en cours
-        // Augmenter légèrement le délai pour s'assurer que l'écriture est terminée
-        System.Threading.Tasks.Task.Delay(100).ContinueWith(_ => ReadNewLines());
+        PollAndRead();
     }
     
+    /// <summary>
+    /// Méthode de polling robuste : vérifie FileInfo.Length et lit si nécessaire
+    /// </summary>
+    private void PollAndRead()
+    {
+        // Éviter les lectures simultanées
+        if (_isReading)
+            return;
+        
+        // Vérifier que le fichier existe
+        if (!File.Exists(_logFilePath))
+        {
+            // Le fichier n'existe pas encore, on attend
+            return;
+        }
+        
+        try
+        {
+            // Lire FileInfo.Length pour détecter les changements
+            var fileInfo = new FileInfo(_logFilePath);
+            long currentLength = fileInfo.Length;
+            
+            // Si Length > lastPosition, il y a de nouvelles données à lire
+            if (currentLength > _lastPosition)
+            {
+                // Ouvrir, lire, fermer - ne jamais garder le FileStream ouvert
+                ReadNewLines();
+            }
+            // Si Length < lastPosition, le fichier a été recréé ou tronqué
+            else if (currentLength < _lastPosition)
+            {
+                Logger.Info("LootTracker", $"Fichier recréé/tronqué détecté (polling) - ancienne taille={_lastPosition}, nouvelle taille={currentLength}");
+                _lastPosition = 0;
+                _lastKnownFileLength = 0;
+                // Relire depuis le début
+                ReadNewLines();
+            }
+            
+            _lastKnownFileLength = currentLength;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("LootTracker", $"Erreur lors du polling: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Lit les nouvelles lignes du fichier (ouvre, lit, ferme)
+    /// </summary>
     private void ReadNewLines()
     {
         if (!File.Exists(_logFilePath))
@@ -198,47 +288,72 @@ public class LootTracker : IDisposable
             return;
         }
         
+        // Éviter les lectures simultanées
         lock (_lockObject)
         {
-            try
+            if (_isReading)
+                return; // Déjà en cours de lecture, ignorer cet appel
+            
+            _isReading = true;
+        }
+        
+        try
+        {
+            // Ouvrir le flux (ne jamais le garder ouvert en permanence)
+            using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+            var fileLength = reader.BaseStream.Length;
+
+            // Gérer la recréation / rotation du fichier
+            if (_lastPosition > fileLength)
             {
-                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-
-                if (_lastPosition > reader.BaseStream.Length)
-                {
-                    _lastPosition = 0;
-                    Logger.Info("LootTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
-                }
-
-                reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
-                
-                if (reader.BaseStream.Position >= reader.BaseStream.Length)
-                    return; // Pas de nouvelles lignes
-                
-                string? line;
-                int linesProcessed = 0;
-                while (true)
-                {
-                    line = reader.ReadLine();
-                    if (line == null)
-                    {
-                        break;
-                    }
-
-                    ProcessLine(line);
-                    linesProcessed++;
-                }
-                
-                _lastPosition = reader.BaseStream.Position;
-                
-                if (linesProcessed > 0)
-                {
-                    Logger.Debug("LootTracker", $"{linesProcessed} ligne(s) traitée(s) depuis la position {_lastPosition - (linesProcessed * 50)}");
-                }
+                Logger.Info("LootTracker", $"Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début. Ancienne position={_lastPosition}, nouvelle taille={fileLength}");
+                _lastPosition = 0;
             }
-            catch (Exception ex)
+
+            if (_lastPosition < 0)
             {
-                Logger.Error("LootTracker", $"Erreur lors de la lecture: {ex.Message}");
+                _lastPosition = 0;
+            }
+
+            // Se positionner à la dernière position connue
+            reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
+            
+            // Lire ligne par ligne jusqu'à EOF
+            string? line;
+            int linesProcessed = 0;
+            while ((line = reader.ReadLine()) != null)
+            {
+                ProcessLine(line);
+                linesProcessed++;
+            }
+            
+            // Mettre à jour lastPosition
+            _lastPosition = reader.BaseStream.Position;
+            
+            if (linesProcessed > 0)
+            {
+                Logger.Debug("LootTracker", $"{linesProcessed} ligne(s) traitée(s) depuis la position {_lastPosition - (linesProcessed * 50)}");
+            }
+        }
+        catch (IOException ioEx)
+        {
+            // Fichier verrouillé par le jeu - c'est normal, on réessayera au prochain tick
+            Logger.Debug("LootTracker", $"Fichier verrouillé (normal), réessai au prochain tick: {ioEx.Message}");
+        }
+        catch (UnauthorizedAccessException uaEx)
+        {
+            // Problème de permissions - log mais ne pas bloquer
+            Logger.Warning("LootTracker", $"Problème de permissions: {uaEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("LootTracker", $"Erreur lors de la lecture: {ex.Message}");
+        }
+        finally
+        {
+            lock (_lockObject)
+            {
+                _isReading = false;
             }
         }
     }
@@ -625,7 +740,17 @@ public class LootTracker : IDisposable
     
     public void Dispose()
     {
+        // Arrêter le polling (source de vérité)
+        if (_pollingTimer != null)
+        {
+            _pollingTimer.Dispose();
+            _pollingTimer = null;
+            Logger.Info("LootTracker", "Polling arrêté");
+        }
+        
+        // Arrêter le FileSystemWatcher (optionnel)
         _fileWatcher?.Dispose();
+        Logger.Info("LootTracker", "FileSystemWatcher arrêté");
     }
 }
 

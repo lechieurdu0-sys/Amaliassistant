@@ -17,8 +17,10 @@ public static class WakfuLogFinder
     {
         // Steam - Fichier principal (contient les infos de combat et invocations)
         Path.Combine("SteamLibrary", "steamapps", "common", "Wakfu", "preferences", "logs", "wakfu.log"),
-        // Ankama Launcher (Zaap) - Fichier principal
+        // Ankama Launcher (Zaap) - Fichier principal (Roaming AppData)
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "zaap", "gamesLogs", "wakfu", "logs", "wakfu.log"),
+        // Ankama Launcher - LocalAppData (nouveau emplacement)
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ankama", "Wakfu", "game", "logs", "wakfu.log"),
         // Fallback dans AppData
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Wakfu", "logs", "wakfu.log"),
     };
@@ -49,7 +51,7 @@ public static class WakfuLogFinder
         {
             string driveRoot = drive.RootDirectory.FullName;
             
-            // Chemins Steam potentiels
+            // Chemins Steam potentiels (racine du lecteur)
             string steamPath = Path.Combine(driveRoot, "SteamLibrary", "steamapps", "common", "Wakfu", "preferences", "logs", "wakfu.log");
             if (File.Exists(steamPath))
             {
@@ -68,6 +70,43 @@ public static class WakfuLogFinder
             {
                 foundFiles.Add(ankamaPath);
             }
+        }
+        
+        // Chercher dans les profils utilisateurs pour Steam personnalisé (hors Program Files)
+        try
+        {
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string userDir = Path.GetDirectoryName(userProfile) ?? string.Empty;
+            
+            if (Directory.Exists(userDir))
+            {
+                // Chercher dans tous les profils utilisateurs du dossier Users
+                var userDirectories = Directory.GetDirectories(userDir);
+                foreach (var userDirectory in userDirectories)
+                {
+                    // Chemins Steam personnalisés potentiels
+                    var steamPaths = new[]
+                    {
+                        Path.Combine(userDirectory, "Desktop", "Jeux", "Steam", "steamapps", "common", "Wakfu", "preferences", "logs", "wakfu.log"),
+                        Path.Combine(userDirectory, "Documents", "Steam", "steamapps", "common", "Wakfu", "preferences", "logs", "wakfu.log"),
+                        Path.Combine(userDirectory, "Steam", "steamapps", "common", "Wakfu", "preferences", "logs", "wakfu.log"),
+                        Path.Combine(userDirectory, "Games", "Steam", "steamapps", "common", "Wakfu", "preferences", "logs", "wakfu.log"),
+                    };
+                    
+                    foreach (var steamPath in steamPaths)
+                    {
+                        if (File.Exists(steamPath))
+                        {
+                            foundFiles.Add(steamPath);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Ignorer les erreurs de recherche dans les profils utilisateurs
+            System.Diagnostics.Debug.WriteLine($"Erreur lors de la recherche dans les profils utilisateurs: {ex.Message}");
         }
 
         // Chercher dans Program Files

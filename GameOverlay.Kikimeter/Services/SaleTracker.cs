@@ -15,10 +15,14 @@ public class SaleTracker : IDisposable
     private readonly string _logFilePath;
     private readonly object _lockObject = new object();
     private long _lastPosition = 0;
+    private long _lastKnownFileLength = 0;
     private readonly FileSystemWatcher? _fileWatcher;
     private readonly HashSet<string> _processedSaleLines = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private DateTime _lastCleanupTime = DateTime.Now;
     private const int CleanupIntervalMinutes = 5; // Nettoyer les lignes traitées toutes les 5 minutes
+    private int _consecutiveFailures = 0; // Compteur de tentatives consécutives échouées
+    private const int MaxConsecutiveFailures = 10; // Après 10 échecs consécutifs, forcer une lecture complète
+    private bool _isReading = false;
     
     // Regex pour détecter les informations de vente dans les nouvelles lignes
     private static readonly Regex[] SaleInfoPatterns = new[]
@@ -76,6 +80,7 @@ public class SaleTracker : IDisposable
                     using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
                     reader.BaseStream.Seek(0, SeekOrigin.End);
                     _lastPosition = reader.BaseStream.Position;
+                    _lastKnownFileLength = fileInfo.Length;
                 }
             }
             catch (Exception ex)
@@ -97,19 +102,39 @@ public class SaleTracker : IDisposable
             
             if (directory != null)
             {
-                _fileWatcher = new FileSystemWatcher(directory, fileName)
+                // Surveiller le dossier, pas le fichier unique
+                _fileWatcher = new FileSystemWatcher(directory)
                 {
-                    NotifyFilter = NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.FileName,
+                    Filter = "*.log",
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
                     // Augmenter la taille du buffer interne pour éviter de manquer des événements
                     InternalBufferSize = 65536 // 64 KB au lieu de 8 KB par défaut
                 };
                 
-                _fileWatcher.Changed += OnFileChanged;
-                _fileWatcher.Created += OnFileChanged; // Détecter la création du fichier
+                _fileWatcher.Changed += (sender, e) =>
+                {
+                    // Vérifier que c'est bien notre fichier
+                    if (Path.GetFileName(e.FullPath).Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Réveil optionnel : déclencher une lecture immédiate (mais le polling continue)
+                        Logger.Debug("SaleTracker", $"Événement FileSystemWatcher détecté (réveil optionnel): {e.FullPath}");
+                        System.Threading.Tasks.Task.Run(() => PollAndRead());
+                    }
+                };
+                _fileWatcher.Created += (sender, e) =>
+                {
+                    if (Path.GetFileName(e.FullPath).Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Logger.Info("SaleTracker", $"Fichier de log créé détecté (réveil optionnel): {e.FullPath}");
+                        _lastPosition = 0;
+                        _lastKnownFileLength = 0;
+                        System.Threading.Tasks.Task.Run(() => PollAndRead());
+                    }
+                };
                 _fileWatcher.Error += OnFileWatcherError;
                 _fileWatcher.EnableRaisingEvents = true;
                 
-                Logger.Info("SaleTracker", $"FileSystemWatcher initialisé pour {_logFilePath} avec buffer de 64 KB (fichier peut ne pas exister encore)");
+                Logger.Info("SaleTracker", $"FileSystemWatcher initialisé pour surveiller le dossier {directory} (fichier cible: {fileName})");
             }
         }
         catch (Exception ex)
@@ -146,7 +171,10 @@ public class SaleTracker : IDisposable
         {
             try
             {
+                long fileLength = 0;
                 var lines = new System.Collections.Generic.List<string>();
+                
+                // Lire toutes les lignes et garder la position de fin
                 using (var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
                 {
                     string? line;
@@ -159,26 +187,36 @@ public class SaleTracker : IDisposable
                             lines.RemoveAt(0);
                         }
                     }
+                    // Récupérer la position finale (fin du fichier)
+                    fileLength = reader.BaseStream.Length;
                 }
                 
                 if (lines.Count == 0)
                 {
                     Logger.Warning("SaleTracker", "Aucune ligne à lire dans le fichier de log");
+                    // Mettre à jour _lastPosition même si aucune ligne
+                    _lastPosition = fileLength;
                     return;
                 }
                 
                 Logger.Info("SaleTracker", $"Lecture des {lines.Count} dernières lignes au démarrage pour détecter les ventes récentes");
                 
-                // Parcourir les lignes de la plus récente à la plus ancienne
-                // pour trouver la première occurrence d'une vente
-                bool saleFound = false;
+                // Parcourir toutes les lignes et utiliser ProcessLine() pour la déduplication
+                // ProcessLine() invoquera automatiquement l'événement SaleDetected si une vente est détectée
+                int linesProcessed = 0;
                 int linesWithKeywords = 0;
-                for (int i = lines.Count - 1; i >= 0; i--)
+                for (int i = 0; i < lines.Count; i++)
                 {
                     string rawLine = lines[i];
-                    string cleanLine = ProcessLineForParsing(rawLine);
                     
-                    // Log toutes les lignes contenant des mots-clés de vente
+                    // Utiliser ProcessLine() au lieu d'appeler directement ParseSaleInfo()
+                    // Cela garantit la déduplication et la cohérence avec ReadNewLines()
+                    // ProcessLine() vérifie déjà si la ligne a été traitée et invoque l'événement si nécessaire
+                    ProcessLine(rawLine);
+                    linesProcessed++;
+                    
+                    // Log pour diagnostic (vérifier les lignes contenant des mots-clés)
+                    string cleanLine = ProcessLineForParsing(rawLine);
                     if (cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
                         cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
                         cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
@@ -186,23 +224,17 @@ public class SaleTracker : IDisposable
                         cleanLine.Contains("§", StringComparison.Ordinal))
                     {
                         linesWithKeywords++;
-                        Logger.Info("SaleTracker", $"Ligne analysée ({i+1}/{lines.Count}): {rawLine}");
-                        Logger.Info("SaleTracker", $"Ligne nettoyée: {cleanLine}");
-                    }
-                    
-                    var saleInfo = ParseSaleInfo(cleanLine);
-                    if (saleInfo != null)
-                    {
-                        Logger.Info("SaleTracker", $"Vente récente détectée au démarrage: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
-                        SaleDetected?.Invoke(this, saleInfo);
-                        saleFound = true;
-                        break; // Ne traiter que la vente la plus récente
                     }
                 }
                 
-                if (!saleFound)
+                // IMPORTANT : Mettre à jour _lastPosition à la fin du fichier
+                // pour que ReadNewLines() ne relise pas ces lignes
+                _lastPosition = fileLength;
+                Logger.Info("SaleTracker", $"ReadRecentLines terminé. {linesProcessed} ligne(s) traitée(s), _lastPosition mis à jour à {_lastPosition} (fin du fichier)");
+                
+                if (linesWithKeywords > 0)
                 {
-                    Logger.Warning("SaleTracker", $"Aucune vente trouvée dans les {lines.Count} dernières lignes (lignes avec mots-clés: {linesWithKeywords})");
+                    Logger.Info("SaleTracker", $"{linesWithKeywords} ligne(s) avec mots-clés de vente analysée(s) sur {lines.Count} ligne(s) totales");
                 }
             }
             catch (Exception ex)
@@ -235,24 +267,50 @@ public class SaleTracker : IDisposable
         return cleanLine;
     }
     
-    private void OnFileChanged(object sender, FileSystemEventArgs e)
+    /// <summary>
+    /// Méthode de polling robuste : vérifie FileInfo.Length et lit si nécessaire
+    /// </summary>
+    private void PollAndRead()
     {
-        // Vérifier que le watcher est toujours actif
-        VerifyWatcherStatus();
+        // Éviter les lectures simultanées
+        if (_isReading)
+            return;
         
-        // Si le fichier vient d'être créé, réinitialiser la position
-        if (e.ChangeType == WatcherChangeTypes.Created)
+        // Vérifier que le fichier existe
+        if (!File.Exists(_logFilePath))
         {
-            _lastPosition = 0;
-            Logger.Info("SaleTracker", $"Fichier de log créé détecté: {_logFilePath}");
+            // Le fichier n'existe pas encore, on attend
+            return;
         }
         
-        // Log pour diagnostic (désactivé pour éviter le spam)
-        // Logger.Debug("SaleTracker", $"Événement FileSystemWatcher détecté: {e.ChangeType} pour {e.FullPath}");
-        
-        // Délai réduit pour une détection en temps réel (10ms)
-        // Le FileSystemWatcher peut manquer des événements, donc on s'appuie aussi sur le timer
-        System.Threading.Tasks.Task.Delay(10).ContinueWith(_ => ReadNewLines());
+        try
+        {
+            // Lire FileInfo.Length pour détecter les changements
+            var fileInfo = new FileInfo(_logFilePath);
+            long currentLength = fileInfo.Length;
+            
+            // Si Length > lastPosition, il y a de nouvelles données à lire
+            if (currentLength > _lastPosition)
+            {
+                // Ouvrir, lire, fermer - ne jamais garder le FileStream ouvert
+                ReadNewLines();
+            }
+            // Si Length < lastPosition, le fichier a été recréé ou tronqué
+            else if (currentLength < _lastPosition)
+            {
+                Logger.Info("SaleTracker", $"Fichier recréé/tronqué détecté (polling) - ancienne taille={_lastPosition}, nouvelle taille={currentLength}");
+                _lastPosition = 0;
+                _lastKnownFileLength = 0;
+                // Relire depuis le début
+                ReadNewLines();
+            }
+            
+            _lastKnownFileLength = currentLength;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SaleTracker", $"Erreur lors du polling: {ex.Message}");
+        }
     }
     
     private void OnFileWatcherError(object sender, ErrorEventArgs e)
@@ -306,78 +364,91 @@ public class SaleTracker : IDisposable
             return;
         }
         
-        // Utiliser TryEnter pour éviter les blocages si une autre lecture est en cours
-        // Timeout réduit à 5ms car le timer est maintenant à 10ms
-        if (!System.Threading.Monitor.TryEnter(_lockObject, 5))
+        // Éviter les lectures simultanées
+        if (_isReading)
+            return;
+        
+        lock (_lockObject)
         {
-            // Si on ne peut pas acquérir le lock rapidement, on ignore cette lecture
-            // Le timer rappellera bientôt (10ms)
-            return; // Pas de log pour éviter le spam
+            if (_isReading)
+                return; // Déjà en cours de lecture, ignorer cet appel
+            
+            _isReading = true;
         }
         
         try
         {
-            // Plusieurs tentatives en cas de fichier verrouillé
-            int maxRetries = 3;
-            int retryDelay = 10;
+            // Ouvrir le flux (ne jamais le garder ouvert en permanence)
+            using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+            var fileLength = reader.BaseStream.Length;
+
+            // Gérer la recréation / rotation du fichier
+            if (_lastPosition > fileLength)
+            {
+                Logger.Info("SaleTracker", $"Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début. Ancienne position={_lastPosition}, nouvelle taille={fileLength}");
+                _lastPosition = 0;
+            }
+
+            if (_lastPosition < 0)
+            {
+                _lastPosition = 0;
+            }
+
+            // Se positionner à la dernière position connue
+            reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
             
-            for (int attempt = 0; attempt < maxRetries; attempt++)
+            if (reader.BaseStream.Position >= reader.BaseStream.Length)
+            {
+                // Pas de nouvelles lignes
+                return;
+            }
+            
+            // Lire ligne par ligne jusqu'à EOF
+            string? line;
+            int linesRead = 0;
+            while ((line = reader.ReadLine()) != null)
+            {
+                ProcessLine(line);
+                linesRead++;
+            }
+            
+            // Mettre à jour lastPosition
+            _lastPosition = reader.BaseStream.Position;
+            
+            if (linesRead > 0)
+            {
+                Logger.Debug("SaleTracker", $"{linesRead} nouvelle(s) ligne(s) lue(s) depuis la position {_lastPosition - (linesRead * 50)}");
+                _consecutiveFailures = 0; // Réinitialiser le compteur en cas de succès
+            }
+            
+            _lastKnownFileLength = fileLength;
+        }
+        catch (IOException ioEx)
         {
-            try
+            // Fichier verrouillé par le jeu - c'est normal, on réessayera au prochain tick
+            Logger.Debug("SaleTracker", $"Fichier verrouillé (normal), réessai au prochain tick: {ioEx.Message}");
+        }
+        catch (UnauthorizedAccessException uaEx)
+        {
+            // Problème de permissions - log mais ne pas bloquer
+            Logger.Warning("SaleTracker", $"Problème de permissions: {uaEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("SaleTracker", $"Erreur lors de la lecture: {ex.Message}");
+            _consecutiveFailures++;
+            if (_consecutiveFailures >= MaxConsecutiveFailures)
             {
-                using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-
-                if (_lastPosition > reader.BaseStream.Length)
-                {
-                    _lastPosition = 0;
-                    Logger.Info("SaleTracker", "Fichier de log réinitialisé (taille réduite). Reprise de la lecture depuis le début.");
-                }
-
-                reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
-                
-                if (reader.BaseStream.Position >= reader.BaseStream.Length)
-                    return; // Pas de nouvelles lignes
-                
-                string? line;
-                    int linesRead = 0;
-                while (true)
-                {
-                    line = reader.ReadLine();
-                    if (line == null)
-                    {
-                        break;
-                    }
-
-                    ProcessLine(line);
-                        linesRead++;
-                }
-                
-                _lastPosition = reader.BaseStream.Position;
-                    
-                    if (linesRead > 0)
-                    {
-                        Logger.Debug("SaleTracker", $"{linesRead} nouvelle(s) ligne(s) lue(s)");
-                    }
-                    
-                    // Succès, on sort de la boucle de retry
-                    return;
-                }
-                catch (IOException ioEx) when (attempt < maxRetries - 1)
-                {
-                    // Fichier verrouillé, on réessaie après un court délai
-                    Logger.Debug("SaleTracker", $"Tentative {attempt + 1}/{maxRetries} - Fichier verrouillé, nouvelle tentative dans {retryDelay}ms: {ioEx.Message}");
-                    System.Threading.Thread.Sleep(retryDelay);
-                    retryDelay *= 2; // Backoff exponentiel
-                }
+                Logger.Warning("SaleTracker", $"Échecs consécutifs après {MaxConsecutiveFailures} tentatives. Le fichier est peut-être verrouillé en permanence.");
+                _consecutiveFailures = 0; // Réinitialiser pour éviter les logs répétés
             }
-            }
-            catch (Exception ex)
-            {
-            Logger.Error("SaleTracker", $"Erreur lors de la lecture après 3 tentatives: {ex.Message}");
-            }
+        }
         finally
         {
-            System.Threading.Monitor.Exit(_lockObject);
+            lock (_lockObject)
+            {
+                _isReading = false;
+            }
         }
     }
     
@@ -413,14 +484,16 @@ public class SaleTracker : IDisposable
             }
         }
         
-        // Log de debug pour les lignes contenant des mots-clés de vente
-        if (cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
-            cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
-            cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
-            cleanLine.Contains("kamas", StringComparison.OrdinalIgnoreCase) ||
-            cleanLine.Contains("§", StringComparison.Ordinal))
+        // Log pour les lignes contenant des mots-clés de vente (utiliser Info pour le diagnostic)
+        bool hasSaleKeywords = cleanLine.Contains("vendu", StringComparison.OrdinalIgnoreCase) || 
+                              cleanLine.Contains("items", StringComparison.OrdinalIgnoreCase) ||
+                              cleanLine.Contains("objets", StringComparison.OrdinalIgnoreCase) ||
+                              cleanLine.Contains("kamas", StringComparison.OrdinalIgnoreCase) ||
+                              cleanLine.Contains("§", StringComparison.Ordinal);
+        
+        if (hasSaleKeywords)
         {
-            Logger.Debug("SaleTracker", $"Ligne analysée: {cleanLine}");
+            Logger.Info("SaleTracker", $"Ligne contenant des mots-clés de vente détectée: {cleanLine}");
         }
         
         // Chercher des informations de vente dans la ligne
@@ -438,6 +511,11 @@ public class SaleTracker : IDisposable
             
             // Nettoyer les anciennes entrées périodiquement pour éviter que le HashSet ne grossisse trop
             CleanupProcessedLinesIfNeeded();
+        }
+        else if (hasSaleKeywords)
+        {
+            // Si la ligne contient des mots-clés mais n'a pas été parsée, logger un avertissement
+            Logger.Warning("SaleTracker", $"Ligne avec mots-clés de vente détectée mais non parsée: {cleanLine}");
         }
     }
     
@@ -593,18 +671,17 @@ public class SaleTracker : IDisposable
     /// <summary>
     /// Force la lecture des nouvelles lignes (utile pour l'actualisation en temps réel via un timer)
     /// Cette méthode est appelée périodiquement pour s'assurer de ne rien rater, même si le FileSystemWatcher échoue
+    /// POLLING ROBUSTE : source de vérité principale
     /// </summary>
     public void ManualRead()
     {
-        // Vérifier que le FileSystemWatcher est toujours actif
-        VerifyWatcherStatus();
-        
         // Ne pas bloquer le thread principal, mais s'assurer que la lecture se fait
         System.Threading.Tasks.Task.Run(() =>
         {
             try
             {
-                ReadNewLines();
+                // Utiliser le polling robuste au lieu de ReadNewLines directement
+                PollAndRead();
             }
             catch (Exception ex)
             {

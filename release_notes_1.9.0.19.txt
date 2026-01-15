@@ -1,0 +1,55 @@
+## Version 1.9.0.19 - Améliorations Architecturales Critiques
+
+### Corrections majeures
+
+#### 1. Création automatique du JSON
+- **Initialisation automatique** : Le fichier `player_data.json` est maintenant créé automatiquement à l'initialisation
+- **Robustesse** : Ne bloque jamais le démarrage si le fichier est manquant ou inaccessible
+- **Gestion d'erreurs** : Gestion gracieuse des fichiers corrompus, accès refusé, etc.
+- **Fichier créé** : `%APPDATA%\Amaliassistant\Kikimeter\player_data.json`
+
+#### 2. Séparation stricte Loot / Kikimeter
+- **Règle d'or appliquée** : Le loot ne doit JAMAIS être une source de vérité pour la présence des joueurs
+- **Documentation** : Toutes les méthodes sont documentées comme unidirectionnelles
+- **Vérification** : Le loot ne crée jamais de joueurs dans le Kikimeter, uniquement des statistiques d'affichage
+- **Architecture** : Flux unidirectionnel garanti (Kikimeter → Loot, jamais l'inverse)
+
+#### 3. Protection du reset serveur
+- **Flags de protection** : Ajout de `_isResetInProgress` et `_isInitialized`
+- **Suspension automatique** : Le nettoyage et la synchronisation sont suspendus pendant le reset
+- **Réactivation** : Réactivation automatique après le reset
+- **Stabilité** : Plus d'interférence entre le reset serveur et le nettoyage automatique
+
+#### 4. Amélioration des initialisations
+- **Ordre déterministe** : Initialisation dans un ordre fixe et prévisible
+- **Protection** : Flags `_isInitializing` pour éviter les initialisations multiples
+- **Gestion d'erreurs** : Try/finally pour garantir la réinitialisation des flags
+- **Zéro effet de bord** : Plus d'effets de bord au démarrage
+
+#### 5. Gestion robuste des erreurs JSON
+- **Fichiers vides** : Retourne un JSON par défaut au lieu de planter
+- **Fichiers corrompus** : Gestion gracieuse avec JSON par défaut
+- **Erreurs de désérialisation** : Le système continue de fonctionner même avec un JSON invalide
+- **Résilience** : L'application fonctionne dans tous les cas
+
+### Fichiers ajoutés
+- `PlayerDataJsonInitializer.cs` : Service d'initialisation automatique du JSON
+- `CHANGELOG_ARCHITECTURE.md` : Documentation complète des changements architecturaux
+
+### Modifications
+- `JsonPlayerDataProvider.cs` : Gestion d'erreurs améliorée
+- `KikimeterWindow.cs` : Flags de protection, ordre d'initialisation amélioré
+- `KikimeterWindow.Reset.cs` : Protection du reset serveur
+- `LootCharacterDetector.cs` : Documentation de la séparation stricte
+
+### Architecture finale
+- **JSON = Source de vérité** : La présence des joueurs vient uniquement du JSON ou de la détection de combat
+- **Loot = Stats uniquement** : Le loot ne crée jamais de joueurs, ne maintient jamais la présence
+- **Reset serveur protégé** : Aucun nettoyage ou synchronisation pendant le reset
+- **Initialisation déterministe** : Ordre fixe, flags de protection, gestion d'erreurs gracieuse
+
+### Tests recommandés
+1. Vérifier que le JSON se crée automatiquement au démarrage
+2. Vérifier que le loot n'affecte pas la présence des joueurs dans le Kikimeter
+3. Vérifier que le reset serveur fonctionne correctement
+4. Vérifier que l'application démarre même avec un JSON invalide

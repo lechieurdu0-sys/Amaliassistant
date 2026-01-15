@@ -76,6 +76,13 @@ namespace GameOverlay.Models
         
         // Configuration des plugins
         public PluginConfig PluginConfig { get; set; } = new PluginConfig();
+        
+        // Carte interactive Wakfu
+        public string? InteractiveMapRepoRoot { get; set; }
+        public int InteractiveMapWindowX { get; set; } = -1;
+        public int InteractiveMapWindowY { get; set; } = -1;
+        public double InteractiveMapWindowWidth { get; set; } = 1200;
+        public double InteractiveMapWindowHeight { get; set; } = 800;
     }
 }
 

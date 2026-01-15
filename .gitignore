@@ -301,6 +301,9 @@ WEBVIEW2_DISTRIBUTION.md
 # Projets/artefacts futurs non “de base”
 #############################################
 
+# Workspace local (nettoyage du dossier racine)
+/_workspace/
+
 # Outils et prototypes (gros, en évolution) — à garder en local
 /Tools/
 

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <None Remove="EndTurnWidgetBackground.png" />
@@ -14,6 +14,11 @@
       <OutputItemType>Content</OutputItemType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </ProjectReference>
+    <!-- Carte interactive Wakfu (plugin intÃ©grÃ©) -->
+    <!-- Plugin carte interactive désactivé temporairement (projet non trouvé)
+    <ProjectReference Include="..\..\Projet carte intÃ©ractive Wakfu\PluginCarteInteractive\src\Plugin\WakfuInteractiveMap.Plugin\WakfuInteractiveMap.Plugin.csproj" />
+    <ProjectReference Include="..\..\Projet carte intÃ©ractive Wakfu\PluginCarteInteractive\src\Shared\WakfuInteractiveMap.Shared.Wpf\WakfuInteractiveMap.Shared.Wpf.csproj" />
+    -->
   </ItemGroup>
 
   <ItemGroup>
@@ -32,9 +37,9 @@
     <AssemblyTitle>Amaliassistant</AssemblyTitle>
     <AssemblyProduct>Amaliassistant</AssemblyProduct>
     <AssemblyCompany>Amaliassistant</AssemblyCompany>
-    <AssemblyDescription>Overlay de sites web pour jeux - OptimisÃƒÂ© Windows 11</AssemblyDescription>
-    <AssemblyVersion>1.9.0.14</AssemblyVersion>
-    <FileVersion>1.9.0.14</FileVersion>
+    <AssemblyDescription>Overlay de sites web pour jeux - OptimisÃƒÆ’Ã‚Â© Windows 11</AssemblyDescription>
+    <AssemblyVersion>1.9.0.19</AssemblyVersion>
+    <FileVersion>1.9.0.19</FileVersion>
     <ApplicationIcon>Amalia.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
