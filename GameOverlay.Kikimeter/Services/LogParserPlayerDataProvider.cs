@@ -13,10 +13,10 @@ namespace GameOverlay.Kikimeter.Services;
 /// </summary>
 public class LogParserPlayerDataProvider : IPlayerDataProvider
 {
-    private readonly LogParser _logParser;
+    private readonly Core.LogParser _logParser;
     private const string LogCategory = "LogParserPlayerDataProvider";
 
-    public LogParserPlayerDataProvider(LogParser logParser)
+    public LogParserPlayerDataProvider(Core.LogParser logParser)
     {
         _logParser = logParser ?? throw new ArgumentNullException(nameof(logParser));
     }

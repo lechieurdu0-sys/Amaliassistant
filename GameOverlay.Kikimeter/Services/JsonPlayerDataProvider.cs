@@ -21,7 +21,7 @@ public class JsonPlayerDataProvider : IPlayerDataProvider, IDisposable
 
     private readonly string _jsonFilePath;
     private readonly int _pollingIntervalMs;
-    private readonly Timer _pollingTimer;
+    private readonly System.Threading.Timer _pollingTimer;
     private readonly object _dataLock = new object();
     
     private PlayerDataJson _cachedData = new PlayerDataJson();
@@ -71,7 +71,7 @@ public class JsonPlayerDataProvider : IPlayerDataProvider, IDisposable
         LoadDataFromJson();
 
         // Démarrer le polling périodique
-        _pollingTimer = new Timer(PollJsonFile, null, 0, _pollingIntervalMs);
+        _pollingTimer = new System.Threading.Timer(PollJsonFile, null, 0, _pollingIntervalMs);
 
         Logger.Info(LogCategory, $"JsonPlayerDataProvider initialisé avec le fichier: {_jsonFilePath} (polling: {_pollingIntervalMs}ms)");
     }
