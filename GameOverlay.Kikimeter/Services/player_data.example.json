@@ -1,0 +1,43 @@
+{
+  "players": [
+    {
+      "id": "123456",
+      "name": "MonPersonnage",
+      "isMainCharacter": true,
+      "isInGroup": true,
+      "isActive": true,
+      "lastSeenInCombat": "2024-01-15T10:30:00",
+      "playerId": 123456
+    },
+    {
+      "id": "234567",
+      "name": "Ami1",
+      "isMainCharacter": false,
+      "isInGroup": true,
+      "isActive": true,
+      "lastSeenInCombat": "2024-01-15T10:30:05",
+      "playerId": 234567
+    },
+    {
+      "id": "345678",
+      "name": "Ami2",
+      "isMainCharacter": false,
+      "isInGroup": true,
+      "isActive": true,
+      "lastSeenInCombat": "2024-01-15T10:30:10",
+      "playerId": 345678
+    },
+    {
+      "id": "456789",
+      "name": "Adversaire1",
+      "isMainCharacter": false,
+      "isInGroup": false,
+      "isActive": false,
+      "lastSeenInCombat": "2024-01-15T10:25:00",
+      "playerId": 456789
+    }
+  ],
+  "combatActive": false,
+  "lastUpdate": "2024-01-15T10:30:15",
+  "serverName": "wakfu-server-1"
+}

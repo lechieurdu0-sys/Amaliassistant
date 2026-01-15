@@ -1,107 +1,176 @@
-# GameOverlay.Kikimeter
+# Kikimeter - Système de Gestion Automatique des Joueurs
 
-Bibliothèque d'analyse des logs de combat Wakfu avec détection automatique des invocations et attribution intelligente des actions.
+## Vue d'ensemble
 
-## 🎯 Fonctionnalités Principales
+Système robuste de gestion automatique des joueurs pour le Kikimeter Wakfu, basé sur le **polling JSON** avec fallback LogParser. Nettoie automatiquement les joueurs après chaque combat, gère les groupes (max 6 joueurs), préserve le personnage principal et maintient l'ordre de tour.
 
-### 📊 Statistiques de Combat
-- **Dégâts infligés** : Barre rouge (#FF4444)
-- **Dégâts reçus** : Barre orange (#FF8800)
-- **Soins prodigués** : Barre verte (#44FF44)
-- **Boucliers prodigués** : Barre bleu clair (#44AAFF)
+## Fonctionnalités principales
 
-### 🔍 Détection Multi-Patterns
-Système de détection chirurgicale avec 3 types de patterns :
-- **Pattern canonique** : Séquence complète 4 lignes (Masqueraider/Sadida)
-- **Pattern alternatif** : Variante Osamodas avec "New summon"
-- **Pattern partiel** : Détection par signatures techniques (ID négatif + breed)
+- ✅ **Nettoyage automatique post-combat** : Retire les adversaires inactifs, conserve les joueurs du groupe
+- ✅ **Gestion de groupe** : Limite à 6 joueurs, préservation du personnage principal
+- ✅ **Synchronisation périodique** : Mise à jour automatique toutes les 5 secondes (si aucun combat actif)
+- ✅ **Protection du reset serveur** : Détection automatique et suspension du nettoyage pendant le reset
+- ✅ **Fallback intelligent** : Utilise LogParser si le JSON est absent ou inaccessible
+- ✅ **Gestion des cas limites** : Multi-personnages, changement de personnage principal, joueurs quittant le combat
 
-### 🧠 Attribution Intelligente
-- Détection automatique des invocations homonymes et hétéronymes
-- Attribution transparente des actions vers les maîtres
-- Gestion multi-invocations simultanées
-- Cycle de vie complet avec nettoyage automatique
+## Architecture
 
-### 📈 Normalisation Invisible
-- Barres à échelle dynamique sans régression visuelle
-- Transitions lissées imperceptibles
-- Pas de "vidage" ou de réajustement brutal
+```
+Fichier JSON (polling 1s) → JsonPlayerDataProvider → PlayerManagementService → KikimeterWindow
+                                    ↓ (fallback)
+                            LogParserPlayerDataProvider
+```
 
-### 🎨 Interface Utilisateur
-- Fenêtre overlay transparente et non-intrusive
-- Badges visuels pour le nombre d'invoqués
-- Mise à jour en temps réel
-- Thème cyan cohérent avec l'application
-
-## 🏗️ Architecture
+## Structure du projet
 
 ```
 GameOverlay.Kikimeter/
-├── Models/                          # Modèles de données
-│   ├── CombatEntity.cs             # Entités de combat
-│   ├── CombatAction.cs             # Actions de combat
-│   ├── EntityAssociation.cs        # Associations joueur-invoqué
-│   ├── DetectedAssociation.cs      # Résultats de détection
-│   └── KikimeterConfig.cs          # Configuration
-├── Detectors/                       # Systèmes de détection
-│   ├── SummonDetectionPattern.cs   # Patterns de détection
-│   ├── MultiPatternDetectionEngine.cs  # Moteur multi-patterns
-│   └── PatternLearningService.cs   # Apprentissage automatique
-├── Services/                        # Services métier
-│   ├── EntityRelationshipManager.cs # Registre des associations
-│   └── LogFileWatcher.cs           # Surveillance des logs
-├── Core/                           # Composants centraux
-│   ├── ActionAttributionEngine.cs  # Moteur d'attribution
-│   └── NormalizationEngine.cs      # Normalisation invisible
-└── Views/                          # Interface utilisateur
-    ├── KikimeterWindow.xaml        # Fenêtre principale
-    ├── CharacterDisplayControl.xaml # Affichage personnage
-    └── *.xaml.cs                   # Code-behind
+├── Services/
+│   ├── IPlayerDataProvider.cs              # Interface pour les providers
+│   ├── JsonPlayerDataProvider.cs            # Provider avec polling JSON
+│   ├── LogParserPlayerDataProvider.cs       # Fallback basé sur LogParser
+│   ├── PlayerManagementService.cs           # Service principal de gestion
+│   ├── INTEGRATION_GUIDE.md                # Guide d'intégration
+│   ├── README_PlayerManagement.md          # Documentation du service
+│   └── TESTING_GUIDE.md                     # Guide de test complet
+├── Models/
+│   ├── PlayerStats.cs                       # Modèle enrichi avec nouvelles propriétés
+│   └── PlayerDataJson.cs                    # Modèles JSON
+├── KikimeterWindow.cs                       # Intégration principale
+├── KikimeterWindow.Reset.cs                 # Gestion du reset serveur
+└── player_data.example.json                 # Exemple de fichier JSON
 ```
 
-## 🚀 Utilisation
+## Installation et configuration
 
-```csharp
-using GameOverlay.Kikimeter.Views;
-using GameOverlay.Kikimeter.Models;
+### 1. Prérequis
 
-// Créer et afficher la fenêtre
-var window = new KikimeterWindow();
-window.StartMonitoring(@"C:\Path\To\Wakfu\logs.log");
-window.Show();
+- .NET 8.0 ou supérieur
+- Application WPF compilée
+- Accès en écriture à `%APPDATA%\Amaliassistant\Kikimeter\`
+
+### 2. Configuration du fichier JSON
+
+1. Créer le dossier : `%APPDATA%\Amaliassistant\Kikimeter\`
+2. Copier `player_data.example.json` vers `player_data.json`
+3. Modifier le fichier selon vos besoins
+
+### 3. Format JSON
+
+```json
+{
+  "players": [
+    {
+      "id": "123456",
+      "name": "NomJoueur",
+      "isMainCharacter": true,
+      "isInGroup": true,
+      "isActive": true,
+      "lastSeenInCombat": "2026-01-15T10:30:00",
+      "playerId": 123456
+    }
+  ],
+  "combatActive": false,
+  "lastUpdate": "2026-01-15T10:30:00",
+  "serverName": "wakfu-server-1"
+}
 ```
 
-## ⚙️ Configuration
+## Utilisation
 
-Tous les paramètres sont ajustables via `KikimeterConfig` :
-- Seuil de confiance minimal
-- Fenêtre temporelle de détection
-- Délai de nettoyage
-- Facteur de lissage
-- Activation des fonctionnalités
+### Intégration automatique
 
-## 🧩 Extensibilité
+Le système s'intègre automatiquement dans `KikimeterWindow` :
 
-Le système supporte :
-- Ajout de nouveaux patterns via `MultiPatternDetectionEngine`
-- Apprentissage automatique via `PatternLearningService`
-- Personnalisation des barres et couleurs
-- Intégration dans d'autres applications
+- **Initialisation** : Dans `StartWatching()`
+- **Nettoyage** : Dans `OnCombatEnded()`
+- **Synchronisation** : Dans `UpdateTimer_Tick()` (toutes les 5 secondes)
+- **Reset serveur** : Dans `ResetDisplayFromLoot()`
 
-## 📝 Notes Techniques
+### Fallback automatique
 
-- Détection basée sur regex avec scoring de confiance
-- Buffer temporel pour la reconnaissance de séquences
-- Nettoyage automatique des entités inactives
-- Thread-safe pour les opérations asynchrones
-- Gestion robuste des logs incomplets
+Si le fichier JSON est absent ou inaccessible, le système utilise automatiquement `LogParserPlayerDataProvider` comme fallback, garantissant la compatibilité avec l'ancien système.
 
-## 🎓 Support des Classes Wakfu
+## Règles de nettoyage
 
-Patterns connus (avec possibilité d'apprentissage automatique) :
-- **Masqueraider** : Esprit masqué (homonyme, breed 2382)
-- **Osamodas** : Moogrr (hétéronyme, breed 4757)
-- **Sadida** : La Sacrifiée (3747), La Gonflable (3749)
+### Joueurs conservés
 
-Le système peut apprendre automatiquement les patterns des 19 classes via l'analyse récursive des logs.
+- **Personnage principal** : Jamais retiré, même s'il est inactif
+- **Joueurs du groupe** : Conservés s'ils font partie du groupe (max 6)
+- **Joueurs actifs** : Conservés s'ils sont actuellement actifs dans un combat
 
+### Joueurs retirés
+
+- **Adversaires inactifs** : Non dans le groupe, non actifs, non vus depuis > 30s
+- **Joueurs absents du JSON** : Non trouvés dans les données JSON et non dans le groupe
+
+### Limite de groupe
+
+- Maximum 6 joueurs dans le groupe
+- Si plus de 6, les 6 plus récents sont conservés
+- Le personnage principal est toujours conservé même s'il dépasse la limite
+
+## Protection du reset serveur
+
+Le système détecte automatiquement les changements de serveur via `serverName` dans le JSON :
+
+1. **Détection** : Changement de `serverName` détecté automatiquement
+2. **Suspension** : `BeginReset()` suspend le nettoyage et la synchronisation
+3. **Réinitialisation** : `ResetDisplayFromLoot()` vide la collection
+4. **Réactivation** : `EndReset()` réactive le nettoyage et la synchronisation
+
+## Documentation
+
+- **[INTEGRATION_GUIDE.md](Services/INTEGRATION_GUIDE.md)** : Guide d'intégration complet
+- **[README_PlayerManagement.md](Services/README_PlayerManagement.md)** : Documentation détaillée du service
+- **[TESTING_GUIDE.md](Services/TESTING_GUIDE.md)** : Guide de test avec scénarios
+
+## Tests
+
+Voir [TESTING_GUIDE.md](Services/TESTING_GUIDE.md) pour les tests complets.
+
+### Tests rapides
+
+1. **Nettoyage post-combat** : Vérifier que les adversaires sont retirés après un combat
+2. **Limite de groupe** : Vérifier que seulement 6 joueurs sont conservés
+3. **Personnage principal** : Vérifier qu'il n'est jamais retiré
+4. **Reset serveur** : Vérifier que le reset fonctionne correctement
+5. **Fallback** : Vérifier que LogParser est utilisé si JSON absent
+
+## Logs
+
+Le système génère des logs détaillés pour le débogage :
+
+- `JsonPlayerDataProvider` : Polling et lecture JSON
+- `PlayerManagementService` : Nettoyage et synchronisation
+- `KikimeterWindow` : Intégration et événements
+
+## Cas limites gérés
+
+- ✅ Groupe complet (6 joueurs max)
+- ✅ Multi-personnages
+- ✅ Changement de personnage principal
+- ✅ Joueurs quittant le combat
+- ✅ Fichier JSON absent ou invalide
+- ✅ Changement de serveur
+- ✅ Fichier JSON verrouillé (en cours d'écriture)
+
+## Contribution
+
+1. Fork le projet
+2. Créer une branche pour votre fonctionnalité (`git checkout -b feature/AmazingFeature`)
+3. Commit vos changements (`git commit -m 'Add some AmazingFeature'`)
+4. Push vers la branche (`git push origin feature/AmazingFeature`)
+5. Ouvrir une Pull Request
+
+## Licence
+
+Ce projet fait partie de l'application Amaliassistant pour Wakfu.
+
+## Support
+
+Pour toute question ou problème, consulter la documentation dans le dossier `Services/` ou ouvrir une issue sur GitHub.
+
+---
+
+**Note importante** : Ce système utilise le polling JSON comme source de vérité principale, avec un fallback automatique vers LogParser si le JSON est absent. Aucune information sensible (tokens, mots de passe, chemins privés) n'est stockée dans le dépôt.

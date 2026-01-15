@@ -12,6 +12,13 @@ public partial class KikimeterWindow
         {
             Logger.Info("KikimeterWindow", $"Reset manuel déclenché ({reason})");
 
+            // Notifier le service de gestion des joueurs qu'un reset est en cours
+            // Cela empêche le nettoyage automatique pendant le reset
+            if (_playerManagementService != null)
+            {
+                _playerManagementService.BeginReset();
+            }
+
             try
             {
                 CloseAllIndividualWindows();
@@ -86,6 +93,12 @@ public partial class KikimeterWindow
             if (CombatStatusText != null)
             {
                 CombatStatusText.Text = "En attente d'un nouveau combat";
+            }
+
+            // Réactiver le service de gestion des joueurs après le reset
+            if (_playerManagementService != null)
+            {
+                _playerManagementService.EndReset();
             }
         }
 

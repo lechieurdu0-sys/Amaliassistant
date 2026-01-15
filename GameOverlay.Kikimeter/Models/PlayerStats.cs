@@ -244,6 +244,75 @@ public class PlayerStats : INotifyPropertyChanged
         }
     }
 
+    private bool _isInGroup;
+    /// <summary>
+    /// Indique si le joueur fait partie du groupe (maximum 6 joueurs)
+    /// </summary>
+    public bool IsInGroup
+    {
+        get => _isInGroup;
+        set
+        {
+            if (_isInGroup != value)
+            {
+                _isInGroup = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    private bool _isMainCharacter;
+    /// <summary>
+    /// Indique si ce joueur est le personnage principal du joueur
+    /// </summary>
+    public bool IsMainCharacter
+    {
+        get => _isMainCharacter;
+        set
+        {
+            if (_isMainCharacter != value)
+            {
+                _isMainCharacter = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    private bool _isActive = true;
+    /// <summary>
+    /// Indique si le joueur est actuellement actif (présent dans le combat ou dans le groupe)
+    /// </summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive != value)
+            {
+                _isActive = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    private DateTime _lastSeenInCombat = DateTime.MinValue;
+    /// <summary>
+    /// Dernière fois que le joueur a été vu dans un combat
+    /// Utilisé pour déterminer si un joueur doit être retiré après la fin d'un combat
+    /// </summary>
+    public DateTime LastSeenInCombat
+    {
+        get => _lastSeenInCombat;
+        set
+        {
+            if (_lastSeenInCombat != value)
+            {
+                _lastSeenInCombat = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     private void UpdateClassResources()
     {
         OnPropertyChanged(nameof(ClassName));
