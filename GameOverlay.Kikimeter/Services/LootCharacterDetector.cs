@@ -807,6 +807,14 @@ public class LootCharacterDetector : IDisposable
         }
     }
 
+    /// <summary>
+    /// Enregistre les joueurs du combat pour l'affichage des loots
+    /// IMPORTANT: Cette méthode est UNIDIRECTIONNELLE (Kikimeter → Loot)
+    /// Le loot ne doit JAMAIS être une source de vérité pour la présence des joueurs dans le Kikimeter
+    /// Cette méthode met uniquement à jour la liste des personnages récents pour l'affichage des loots
+    /// Elle ne crée JAMAIS de joueurs dans le Kikimeter
+    /// </summary>
+    /// <param name="playerNames">Liste des noms de joueurs depuis le Kikimeter (uniquement pour affichage des loots)</param>
     public void RegisterCombatPlayers(IEnumerable<string> playerNames)
     {
         if (playerNames == null)
@@ -830,6 +838,8 @@ public class LootCharacterDetector : IDisposable
                 continue;
             }
 
+            // Mise à jour UNIQUEMENT de la liste des personnages récents pour le loot
+            // Cette liste n'affecte JAMAIS la présence des joueurs dans le Kikimeter
             _recentCharacters[normalized] = now;
             updated = true;
         }

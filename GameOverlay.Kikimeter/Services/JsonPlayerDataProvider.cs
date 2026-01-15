@@ -64,6 +64,9 @@ public class JsonPlayerDataProvider : IPlayerDataProvider, IDisposable
 
         _pollingIntervalMs = pollingIntervalMs;
 
+        // Initialiser le fichier JSON s'il n'existe pas (ne bloque jamais le démarrage)
+        PlayerDataJsonInitializer.EnsurePlayerDataJsonExists();
+
         // Charger les données initiales
         LoadDataFromJson();
 
@@ -213,11 +216,43 @@ public class JsonPlayerDataProvider : IPlayerDataProvider, IDisposable
             }
 
             var jsonContent = File.ReadAllText(_jsonFilePath);
-            var newData = JsonConvert.DeserializeObject<PlayerDataJson>(jsonContent);
+            
+            // Gérer les fichiers vides ou contenant uniquement des espaces
+            if (string.IsNullOrWhiteSpace(jsonContent))
+            {
+                Logger.Debug(LogCategory, "Le fichier JSON est vide, utilisation des données par défaut");
+                lock (_dataLock)
+                {
+                    _cachedData = new PlayerDataJson();
+                }
+                OnDataUpdated();
+                return;
+            }
+
+            PlayerDataJson? newData;
+            try
+            {
+                newData = JsonConvert.DeserializeObject<PlayerDataJson>(jsonContent);
+            }
+            catch (JsonException ex)
+            {
+                Logger.Warning(LogCategory, $"Le fichier JSON est invalide ({ex.Message}), utilisation des données par défaut");
+                lock (_dataLock)
+                {
+                    _cachedData = new PlayerDataJson();
+                }
+                OnDataUpdated();
+                return;
+            }
 
             if (newData == null)
             {
-                Logger.Warning(LogCategory, "Le fichier JSON est vide ou invalide");
+                Logger.Warning(LogCategory, "Le fichier JSON est null après désérialisation, utilisation des données par défaut");
+                lock (_dataLock)
+                {
+                    _cachedData = new PlayerDataJson();
+                }
+                OnDataUpdated();
                 return;
             }
 

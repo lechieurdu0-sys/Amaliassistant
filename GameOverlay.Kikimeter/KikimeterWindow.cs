@@ -77,6 +77,11 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private Services.IPlayerDataProvider? _playerDataProvider;
     private DateTime _lastPlayerSyncTime = DateTime.MinValue;
     private const int PlayerSyncIntervalSeconds = 5; // Synchronisation toutes les 5 secondes
+    
+    // Flags de protection pour l'initialisation et le reset
+    private bool _isInitialized = false;
+    private bool _isResetInProgress = false;
+    private bool _isInitializing = false;
 
     private static bool _bindingDiagnosticsEnabled;
     private static readonly object _bindingDiagnosticsLock = new();
@@ -2189,23 +2194,43 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
 
     public void StartWatching()
     {
-        Logger.Info("KikimeterWindow", $"Démarrage de la surveillance du log: '{_logPath}'");
-        
-        if (string.IsNullOrEmpty(_logPath))
+        // Protection contre les initialisations multiples
+        if (_isInitializing)
         {
-            Logger.Error("KikimeterWindow", "Le chemin de log est vide ou null ! Veuillez configurer le chemin dans les paramètres.");
+            Logger.Warning("KikimeterWindow", "StartWatching déjà en cours, ignoré");
             return;
         }
-        
-        // Ne plus retourner si le fichier n'existe pas - LogFileWatcher peut maintenant surveiller
-        // même si le fichier n'existe pas encore (il détectera sa création)
-        if (!File.Exists(_logPath))
+
+        if (_isResetInProgress)
         {
-            Logger.Info("KikimeterWindow", $"Le fichier de log n'existe pas encore: '{_logPath}'. La surveillance sera activée et détectera sa création.");
+            Logger.Warning("KikimeterWindow", "Reset en cours, StartWatching ignoré");
+            return;
         }
-        
-        // Arrêter l'ancien watcher s'il existe avant d'en créer un nouveau
-        if (_logWatcher != null)
+
+        _isInitializing = true;
+
+        try
+        {
+            Logger.Info("KikimeterWindow", $"Démarrage de la surveillance du log: '{_logPath}'");
+            
+            if (string.IsNullOrEmpty(_logPath))
+            {
+                Logger.Error("KikimeterWindow", "Le chemin de log est vide ou null ! Veuillez configurer le chemin dans les paramètres.");
+                return;
+            }
+            
+            // Initialiser le fichier JSON AVANT tout (ne bloque jamais le démarrage)
+            PlayerDataJsonInitializer.EnsurePlayerDataJsonExists();
+            
+            // Ne plus retourner si le fichier n'existe pas - LogFileWatcher peut maintenant surveiller
+            // même si le fichier n'existe pas encore (il détectera sa création)
+            if (!File.Exists(_logPath))
+            {
+                Logger.Info("KikimeterWindow", $"Le fichier de log n'existe pas encore: '{_logPath}'. La surveillance sera activée et détectera sa création.");
+            }
+            
+            // Arrêter l'ancien watcher s'il existe avant d'en créer un nouveau
+            if (_logWatcher != null)
         {
             Logger.Info("KikimeterWindow", "Arrêt de l'ancien watcher avant de créer un nouveau");
             try
@@ -2292,7 +2317,13 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         _updateTimer.Tick += UpdateTimer_Tick;
         _updateTimer.Start();
         
+        _isInitialized = true;
         Logger.Info("KikimeterWindow", "Surveillance du log démarrée avec succès");
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
     }
     
     public void UpdateLogPath(string newLogPath)
@@ -2976,8 +3007,19 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         });
     }
     
+    /// <summary>
+    /// Met à jour LootWindow avec les joueurs du combat actuel
+    /// IMPORTANT: Cette méthode est UNIDIRECTIONNELLE (Kikimeter → Loot)
+    /// Le loot ne doit JAMAIS être une source de vérité pour la présence des joueurs
+    /// </summary>
     private void UpdateLootWindowCombatPlayers()
     {
+        // Ne pas mettre à jour pendant un reset ou si non initialisé
+        if (_isResetInProgress || !_isInitialized)
+        {
+            return;
+        }
+
         try
         {
             ResyncPlayersFromParser();
@@ -2991,6 +3033,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 return;
             }
 
+            // UNIQUEMENT envoyer les joueurs du Kikimeter vers LootWindow
+            // Le loot utilise ces informations pour afficher les loots, mais ne crée jamais de joueurs
             var players = _playersCollection
                 .Where(p => !string.IsNullOrWhiteSpace(p.Name))
                 .Select(p => p.Name)
@@ -3002,6 +3046,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 return;
             }
 
+            // Envoi unidirectionnel : Kikimeter → Loot (pour affichage des loots uniquement)
             lootWindow.RegisterCombatPlayers(players);
         }
         catch (Exception ex)
@@ -3052,6 +3097,13 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     {
         Dispatcher.Invoke(() =>
         {
+            // Ne pas nettoyer pendant un reset serveur
+            if (_isResetInProgress)
+            {
+                Logger.Debug("KikimeterWindow", "OnCombatEnded ignoré car reset en cours");
+                return;
+            }
+
             if (CombatStatusText != null)
             {
                 CombatStatusText.Text = "Combat terminé - Statistiques finales";
@@ -3059,14 +3111,15 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             
             // Nettoyer automatiquement les joueurs après la fin du combat
             // Utilise le polling JSON comme source de vérité
-            if (_playerManagementService != null)
+            // Le loot n'est JAMAIS utilisé pour déterminer la présence des joueurs
+            if (_playerManagementService != null && _isInitialized)
             {
                 try
                 {
                     Logger.Info("KikimeterWindow", "Démarrage du nettoyage automatique des joueurs après combat");
-                    _playerManagementService.CleanupPlayersAfterCombat(_playersCollection, DateTime.Now);
+                    _playerManagementService.CleanupPlayersAfterCombat(_playersCollection, DateTime.Now, skipIfResetting: true);
                     
-                    // Mettre à jour la fenêtre de loot avec les joueurs restants
+                    // Mettre à jour la fenêtre de loot avec les joueurs restants (unidirectionnel)
                     UpdateLootWindowCombatPlayers();
                     
                     // Mettre à jour la hauteur de la fenêtre si nécessaire
@@ -3157,10 +3210,13 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             }
             
             // Synchronisation périodique avec les données JSON (toutes les 5 secondes)
-            // Seulement si aucun combat n'est actif pour éviter de perturber pendant un combat
+            // Seulement si aucun combat n'est actif et si l'application est initialisée
+            // Ne jamais synchroniser pendant un reset serveur
             var now = DateTime.Now;
             if (_playerManagementService != null && 
                 _playerDataProvider != null &&
+                _isInitialized &&
+                !_isResetInProgress &&
                 !_playerDataProvider.IsCombatActive &&
                 (now - _lastPlayerSyncTime).TotalSeconds >= PlayerSyncIntervalSeconds)
             {
@@ -3169,7 +3225,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 {
                     try
                     {
-                        _playerManagementService.SyncPlayersWithJson(_playersCollection);
+                        _playerManagementService.SyncPlayersWithJson(_playersCollection, skipIfResetting: true);
                     }
                     catch (Exception syncEx)
                     {

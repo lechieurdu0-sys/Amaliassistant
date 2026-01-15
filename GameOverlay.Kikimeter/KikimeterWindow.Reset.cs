@@ -12,6 +12,9 @@ public partial class KikimeterWindow
         {
             Logger.Info("KikimeterWindow", $"Reset manuel déclenché ({reason})");
 
+            // Marquer le reset comme en cours AVANT toute opération
+            _isResetInProgress = true;
+
             // Notifier le service de gestion des joueurs qu'un reset est en cours
             // Cela empêche le nettoyage automatique pendant le reset
             if (_playerManagementService != null)
@@ -100,6 +103,9 @@ public partial class KikimeterWindow
             {
                 _playerManagementService.EndReset();
             }
+
+            // Marquer le reset comme terminé APRÈS toutes les opérations
+            _isResetInProgress = false;
         }
 
         if (!Dispatcher.CheckAccess())
