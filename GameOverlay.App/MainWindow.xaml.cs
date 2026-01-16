@@ -2213,23 +2213,23 @@ namespace GameOverlay.App
                     // Créer ou réouvrir la fenêtre Settings
                     if (settingsWindow == null)
                     {
-                        // Récupérer les joueurs actuels depuis KikimeterWindow si elle existe
+                        // Récupérer les joueurs actuels depuis PlayerManagementService (SOURCE UNIQUE DE VÉRITÉ)
                         IEnumerable<string>? currentPlayers = null;
                         Func<IEnumerable<string>>? getCurrentPlayers = null;
+                        GameOverlay.Kikimeter.Services.PlayerManagementService? playerManagementService = null;
                         
-                        if (kikimeterWindow != null)
+                        if (kikimeterWindow != null && kikimeterWindow.PlayerManagementService != null)
                         {
-                            // Récupérer les joueurs actuels depuis KikimeterWindow
                             try
                             {
-                                var playerStats = kikimeterWindow.PlayersCollection;
-                                currentPlayers = playerStats.Select(p => p.Name).ToList();
-                                getCurrentPlayers = () => kikimeterWindow.PlayersCollection.Select(p => p.Name);
-                                Logger.Info("MainWindow", $"Récupération de {currentPlayers.Count()} joueurs pour SettingsWindow");
+                                playerManagementService = kikimeterWindow.PlayerManagementService;
+                                currentPlayers = playerManagementService.GetCurrentPlayerNames().ToList();
+                                getCurrentPlayers = () => playerManagementService.GetCurrentPlayerNames();
+                                Logger.Info("MainWindow", $"Récupération de {currentPlayers.Count()} joueurs depuis PlayerManagementService pour SettingsWindow");
                             }
                             catch (Exception ex)
                             {
-                                Logger.Error("MainWindow", $"Impossible de récupérer les joueurs actuels: {ex.Message}");
+                                Logger.Error("MainWindow", $"Impossible de récupérer les joueurs depuis PlayerManagementService: {ex.Message}");
                             }
                         }
                         
@@ -2297,7 +2297,8 @@ namespace GameOverlay.App
                             getCurrentPlayers,
                             accentBrush,
                             sectionBrush,
-                            () => LootWindow_ResetButton_ExtraHandler(null, new RoutedEventArgs())
+                            () => LootWindow_ResetButton_ExtraHandler(null, new RoutedEventArgs()),
+                            playerManagementService
                         );
                         
                         // Position par défaut

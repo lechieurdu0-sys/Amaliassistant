@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     private readonly Action<Config> _onConfigChanged;
     private readonly Func<IEnumerable<string>>? _getCurrentPlayers;
     private readonly Action? _onResetLootRequested;
+    private GameOverlay.Kikimeter.Services.PlayerManagementService? _playerManagementService;
     private const string ManualOrderConfigFileName = "kikimeter_manual_order.json";
     private const string LootCharactersFileName = "loot_characters.json";
     private static readonly string LootConfigDirectory = Path.Combine(
@@ -113,7 +114,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         Func<IEnumerable<string>>? getCurrentPlayers = null,
         System.Windows.Media.Brush? accentBrush = null,
         System.Windows.Media.Brush? sectionBackgroundBrush = null,
-        Action? onResetLootRequested = null)
+        Action? onResetLootRequested = null,
+        GameOverlay.Kikimeter.Services.PlayerManagementService? playerManagementService = null)
     {
         InitializeComponent();
         
@@ -121,6 +123,15 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _onConfigChanged = onConfigChanged ?? throw new ArgumentNullException(nameof(onConfigChanged));
         _getCurrentPlayers = getCurrentPlayers;
         _onResetLootRequested = onResetLootRequested;
+        _playerManagementService = playerManagementService;
+        
+        // S'abonner aux events du PlayerManagementService (SOURCE UNIQUE DE VÉRITÉ)
+        if (_playerManagementService != null)
+        {
+            _playerManagementService.PlayersChanged += OnPlayersChangedFromService;
+            _playerManagementService.MainCharacterChanged += OnMainCharacterChangedFromService;
+            Logger.Info("SettingsWindow", "Abonnement aux events de PlayerManagementService effectué");
+        }
         
         // Initialiser l'ordre des joueurs
         var playersList = currentPlayers?.ToList() ?? new List<string>();
@@ -503,11 +514,54 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     public IReadOnlyList<string> GetOrderedNames() => Items.Select(item => item.Name).ToList();
     
+    /// <summary>
+    /// Appelé lorsque la liste des joueurs change dans PlayerManagementService
+    /// </summary>
+    private void OnPlayersChangedFromService(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                UpdatePlayersList();
+                UpdateCharactersList();
+                Logger.Debug("SettingsWindow", "Liste des joueurs mise à jour depuis PlayerManagementService");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors de la mise à jour depuis PlayerManagementService: {ex.Message}");
+            }
+        }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+    
+    /// <summary>
+    /// Appelé lorsque le personnage principal change dans PlayerManagementService
+    /// </summary>
+    private void OnMainCharacterChangedFromService(object? sender, PlayerStats player)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                Logger.Info("SettingsWindow", $"Personnage principal changé : {player.Name}");
+                UpdateCharactersList(); // Mettre à jour l'affichage pour refléter le changement
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("SettingsWindow", $"Erreur lors du changement de personnage principal: {ex.Message}");
+            }
+        }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+    
     public void UpdatePlayersList()
     {
         try
         {
-            var currentPlayers = _getCurrentPlayers?.Invoke()?.ToList() ?? new List<string>();
+            // Utiliser PlayerManagementService en priorité (SOURCE UNIQUE DE VÉRITÉ)
+            var currentPlayers = _playerManagementService?.GetCurrentPlayerNames().ToList() 
+                ?? _getCurrentPlayers?.Invoke()?.ToList() 
+                ?? new List<string>();
+                
             if (currentPlayers.Count == 0)
             {
                 currentPlayers = LoadOrderedNamesFromManualOrder();
@@ -769,7 +823,10 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             CharactersListContainer.Children.Clear();
 
             var config = GetActiveCharacterConfig();
-            var mainCharacter = config.MainCharacter;
+            
+            // Utiliser PlayerManagementService pour obtenir le personnage principal (SOURCE UNIQUE DE VÉRITÉ)
+            string? mainCharacter = _playerManagementService?.GetMainCharacter()?.Name ?? config.MainCharacter;
+            
             var myCharacters = config.MyCharacters ?? new List<string>();
             var manualCharacters = config.ManualCharacters ?? new List<string>();
             

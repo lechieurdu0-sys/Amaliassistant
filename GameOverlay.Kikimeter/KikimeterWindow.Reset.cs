@@ -10,6 +10,23 @@ public partial class KikimeterWindow
     {
         void PerformReset()
         {
+            // CRITIQUE: Ne jamais faire de reset complet pendant un combat actif
+            // Cela viderait la collection des joueurs en plein combat, causant un flash/blanc
+            if (_playerDataProvider != null && _playerDataProvider.IsCombatActive)
+            {
+                Logger.Debug("KikimeterWindow", $"Reset suspendu car un combat est actif ({reason}) - le reset sera effectué après la fin du combat");
+                return;
+            }
+
+            // CRITIQUE: Ne pas faire de reset si le Kikimeter est figé après le combat
+            // Le Kikimeter reste figé pour permettre l'analyse des stats du combat précédent
+            // MAIS permettre le reset si c'est un nouveau combat (initialisation)
+            if (_freezeAfterCombat && !_isNewCombat)
+            {
+                Logger.Debug("KikimeterWindow", $"Reset suspendu car le Kikimeter est figé après le combat ({reason})");
+                return;
+            }
+
             Logger.Info("KikimeterWindow", $"Reset manuel déclenché ({reason})");
 
             // Marquer le reset comme en cours AVANT toute opération

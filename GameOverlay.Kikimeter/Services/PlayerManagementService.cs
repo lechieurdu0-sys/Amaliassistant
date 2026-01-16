@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using GameOverlay.Kikimeter.Models;
 using GameOverlay.Models;
@@ -7,8 +8,9 @@ using GameOverlay.Models;
 namespace GameOverlay.Kikimeter.Services;
 
 /// <summary>
-/// Service de gestion automatique des joueurs basé sur le polling JSON
+/// Service centralisé de gestion des joueurs - SOURCE UNIQUE DE VÉRITÉ
 /// Gère le nettoyage des joueurs après les combats, la gestion des groupes et des adversaires
+/// Notifie automatiquement tous les composants (Kikimeter, Paramètres, LootWindow) des changements
 /// </summary>
 public class PlayerManagementService
 {
@@ -20,10 +22,152 @@ public class PlayerManagementService
     private DateTime _lastCombatEndTime = DateTime.MinValue;
     private string? _lastServerName;
     private bool _isResetting = false; // Flag pour éviter le nettoyage pendant un reset serveur
+    
+    // Collection centrale des joueurs (référence vers la collection de KikimeterWindow)
+    private ObservableCollection<PlayerStats>? _playersCollection;
+
+    /// <summary>
+    /// Event déclenché lorsque la liste des joueurs change (ajout, retrait, mise à jour)
+    /// Tous les composants (Kikimeter, Paramètres, LootWindow) doivent s'abonner à cet event
+    /// </summary>
+    public event EventHandler? PlayersChanged;
+
+    /// <summary>
+    /// Event déclenché lorsque le personnage principal change
+    /// </summary>
+    public event EventHandler<PlayerStats>? MainCharacterChanged;
+    
+    /// <summary>
+    /// Définit la collection de joueurs à gérer (doit être la collection de KikimeterWindow)
+    /// </summary>
+    public void SetPlayersCollection(ObservableCollection<PlayerStats> playersCollection)
+    {
+        if (_playersCollection != null)
+        {
+            _playersCollection.CollectionChanged -= PlayersCollection_CollectionChanged;
+        }
+        
+        _playersCollection = playersCollection ?? throw new ArgumentNullException(nameof(playersCollection));
+        
+        // S'abonner aux changements de la collection pour notifier les composants
+        _playersCollection.CollectionChanged += PlayersCollection_CollectionChanged;
+        
+        Logger.Info(LogCategory, "Collection de joueurs définie dans PlayerManagementService");
+        OnPlayersChanged();
+    }
+    
+    private void PlayersCollection_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        OnPlayersChanged();
+    }
 
     public PlayerManagementService(IPlayerDataProvider dataProvider)
     {
         _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
+    }
+    
+    /// <summary>
+    /// Obtient la liste complète des joueurs (noms uniquement) pour SettingsWindow et autres composants
+    /// </summary>
+    public IEnumerable<string> GetCurrentPlayerNames()
+    {
+        if (_playersCollection == null)
+            return Enumerable.Empty<string>();
+            
+        return _playersCollection
+            .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+            .Select(p => p.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+    
+    /// <summary>
+    /// Obtient le personnage principal actuel
+    /// </summary>
+    public PlayerStats? GetMainCharacter()
+    {
+        return _playersCollection?.FirstOrDefault(p => p.IsMainCharacter);
+    }
+    
+    /// <summary>
+    /// Définit un joueur comme personnage principal
+    /// </summary>
+    public void SetMainCharacter(string playerName)
+    {
+        if (string.IsNullOrWhiteSpace(playerName) || _playersCollection == null)
+            return;
+            
+        var player = _playersCollection.FirstOrDefault(p => 
+            string.Equals(p.Name, playerName, StringComparison.OrdinalIgnoreCase));
+            
+        if (player == null)
+            return;
+            
+        // Désélectionner l'ancien personnage principal
+        foreach (var p in _playersCollection.Where(p => p.IsMainCharacter))
+        {
+            p.IsMainCharacter = false;
+        }
+        
+        // Définir le nouveau personnage principal
+        player.IsMainCharacter = true;
+        Logger.Info(LogCategory, $"Personnage principal : {playerName}");
+        OnMainCharacterChanged(player);
+        OnPlayersChanged();
+    }
+    
+    /// <summary>
+    /// Sélectionne automatiquement le premier joueur détecté comme personnage principal
+    /// </summary>
+    private void AutoSelectMainCharacter(ObservableCollection<PlayerStats> playersCollection)
+    {
+        // Vérifier si un personnage principal existe déjà
+        if (playersCollection.Any(p => p.IsMainCharacter))
+            return;
+            
+        // Sélectionner automatiquement le premier joueur actif du groupe
+        var firstGroupPlayer = playersCollection
+            .Where(p => p.IsActive && p.IsInGroup)
+            .OrderBy(p => p.LastSeenInCombat)
+            .FirstOrDefault();
+            
+        if (firstGroupPlayer != null)
+        {
+            firstGroupPlayer.IsMainCharacter = true;
+            Logger.Info(LogCategory, $"Premier personnage automatiquement sélectionné comme principal : {firstGroupPlayer.Name}");
+            OnMainCharacterChanged(firstGroupPlayer);
+        }
+        else
+        {
+            // Si aucun joueur du groupe, sélectionner le premier joueur actif
+            var firstActivePlayer = playersCollection
+                .Where(p => p.IsActive)
+                .OrderBy(p => p.LastSeenInCombat)
+                .FirstOrDefault();
+                
+            if (firstActivePlayer != null)
+            {
+                firstActivePlayer.IsMainCharacter = true;
+                Logger.Info(LogCategory, $"Premier joueur actif automatiquement sélectionné comme principal : {firstActivePlayer.Name}");
+                OnMainCharacterChanged(firstActivePlayer);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Notifie les composants que la liste des joueurs a changé
+    /// </summary>
+    private void OnPlayersChanged()
+    {
+        PlayersChanged?.Invoke(this, EventArgs.Empty);
+    }
+    
+    /// <summary>
+    /// Notifie les composants que le personnage principal a changé
+    /// </summary>
+    private void OnMainCharacterChanged(PlayerStats player)
+    {
+        MainCharacterChanged?.Invoke(this, player);
     }
 
     /// <summary>
@@ -33,13 +177,32 @@ public class PlayerManagementService
     /// <param name="playersCollection">Collection observable des joueurs à nettoyer</param>
     /// <param name="combatEndTime">Moment où le combat s'est terminé</param>
     /// <param name="skipIfResetting">Si true, ne pas nettoyer si un reset est en cours</param>
+    /// <param name="freezeAfterCombat">Si true, ne pas nettoyer car le Kikimeter est figé après le combat</param>
     public void CleanupPlayersAfterCombat(
         System.Collections.ObjectModel.ObservableCollection<PlayerStats> playersCollection,
         DateTime combatEndTime,
-        bool skipIfResetting = true)
+        bool skipIfResetting = true,
+        bool freezeAfterCombat = false)
     {
         if (playersCollection == null)
             throw new ArgumentNullException(nameof(playersCollection));
+
+        // CRITIQUE: Ne jamais nettoyer pendant un combat actif
+        // Le nettoyage doit se faire uniquement après la fin du combat
+        if (_dataProvider.IsCombatActive)
+        {
+            Logger.Debug(LogCategory, "Nettoyage suspendu car un combat est actif - le nettoyage sera effectué après la fin du combat");
+            return;
+        }
+
+        // CRITIQUE: Ne pas nettoyer si le Kikimeter est figé après le combat
+        // Le Kikimeter reste figé pour permettre l'analyse des stats du combat précédent
+        // Exécuter uniquement si FreezeAfterCombat = false
+        if (freezeAfterCombat)
+        {
+            Logger.Debug(LogCategory, "Nettoyage suspendu car le Kikimeter est figé après le combat");
+            return;
+        }
 
         // Ne pas nettoyer si un reset est en cours
         if (skipIfResetting && _isResetting)
@@ -86,6 +249,9 @@ public class PlayerManagementService
 
             // Maintenir l'ordre de tour pour les joueurs actifs
             MaintainTurnOrder(playersCollection);
+            
+            // Notifier les composants du changement
+            OnPlayersChanged();
 
             Logger.Info(LogCategory, $"Nettoyage terminé. {playersCollection.Count} joueurs restants.");
         }
@@ -223,7 +389,8 @@ public class PlayerManagementService
             try
             {
                 playersCollection.Remove(player);
-                Logger.Info(LogCategory, $"Joueur '{player.Name}' retiré de la collection");
+                Logger.Info(LogCategory, $"Joueur retiré du Kikimeter : {player.Name}");
+                OnPlayersChanged(); // Notifier les composants
             }
             catch (Exception ex)
             {
@@ -386,15 +553,23 @@ public class PlayerManagementService
                     };
 
                     playersCollection.Add(newPlayer);
-                    Logger.Info(LogCategory, $"Nouveau joueur ajouté depuis JSON: {playerData.Name}");
+                    Logger.Info(LogCategory, $"Joueur ajouté au Kikimeter : {playerData.Name}");
+                    OnPlayersChanged(); // Notifier les composants
                 }
             }
+            
+            // Sélection automatique du personnage principal si aucun n'est défini
+            AutoSelectMainCharacter(playersCollection);
 
             // Nettoyer les joueurs inactifs si aucun combat n'est actif
             if (!_dataProvider.IsCombatActive)
             {
                 var playersToRemove = IdentifyPlayersToRemove(playersCollection, currentPlayerData, playersInCombat);
-                RemoveInactivePlayers(playersCollection, playersToRemove);
+                if (playersToRemove.Count > 0)
+                {
+                    RemoveInactivePlayers(playersCollection, playersToRemove);
+                    OnPlayersChanged(); // Notifier les composants
+                }
             }
         }
         catch (Exception ex)
