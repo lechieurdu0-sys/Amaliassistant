@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         Title="Loot"
         Height="550"
-        Width="300"
+        Width="320"
         WindowStyle="None"
         AllowsTransparency="True"
         ResizeMode="CanResize"
@@ -15,8 +15,8 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         RenderOptions.BitmapScalingMode="HighQuality"
-        MinWidth="280"
-        MinHeight="500" Cursor="">
+        MinWidth="320"
+        MinHeight="400" Cursor="">
     <Window.Resources>
         <SolidColorBrush x:Key="CyanAccentBrush" Color="#FF6E5C2A" />
         <SolidColorBrush x:Key="SectionBackgroundBrush" Color="#80000000" />
@@ -117,7 +117,7 @@
                                                 BorderThickness="0"
                                                 Padding="8"
                                                 Cursor="Hand"
-                                                PreviewMouseDown="ToggleFavorite_PreviewMouseDown"
+                                                Click="ToggleFavorite_Click"
                                                 Tag="{Binding}"
                                                 ToolTip="Marquer comme favoris"
                                                 VerticalAlignment="Center"
@@ -200,13 +200,13 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                         <Button Grid.Column="3"
-                                                Width="32"
-                                                Height="32"
-                                                MinWidth="32"
-                                                MinHeight="32"
+                                                Width="36"
+                                                Height="36"
+                                                MinWidth="36"
+                                                MinHeight="36"
                                                 Background="Transparent"
                                                 BorderThickness="0"
-                                                Padding="4"
+                                                Padding="6"
                                                 Cursor="Hand"
                                                 Click="DeleteLootItem_Click"
                                                 Tag="{Binding}"
@@ -222,7 +222,7 @@
                                                             <ControlTemplate TargetType="Button">
                                                                 <Border Background="Transparent"
                                                                         BorderThickness="0"
-                                                                        CornerRadius="0">
+                                                                        CornerRadius="2">
                                                                     <ContentPresenter HorizontalAlignment="Center"
                                                                                       VerticalAlignment="Center" />
                                                                 </Border>
@@ -234,12 +234,15 @@
                                                         <DataTrigger Binding="{Binding IsFavorite}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#20FF6E5C2A"/>
+                                                        </Trigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </Button.Style>
                                             <Image Source="/GameOverlay.Kikimeter;component/Views/Assets/loot/cross.png"
-                                                   Width="24"
-                                                   Height="24"
+                                                   Width="20"
+                                                   Height="20"
                                                    Stretch="Uniform"
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                                         </Button>

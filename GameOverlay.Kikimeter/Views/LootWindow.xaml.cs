@@ -53,12 +53,12 @@ public partial class LootWindow : Window, INotifyPropertyChanged
 
     private LootCharacterDetector? _characterDetector;
     private LootTracker? _lootTracker;
+    private LootManagementService? _lootManagementService;
 
-    private readonly ObservableCollection<LootItem> _allLootItems = new();
+    // SUPPRIMÉ : _allLootItems - utilise maintenant _lootManagementService.SessionLoot directement
     private readonly ObservableCollection<LootItem> _filteredLootItems = new();
     private readonly HashSet<string> _selectedCharacters = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _hiddenLootKeys = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _favoriteKeys = new(StringComparer.OrdinalIgnoreCase);
+    // SUPPRIMÉ : _hiddenLootKeys - la suppression se fait maintenant directement dans le service
 
     private DispatcherTimer? _updateTimer;
     private bool _focusReturnPending;
@@ -68,6 +68,10 @@ public partial class LootWindow : Window, INotifyPropertyChanged
 
     public event EventHandler<ServerChangeDetectedEventArgs>? ServerSwitched;
 
+    // Service partagé pour toute la session (singleton)
+    private static LootManagementService? _sharedLootManagementService;
+    private static readonly object _serviceLock = new object();
+    
     public LootWindow()
     {
         InitializeComponent();
@@ -88,10 +92,28 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         {
             LoadSectionBackgroundColor();
             HookFocusReturnHandlers();
-            LoadFavorites();
         };
 
         Logger.Info("LootWindow", "LootWindow cree");
+    }
+    
+    /// <summary>
+    /// Obtient ou crée le service de gestion du loot partagé pour toute la session
+    /// </summary>
+    private static LootManagementService GetOrCreateSharedService()
+    {
+        if (_sharedLootManagementService == null)
+        {
+            lock (_serviceLock)
+            {
+                if (_sharedLootManagementService == null)
+                {
+                    _sharedLootManagementService = new LootManagementService();
+                    Logger.Info("LootWindow", "Service de gestion du loot partagé créé (singleton)");
+                }
+            }
+        }
+        return _sharedLootManagementService;
     }
 
     public bool LootFramesOpaque
@@ -506,10 +528,26 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             
             UpdateCharactersList();
 
-            _lootTracker = new LootTracker(chatLogPath);
-            _lootTracker.LootItemAdded += OnLootItemAdded;
-            _lootTracker.LootItemUpdated += OnLootItemUpdated;
-            _lootTracker.LootItemRemoved += OnLootItemRemoved;
+            // Obtenir ou créer le service de gestion du loot partagé (singleton pour toute la session)
+            _lootManagementService = GetOrCreateSharedService();
+            
+            // Charger les favoris depuis le stockage (si pas déjà chargé)
+            // Note: LoadFavorites peut être appelé plusieurs fois sans problème
+            LoadFavorites();
+            
+            // S'abonner aux changements de la collection SessionLoot
+            // IMPORTANT: Ne jamais désabonner car le service est partagé
+            // La fenêtre peut être fermée/réouverte mais le service persiste
+            _lootManagementService.SessionLoot.CollectionChanged -= SessionLoot_CollectionChanged; // Désabonner d'abord pour éviter les doubles abonnements
+            _lootManagementService.SessionLoot.CollectionChanged += SessionLoot_CollectionChanged;
+            
+            // Initialiser le filtre avec les items existants (même si la fenêtre était fermée)
+            ApplyFilters();
+            
+            // Créer le tracker avec le service
+            _lootTracker = new LootTracker(chatLogPath, _lootManagementService);
+            // Les événements LootItemAdded/Updated/Removed ne sont plus nécessaires
+            // car on s'abonne directement à SessionLoot.CollectionChanged
 
             _updateTimer = new DispatcherTimer
             {
@@ -594,12 +632,20 @@ public partial class LootWindow : Window, INotifyPropertyChanged
 
         if (_lootTracker != null)
         {
-            _lootTracker.LootItemAdded -= OnLootItemAdded;
-            _lootTracker.LootItemUpdated -= OnLootItemUpdated;
-            _lootTracker.LootItemRemoved -= OnLootItemRemoved;
+            // Les événements LootItemAdded/Updated/Removed ne sont plus nécessaires
+            // car on utilise directement SessionLoot.CollectionChanged
             _lootTracker.Dispose();
             _lootTracker = null;
         }
+        
+        // IMPORTANT : Ne PAS détruire _lootManagementService
+        // C'est la source unique de vérité pour toute la session
+        // Il doit persister même si la fenêtre est fermée
+        // Seul le reset serveur peut le vider
+        
+        // IMPORTANT : Ne PAS désabonner de SessionLoot.CollectionChanged
+        // Car le service est partagé et peut être utilisé par d'autres instances
+        // On se désabonnera seulement si on détruit vraiment la fenêtre (ce qui n'arrive pas avec Hide())
 
         if (_characterDetector != null)
         {
@@ -643,103 +689,22 @@ public partial class LootWindow : Window, INotifyPropertyChanged
         });
     }
 
-    private void OnLootItemAdded(object? sender, LootItem lootItem)
+    /// <summary>
+    /// Gère les changements dans la collection SessionLoot (source unique de vérité)
+    /// </summary>
+    private void SessionLoot_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         Dispatcher.Invoke(() =>
         {
-            var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
-            _hiddenLootKeys.Remove(key);
-
-            var existing = _allLootItems.FirstOrDefault(i =>
-                string.Equals(i.CharacterName, lootItem.CharacterName, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(i.ItemName, lootItem.ItemName, StringComparison.OrdinalIgnoreCase));
-
-            if (existing != null)
-            {
-                if (!ReferenceEquals(existing, lootItem))
-                {
-                    existing.Quantity = lootItem.Quantity;
-                    existing.LastObtained = lootItem.LastObtained;
-                }
-            }
-            else
-            {
-                // Appliquer l'état favoris si l'item existe dans les favoris
-                lootItem.IsFavorite = _favoriteKeys.Contains(key);
-                _allLootItems.Add(lootItem);
-            }
-
+            // Recalculer le filtre quand la collection change
             ApplyFilters();
             UpdateStatus();
         });
     }
-
-    private void OnLootItemUpdated(object? sender, LootItem lootItem)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
-            _hiddenLootKeys.Remove(key);
-
-            var existing = _allLootItems.FirstOrDefault(i =>
-                string.Equals(i.CharacterName, lootItem.CharacterName, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(i.ItemName, lootItem.ItemName, StringComparison.OrdinalIgnoreCase));
-
-            if (existing == null)
-            {
-                // Appliquer l'état favoris si l'item existe dans les favoris
-                lootItem.IsFavorite = _favoriteKeys.Contains(key);
-                _allLootItems.Add(lootItem);
-            }
-            else if (!ReferenceEquals(existing, lootItem))
-            {
-                existing.Quantity = lootItem.Quantity;
-                existing.LastObtained = lootItem.LastObtained;
-                // Conserver l'état favoris
-                existing.IsFavorite = _favoriteKeys.Contains(key);
-            }
-
-            ApplyFilters();
-            UpdateStatus();
-        });
-    }
-
-    private void OnLootItemRemoved(object? sender, LootItem lootItem)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
-            
-            // Si l'item est favoris, le garder dans la liste même si la quantité est 0
-            if (_favoriteKeys.Contains(key))
-            {
-                var existing = _allLootItems.FirstOrDefault(i =>
-                    string.Equals(i.CharacterName, lootItem.CharacterName, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(i.ItemName, lootItem.ItemName, StringComparison.OrdinalIgnoreCase));
-
-                if (existing != null)
-                {
-                    existing.Quantity = 0;
-                    existing.LastObtained = DateTime.Now;
-                }
-            }
-            else
-            {
-                // Retirer l'item de la liste s'il n'est pas favoris
-                var itemToRemove = _allLootItems.FirstOrDefault(i =>
-                    string.Equals(i.CharacterName, lootItem.CharacterName, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(i.ItemName, lootItem.ItemName, StringComparison.OrdinalIgnoreCase));
-
-                if (itemToRemove != null)
-                {
-                    _allLootItems.Remove(itemToRemove);
-                }
-            }
-
-            ApplyFilters();
-            UpdateStatus();
-        });
-    }
+    
+    // SUPPRIMÉ : OnLootItemAdded, OnLootItemUpdated, OnLootItemRemoved
+    // La collection SessionLoot est maintenant la source unique de vérité
+    // Les changements sont gérés via CollectionChanged
 
     private void OnCharactersChanged(object? sender, List<string> characters)
     {
@@ -757,41 +722,19 @@ public partial class LootWindow : Window, INotifyPropertyChanged
 
             _lootTracker?.SetMainCharacter(mainCharacter);
 
-            if (_hiddenLootKeys.Count > 0)
+            // CORRECTION MAJEURE : Ne plus recréer la collection
+            // La collection SessionLoot est la source unique de vérité et ne doit JAMAIS être vidée
+            // Seul le changement de nom du personnage principal est géré ici
+            // Les items avec "Vous" seront mis à jour automatiquement par LootTracker.SetMainCharacter()
+            
+            // Appliquer les favoris aux items existants dans SessionLoot
+            if (_lootManagementService != null)
             {
-                var updatedHidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var key in _hiddenLootKeys)
+                var favoriteKeysFromService = _lootManagementService.SaveFavorites();
+                foreach (var item in _lootManagementService.SessionLoot)
                 {
-                    if (key.StartsWith("Vous|", StringComparison.OrdinalIgnoreCase))
-                    {
-                        updatedHidden.Add($"{mainCharacter}|{key.Substring(5)}");
-                    }
-                    else
-                    {
-                        updatedHidden.Add(key);
-                    }
-                }
-
-                _hiddenLootKeys.Clear();
-                foreach (var updatedKey in updatedHidden)
-                {
-                    _hiddenLootKeys.Add(updatedKey);
-                }
-            }
-
-            if (_lootTracker != null)
-            {
-                var trackerItems = _lootTracker.GetItems().Values
-                    .OrderByDescending(i => i.LastObtained)
-                    .ToList();
-
-                _allLootItems.Clear();
-                foreach (var item in trackerItems)
-                {
-                    // Appliquer l'état favoris
                     var key = $"{item.CharacterName}|{item.ItemName}";
-                    item.IsFavorite = _favoriteKeys.Contains(key);
-                    _allLootItems.Add(item);
+                    item.IsFavorite = favoriteKeysFromService.Contains(key);
                 }
             }
 
@@ -804,6 +747,9 @@ public partial class LootWindow : Window, INotifyPropertyChanged
     private void ApplyFilters()
     {
         _filteredLootItems.Clear();
+
+        if (_lootManagementService == null)
+            return;
 
         string? mainCharacter = _characterDetector?.GetConfig().MainCharacter;
 
@@ -823,9 +769,11 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             }
         }
 
-        // Trier: favoris en premier, puis par date
-        var sortedItems = _allLootItems.OrderByDescending(i => i.IsFavorite)
-                                       .ThenByDescending(i => i.LastObtained);
+        // Trier: favoris en premier, puis par date de dernière obtention
+        var sortedItems = _lootManagementService.SessionLoot
+            .OrderByDescending(i => i.IsFavorite)
+            .ThenByDescending(i => i.LastObtained)
+            .ToList();
 
         foreach (var item in sortedItems)
         {
@@ -838,12 +786,15 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             }
             // Sinon, garder "Vous" tel quel si aucun personnage principal n'est défini
 
-            var key = $"{item.CharacterName}|{item.ItemName}";
-            if (_hiddenLootKeys.Contains(key))
+            // Vérifier si l'item a été supprimé par l'utilisateur
+            // (Le service gère maintenant la suppression, mais on vérifie quand même pour sécurité)
+            if (_lootManagementService.IsUserDeleted(item.CharacterName, item.ItemName))
             {
+                // Ne pas afficher les items supprimés par l'utilisateur
                 continue;
             }
 
+            // Filtrer par personnage sélectionné
             // Ne pas filtrer les favoris même si la quantité est 0
             if (_selectedCharacters.Contains(actualName))
             {
@@ -866,90 +817,46 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        // Ne pas supprimer si l'item est favoris
-        if (lootItem.IsFavorite)
-        {
+        if (_lootManagementService == null)
             return;
-        }
 
-        var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
-        _hiddenLootKeys.Add(key);
-
-        ApplyFilters();
-        UpdateStatus();
-        ScheduleFocusReturn();
-    }
-
-    private void ToggleFavorite_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        // Empêcher la propagation pour éviter les conflits avec le drag de la fenêtre
-        e.Handled = true;
+        // Le service gère la protection contre la suppression des favoris
+        bool deleted = _lootManagementService.DeleteLootByUser(lootItem.CharacterName, lootItem.ItemName);
         
-        if (sender is not Button button || button.Tag is not LootItem lootItem)
+        if (deleted)
         {
-            return;
+            // Le filtre sera mis à jour automatiquement via CollectionChanged
+            UpdateStatus();
+            ScheduleFocusReturn();
         }
-
-        ToggleFavoriteInternal(lootItem);
-        
-        // Éviter que le clic ne déclenche d'autres événements
-        e.Handled = true;
-    }
-
-    private void ToggleFavoriteInternal(LootItem lootItem)
-    {
-        var key = $"{lootItem.CharacterName}|{lootItem.ItemName}";
-        
-        if (lootItem.IsFavorite)
-        {
-            // Si c'est un favori détruit (quantité 0), le supprimer complètement
-            if (lootItem.Quantity == 0)
-            {
-                // Retirer des favoris
-                _favoriteKeys.Remove(key);
-                lootItem.IsFavorite = false;
-                
-                // Supprimer l'item de la liste
-                _allLootItems.Remove(lootItem);
-                
-                // Supprimer aussi du LootTracker si nécessaire
-                _lootTracker?.RemoveItem(lootItem.CharacterName, lootItem.ItemName);
-                
-                Logger.Info("LootWindow", $"Favori détruit supprimé: {lootItem.CharacterName}: {lootItem.ItemName}");
-            }
-            else
-            {
-                // Retirer des favoris normalement (mais garder l'item car quantité > 0)
-                _favoriteKeys.Remove(key);
-                lootItem.IsFavorite = false;
-            }
-        }
-        else
-        {
-            // Ajouter aux favoris
-            _favoriteKeys.Add(key);
-            lootItem.IsFavorite = true;
-        }
-
-        SaveFavorites();
-        ApplyFilters();
-        UpdateStatus();
-        ScheduleFocusReturn();
     }
 
     private void ToggleFavorite_Click(object sender, RoutedEventArgs e)
     {
-        // Garder cette méthode pour compatibilité mais utiliser PreviewMouseDown de préférence
         if (sender is not Button button || button.Tag is not LootItem lootItem)
         {
             return;
         }
 
-        ToggleFavoriteInternal(lootItem);
+        if (_lootManagementService == null)
+            return;
+
+        // Le service gère la logique complète des favoris
+        _lootManagementService.ToggleFavorite(lootItem.CharacterName, lootItem.ItemName);
+
+        // Sauvegarder les favoris
+        SaveFavorites();
+        
+        // Le filtre sera mis à jour automatiquement via CollectionChanged
+        UpdateStatus();
+        ScheduleFocusReturn();
     }
 
     private void LoadFavorites()
     {
+        if (_lootManagementService == null)
+            return;
+            
         try
         {
             var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppDataFolderName, LootFolderName);
@@ -966,20 +873,9 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             
             if (favorites != null)
             {
-                _favoriteKeys.Clear();
-                foreach (var key in favorites)
-                {
-                    _favoriteKeys.Add(key);
-                }
-
-                // Appliquer l'état favoris aux items existants
-                foreach (var item in _allLootItems)
-                {
-                    var key = $"{item.CharacterName}|{item.ItemName}";
-                    item.IsFavorite = _favoriteKeys.Contains(key);
-                }
-
-                Logger.Info("LootWindow", $"Favoris chargés: {_favoriteKeys.Count} items");
+                var favoriteKeysSet = new HashSet<string>(favorites, StringComparer.OrdinalIgnoreCase);
+                _lootManagementService.LoadFavorites(favoriteKeysSet);
+                Logger.Info("LootWindow", $"Favoris chargés: {favoriteKeysSet.Count} items");
             }
         }
         catch (Exception ex)
@@ -990,17 +886,20 @@ public partial class LootWindow : Window, INotifyPropertyChanged
 
     private void SaveFavorites()
     {
+        if (_lootManagementService == null)
+            return;
+            
         try
         {
             var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppDataFolderName, LootFolderName);
             Directory.CreateDirectory(appData);
             
             var favoritesPath = Path.Combine(appData, FavoritesFileName);
-            var favorites = _favoriteKeys.ToList();
+            var favorites = _lootManagementService.SaveFavorites().ToList();
             var json = JsonConvert.SerializeObject(favorites, Formatting.Indented);
             File.WriteAllText(favoritesPath, json);
             
-            Logger.Debug("LootWindow", $"Favoris sauvegardés: {_favoriteKeys.Count} items");
+            Logger.Debug("LootWindow", $"Favoris sauvegardés: {favorites.Count} items");
         }
         catch (Exception ex)
         {
@@ -1012,14 +911,14 @@ public partial class LootWindow : Window, INotifyPropertyChanged
     {
         Logger.Info("LootWindow", $"Reset complet: {reason}");
 
-        _lootTracker?.Clear();
+        // Utiliser le service pour le reset
+        _lootManagementService?.Reset();
+        
         _characterDetector?.ResetCharacterStorage(rehydrateAfterReset: false, suppressServerEvents: true);
 
-        _allLootItems.Clear();
         _filteredLootItems.Clear();
         _selectedCharacters.Clear();
-        _hiddenLootKeys.Clear();
-        // Ne pas effacer les favoris lors d'un reset
+        // Ne pas effacer les favoris lors d'un reset (le service les conserve)
 
         UpdateCharactersList();
         UpdateStatus();

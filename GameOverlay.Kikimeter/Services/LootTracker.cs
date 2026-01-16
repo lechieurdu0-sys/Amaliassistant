@@ -11,13 +11,15 @@ namespace GameOverlay.Kikimeter.Services;
 /// <summary>
 /// Service pour surveiller et parser les items ramassés depuis wakfu_chat.log
 /// Détecte les loots pour "Vous" et les autres personnages
+/// Utilise LootManagementService comme source unique de vérité
 /// </summary>
 public class LootTracker : IDisposable
 {
     private const int PollingIntervalMs = 300; // 300ms entre chaque vérification
     
     private readonly string _logFilePath;
-    private readonly Dictionary<string, LootItem> _items = new(StringComparer.OrdinalIgnoreCase);
+    private readonly LootManagementService? _lootManagementService;
+    private readonly Dictionary<string, LootItem> _items = new(StringComparer.OrdinalIgnoreCase); // Dictionnaire temporaire pour compatibilité (sera supprimé)
     private readonly object _lockObject = new object();
     private long _lastPosition = 0;
     private long _lastKnownFileLength = 0;
@@ -126,9 +128,10 @@ public class LootTracker : IDisposable
     public event EventHandler<LootItem>? LootItemUpdated;
     public event EventHandler<LootItem>? LootItemRemoved;
     
-    public LootTracker(string logFilePath)
+    public LootTracker(string logFilePath, LootManagementService? lootManagementService = null)
     {
         _logFilePath = logFilePath ?? throw new ArgumentNullException(nameof(logFilePath));
+        _lootManagementService = lootManagementService;
         
         // Initialiser _lastPosition à la fin du fichier si le fichier existe
         // On attendra les nouvelles écritures et on les lira uniquement
@@ -593,7 +596,15 @@ public class LootTracker : IDisposable
         // Utiliser le nom tel quel (déjà remplacé si nécessaire)
         string actualCharacterName = characterName;
         
-        // Créer une clé unique : CharacterName + ItemName
+        // Utiliser LootManagementService si disponible (source unique de vérité)
+        if (_lootManagementService != null)
+        {
+            _lootManagementService.AddOrUpdateLoot(actualCharacterName, itemName, quantity);
+            // Les événements seront gérés par le service via la collection ObservableCollection
+            return;
+        }
+        
+        // Compatibilité : comportement ancien si pas de service
         string key = $"{actualCharacterName}|{itemName}";
         
         lock (_lockObject)
@@ -625,10 +636,65 @@ public class LootTracker : IDisposable
         {
             _mainCharacterName = mainCharacterName;
             
-            // Mettre à jour tous les items qui ont "Vous" comme nom de personnage
-            var itemsToUpdate = _items.Where(kvp => string.Equals(kvp.Value.CharacterName, "Vous", StringComparison.OrdinalIgnoreCase)).ToList();
+            // Si on utilise le service, la mise à jour des noms se fera via le service
+            if (_lootManagementService != null)
+            {
+                // Collecter les items à mettre à jour (copie pour éviter modification pendant itération)
+                var itemsToUpdate = _lootManagementService.SessionLoot
+                    .Where(i => string.Equals(i.CharacterName, "Vous", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                
+                var itemsToRemove = new List<LootItem>();
+                var itemsToAdd = new List<LootItem>();
+                
+                foreach (var oldItem in itemsToUpdate)
+                {
+                    // Vérifier si un item avec le nouveau nom existe déjà
+                    var existingWithNewName = _lootManagementService.SessionLoot
+                        .FirstOrDefault(i => 
+                            string.Equals(i.CharacterName, mainCharacterName, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(i.ItemName, oldItem.ItemName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (existingWithNewName != null)
+                    {
+                        // Fusionner les quantités
+                        existingWithNewName.AddQuantity(oldItem.Quantity);
+                        // Marquer l'ancien item pour suppression
+                        itemsToRemove.Add(oldItem);
+                    }
+                    else
+                    {
+                        // Créer un nouvel item avec le nouveau nom
+                        var newItem = new LootItem(mainCharacterName, oldItem.ItemName, oldItem.Quantity)
+                        {
+                            IsFavorite = oldItem.IsFavorite
+                        };
+                        
+                        // Marquer l'ancien pour suppression et le nouveau pour ajout
+                        itemsToRemove.Add(oldItem);
+                        itemsToAdd.Add(newItem);
+                    }
+                }
+                
+                // Appliquer les modifications
+                foreach (var item in itemsToRemove)
+                {
+                    _lootManagementService.SessionLoot.Remove(item);
+                }
+                
+                foreach (var item in itemsToAdd)
+                {
+                    _lootManagementService.SessionLoot.Add(item);
+                }
+                
+                Logger.Info("LootTracker", $"Personnage principal défini: {mainCharacterName} ({itemsToUpdate.Count} items mis à jour)");
+                return;
+            }
             
-            foreach (var kvp in itemsToUpdate)
+            // Compatibilité : comportement ancien si pas de service
+            var itemsToUpdateOld = _items.Where(kvp => string.Equals(kvp.Value.CharacterName, "Vous", StringComparison.OrdinalIgnoreCase)).ToList();
+            
+            foreach (var kvp in itemsToUpdateOld)
             {
                 // Créer une nouvelle clé avec le nouveau nom
                 string newKey = $"{mainCharacterName}|{kvp.Value.ItemName}";
@@ -703,6 +769,15 @@ public class LootTracker : IDisposable
     
     private void ProcessRemoval(string characterName, string itemName, int quantity)
     {
+        // Utiliser LootManagementService si disponible (source unique de vérité)
+        if (_lootManagementService != null)
+        {
+            _lootManagementService.RemoveLootQuantity(characterName, itemName, quantity);
+            // Les événements seront gérés par le service via la collection ObservableCollection
+            return;
+        }
+        
+        // Compatibilité : comportement ancien si pas de service
         string key = $"{characterName}|{itemName}";
         
         lock (_lockObject)
