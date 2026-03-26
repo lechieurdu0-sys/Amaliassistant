@@ -127,10 +127,9 @@ public class LootCharacterDetector : IDisposable
         }
         else
         {
-            // Si le fichier existe, le charger et recharger depuis les logs si nécessaire
-        ResetStoredCharacters();
-        InitializeLogPositions(initialLoad: true);
-        RehydrateCharactersAfterReset();
+            // Si le fichier existe, le conserver tel quel.
+            // On refait un scan initial pour réamorcer proprement les watchers sans perdre la config.
+            InitializeLogPositions(initialLoad: true);
         }
         
         // Surveiller le fichier pour les nouveaux personnages
@@ -571,26 +570,9 @@ public class LootCharacterDetector : IDisposable
             }
         }
 
-        // Déterminer les personnages à retirer (uniquement ceux détectés automatiquement auparavant)
-        // NE JAMAIS retirer les personnages manuels, le personnage principal, ou ceux dans MyCharacters
-        var detectedSet = new HashSet<string>(sortedCharacters, StringComparer.OrdinalIgnoreCase);
-        var myCharactersSet = new HashSet<string>(config.MyCharacters ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
-        var keysToRemove = config.Characters.Keys
-            .Where(k => !detectedSet.Contains(k)
-                        && !manualCharacters.Contains(k)
-                        && !string.Equals(k, config.MainCharacter, StringComparison.OrdinalIgnoreCase)
-                        && !myCharactersSet.Contains(k)) // Ne pas retirer les personnages dans MyCharacters
-                .ToList();
-            
-        if (keysToRemove.Count > 0)
-            {
-            Logger.Info("LootCharacterDetector", $"Retrait de {keysToRemove.Count} personnages non récents: {string.Join(", ", keysToRemove)}");
-            foreach (var key in keysToRemove)
-            {
-                config.Characters.Remove(key);
-            }
-            listChanged = true;
-        }
+        // Ne plus retirer automatiquement les personnages:
+        // la liste doit rester stable tant qu'il n'y a pas d'action explicite utilisateur (reset/suppression).
+        // Cela évite les régressions où des membres du groupe disparaissent des paramètres.
 
         if (listChanged)
         {
@@ -824,6 +806,8 @@ public class LootCharacterDetector : IDisposable
 
         bool updated = false;
         var now = DateTime.Now;
+        var config = LoadConfig();
+        bool configChanged = false;
 
         foreach (var playerName in playerNames)
         {
@@ -842,6 +826,19 @@ public class LootCharacterDetector : IDisposable
             // Cette liste n'affecte JAMAIS la présence des joueurs dans le Kikimeter
             _recentCharacters[normalized] = now;
             updated = true;
+
+            // Garder aussi la liste persistante des personnages visible/stable côté paramètres.
+            if (!config.Characters.ContainsKey(normalized))
+            {
+                config.Characters[normalized] = true;
+                configChanged = true;
+            }
+        }
+
+        if (configChanged)
+        {
+            config.LastUpdate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            SaveConfig(config);
         }
 
         if (updated)

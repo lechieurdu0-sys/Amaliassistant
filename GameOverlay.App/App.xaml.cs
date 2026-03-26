@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -19,6 +19,11 @@ namespace GameOverlay.App
             // Initialiser le logger
             try
             {
+                // Brancher les handlers globaux le plus tôt possible
+                this.DispatcherUnhandledException += Application_DispatcherUnhandledException;
+                AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+                System.Threading.Tasks.TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
                 Logger.Info("App", "Application démarrée");
                 LootCharacterDetector.EnsureConfigFileExists();
                 
@@ -50,12 +55,38 @@ namespace GameOverlay.App
         {
             try
             {
-                Logger.Error("App", $"Exception non gérée: {e.Exception.Message}");
+                Logger.Error("App", $"DispatcherUnhandledException (UI): {e.Exception}");
                 e.Handled = true;
             }
             catch
             {
                 // Si le logger plante, on ne peut rien faire
+            }
+        }
+
+        private void CurrentDomain_UnhandledException(object? sender, UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                var ex = e.ExceptionObject as Exception;
+                Logger.Error("App", $"AppDomain.UnhandledException (terminating={e.IsTerminating}): {ex}");
+            }
+            catch
+            {
+                // Dernière ligne de défense
+            }
+        }
+
+        private void TaskScheduler_UnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
+        {
+            try
+            {
+                Logger.Error("App", $"TaskScheduler.UnobservedTaskException: {e.Exception}");
+                e.SetObserved();
+            }
+            catch
+            {
+                // Dernière ligne de défense
             }
         }
     }

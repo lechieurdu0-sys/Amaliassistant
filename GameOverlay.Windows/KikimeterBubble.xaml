@@ -35,8 +35,8 @@
             <RowDefinition Height="40"/>
         </Grid.RowDefinitions>
 
-        <!-- Carré Kikimeter -->
-        <Grid Grid.Row="0" Grid.Column="0" Width="40" Height="40" Background="Transparent">
+        <!-- Carré Kikimeter (descendu temporairement d'un cran) -->
+        <Grid Grid.Row="2" Grid.Column="0" Width="40" Height="40" Background="Transparent">
             <Border x:Name="TopSquare"
                     Width="40"
                     Height="40"
@@ -62,8 +62,8 @@
                    IsHitTestVisible="False"/>
         </Grid>
 
-        <!-- CROIX DE DÉPLACEMENT (25x25px à droite du carré Kikimeter, alignée coin haut avec 5px d'espace) -->
-        <Grid Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="5,0,0,0" Width="25" Height="25" Cursor="Hand">
+        <!-- CROIX DE DÉPLACEMENT (reste alignée au carré Kikimeter descendu) -->
+        <Grid Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="5,0,0,0" Width="25" Height="25" Cursor="Hand">
             <Image x:Name="DragHandle"
                    Source="/GameOverlay.Windows;component/croix_deplacement.png" 
                    VerticalAlignment="Center" 
@@ -79,8 +79,8 @@
                    ToolTip="Maintenir pour déplacer"/>
         </Grid>
 
-        <!-- Carré Loot -->
-        <Grid Grid.Row="2" Grid.Column="0" Width="40" Height="40" Background="Transparent">
+        <!-- Carré Loot caché temporairement -->
+        <Grid Grid.Row="2" Grid.Column="0" Width="40" Height="40" Background="Transparent" Visibility="Collapsed" IsHitTestVisible="False">
             <Border x:Name="MiddleSquare"
                     Width="40"
                     Height="40"

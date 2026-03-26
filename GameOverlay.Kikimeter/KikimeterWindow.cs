@@ -3709,6 +3709,16 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 !_isResetInProgress)
             {
                 var isCombatActive = _playerDataProvider.IsCombatActive;
+
+                // Filet de sécurité:
+                // si un combat est actif mais que le Kikimeter est resté figé (événement CombatStarted manqué),
+                // on force la reprise pour réinitialiser correctement les compteurs.
+                if (isCombatActive && _freezeAfterCombat && !_isNewCombat)
+                {
+                    Logger.Warning("KikimeterWindow", "Combat actif détecté alors que le Kikimeter est figé: reprise forcée du suivi.");
+                    _isNewCombat = true;
+                    _freezeAfterCombat = false;
+                }
                 
                 // NOUVEAU COMBAT : Initialisation complète (une seule fois)
                 // Le flag _freezeAfterCombat est ignoré pour permettre l'initialisation

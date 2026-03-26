@@ -546,6 +546,14 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             
             // Créer le tracker avec le service
             _lootTracker = new LootTracker(chatLogPath, _lootManagementService);
+            // Important: propager immédiatement le personnage principal au tracker.
+            // Sinon, les lignes "Vous avez ramassé ..." restent associées à "Vous"
+            // tant qu'un événement MainCharacterDetected n'est pas relancé.
+            var mainCharacterAtStartup = _characterDetector?.GetConfig().MainCharacter;
+            if (!string.IsNullOrWhiteSpace(mainCharacterAtStartup))
+            {
+                _lootTracker.SetMainCharacter(mainCharacterAtStartup);
+            }
             // Les événements LootItemAdded/Updated/Removed ne sont plus nécessaires
             // car on s'abonne directement à SessionLoot.CollectionChanged
 
@@ -752,6 +760,13 @@ public partial class LootWindow : Window, INotifyPropertyChanged
             return;
 
         string? mainCharacter = _characterDetector?.GetConfig().MainCharacter;
+
+        // Le perso principal (étoile) représente "Vous" dans wakfu_chat.log.
+        // On le garde toujours sélectionné pour garantir l'affichage des loots du joueur local.
+        if (!string.IsNullOrWhiteSpace(mainCharacter))
+        {
+            _selectedCharacters.Add(mainCharacter);
+        }
 
         // S'assurer qu'au moins le personnage principal est sélectionné
         if (_selectedCharacters.Count == 0)

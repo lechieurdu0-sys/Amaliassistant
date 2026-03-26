@@ -19,7 +19,21 @@ public static class SpellMetadataProvider
     private static readonly Dictionary<string, string> SpellAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         // Mapping importé de WakMeter (SpecialCase.java)
-        ["Exaltation"] = "Cataclysme"
+        ["Exaltation"] = "Cataclysme",
+
+        // Aliases Sram - compatibilité refonte (anciens noms / variantes)
+        ["Premier Sang"] = "Premier sang",
+        ["Coup Sournois"] = "Coup sournois",
+        ["Traumatisme"] = "Traumatisme",
+        ["Escrosramerie"] = "Attaque létale",
+        ["Filouterie"] = "Arnaque",
+
+        // Variantes de casse/ponctuation fréquemment vues dans les logs
+        ["Piege de repulsion"] = "Piège de répulsion",
+        ["Piege d'attraction"] = "Piège d'attraction",
+        ["Piege de teleportation"] = "Piège de téléportation",
+        ["Contact letal"] = "Contact létal",
+        ["Attaque mortelle "] = "Attaque mortelle"
     };
 
     private static readonly HashSet<string> IndirectEffectNames = new(StringComparer.OrdinalIgnoreCase)

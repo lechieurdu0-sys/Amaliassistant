@@ -61,15 +61,15 @@ public class LogParser
     // Capture : Groupe 1 = Cible, Groupe 2 = Dégâts, Groupe 3 = Élément (optionnel), Groupe 4 = Info supplémentaire comme "Premier rebond" (optionnel)
     // Gère les espaces multiples entre "PV" et les parenthèses avec \s+ (au moins un espace)
     private static readonly Regex DamageRegex = new Regex(
-        @".*?\[Information \(combat\)\]\s+(.+?):\s+-(\d+)\s+PV\s*(?:\(([^)]+)\))?\s*(?:\(([^)]+)\))?",
+        @".*?\[Information \(combat\)\]\s+(.+?):\s+-([\d\s\u00A0\u202F]+)\s+PV\s*(?:\(([^)]+)\))?\s*(?:\(([^)]+)\))?",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     
     private static readonly Regex HealingRegex = new Regex(
-        @".*?\[Information \(combat\)\]\s+(.+?):\s+\+(\d+)\s+PV\s*(?:\(([^)]+)\))?",
+        @".*?\[Information \(combat\)\]\s+(.+?):\s+\+([\d\s\u00A0\u202F]+)\s+PV\s*(?:\(([^)]+)\))?",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     
     private static readonly Regex ShieldRegex = new Regex(
-        @".*?\[Information \(combat\)\]\s+(.+?):\s+(\d+)\s+Armure",
+        @".*?\[Information \(combat\)\]\s+(.+?):\s+([\d\s\u00A0\u202F]+)\s+Armure",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex SpaceBetweenDigitsRegex = new Regex(
@@ -167,9 +167,32 @@ public class LogParser
                 return;
             }
             
-            // Si pas de combat actif, ignorer
+            // Fallback robuste:
+            // certains logs ne remontent pas toujours "CREATION DU COMBAT" au bon moment.
+            // Si on voit des joueurs rejoindre un combat alors que l'état n'est pas actif,
+            // on démarre le combat implicitement pour ne pas figer le Kikimeter.
             if (_currentState != CombatState.Active)
-                return;
+            {
+                bool hasJoinMarker =
+                    line.Contains("join the fight at", StringComparison.Ordinal) &&
+                    line.Contains("isControlledByAI=false", StringComparison.Ordinal);
+
+                bool hasCombatActionMarker =
+                    line.Contains("[Information (combat)]", StringComparison.Ordinal) &&
+                    (line.Contains("lance le sort", StringComparison.Ordinal) ||
+                     line.Contains(" PV", StringComparison.Ordinal) ||
+                     line.Contains("Armure", StringComparison.Ordinal));
+
+                if (hasJoinMarker || hasCombatActionMarker)
+                {
+                    Logger.Info(LogCategory, $"Début de combat implicite détecté (join={hasJoinMarker}, action={hasCombatActionMarker}).");
+                    HandleCombatStart();
+                }
+                else
+                {
+                    return;
+                }
+            }
 
             if (TryHandleEffectApplication(line))
                 return;
@@ -571,7 +594,7 @@ public class LogParser
         }
         
         string target = NormalizeEntityName(match.Groups[1].Value);
-        long damage = long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        long damage = ParseCombatAmount(match.Groups[2].Value);
         var now = DateTime.Now;
 
         string? effectName = null;
@@ -713,7 +736,7 @@ public class LogParser
         }
         
         string target = NormalizeEntityName(match.Groups[1].Value);
-        long healing = long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        long healing = ParseCombatAmount(match.Groups[2].Value);
         
         // Soins reçus par la cible
         if (!string.IsNullOrEmpty(target) && _playerStats.ContainsKey(target))
@@ -751,7 +774,7 @@ public class LogParser
         }
         
         string target = NormalizeEntityName(match.Groups[1].Value);
-        long shield = long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        long shield = ParseCombatAmount(match.Groups[2].Value);
         
         // Bouclier donné : attribuer au lanceur du sort
         if (_combatContext.CurrentCaster != null && 
@@ -805,6 +828,20 @@ public class LogParser
         // Fallback : utiliser le dernier lanceur de sort
         Logger.Debug(LogCategory, $"Attribution fallback sur caster courant: {_combatContext.CurrentCaster}");
         return _combatContext.CurrentCaster;
+    }
+
+    private static long ParseCombatAmount(string rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+            return 0;
+
+        // Les logs Wakfu utilisent parfois des séparateurs de milliers unicode (ex: 1 003).
+        var normalized = SpaceBetweenDigitsRegex.Replace(rawValue, string.Empty);
+        normalized = normalized.Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        return long.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0;
     }
     
     /// <summary>

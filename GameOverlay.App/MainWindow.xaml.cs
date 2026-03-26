@@ -42,6 +42,7 @@ namespace GameOverlay.App
         private NotifyIcon notifyIcon;
         private ContextMenuStrip? mainWindowContextMenu;
         private Config config = new Config();
+        private bool _isExplicitAppExitRequested = false;
         
         /// <summary>
         /// Obtient le menu contextuel Windows Forms du MainWindow
@@ -84,6 +85,7 @@ namespace GameOverlay.App
 
         private int _openContextMenus;
         private bool _focusReturnPending;
+        private string _lastDetectedServerName = string.Empty;
 
         public MainWindow()
         {
@@ -209,6 +211,7 @@ namespace GameOverlay.App
                 this.SourceInitialized += MainWindow_SourceInitialized;
 
                 // Nettoyer les ressources à la fermeture
+                this.Closing += MainWindow_Closing;
                 this.Closed += (s, e) => {
                     try
                     {
@@ -829,8 +832,36 @@ namespace GameOverlay.App
 
         private void ExitApplication()
         {
+            _isExplicitAppExitRequested = true;
             CleanupNotifyIcon();
             System.Windows.Application.Current.Shutdown();
+        }
+
+        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            try
+            {
+                // Empêcher les fermetures involontaires:
+                // - autoriser si l'utilisateur a explicitement demandé "Quitter"
+                // - autoriser pendant une mise à jour (UpdateService ferme les fenêtres)
+                if (_isExplicitAppExitRequested || UpdateService.IsUpdating)
+                {
+                    Logger.Info("MainWindow", $"Fermeture autorisée (explicitExit={_isExplicitAppExitRequested}, isUpdating={UpdateService.IsUpdating})");
+                    return;
+                }
+
+                // Dans tous les autres cas, annuler la fermeture pour éviter un arrêt inattendu
+                e.Cancel = true;
+                Logger.Error("MainWindow", "Demande de fermeture inattendue interceptée et annulée.");
+                Logger.Error("MainWindow", $"Stack de fermeture inattendue: {Environment.StackTrace}");
+
+                // Conserver le comportement en arrière-plan
+                this.Hide();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MainWindow", $"Erreur dans MainWindow_Closing: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -1881,7 +1912,13 @@ namespace GameOverlay.App
                         }
                     }
                     
+                    EnsureLootWindowIsOnScreen();
+                    lootWindow.WindowState = WindowState.Normal;
                     lootWindow.Show();
+                    lootWindow.Visibility = Visibility.Visible;
+                    // Petit "topmost pulse" pour ramener la fenêtre au premier plan sans la bloquer durablement.
+                    lootWindow.Topmost = true;
+                    lootWindow.Topmost = false;
                     lootWindow.Activate();
                 }
                 else
@@ -1892,7 +1929,29 @@ namespace GameOverlay.App
             }
             catch (Exception ex)
             {
-                Logger.Error("MainWindow", $"Erreur ToggleLoot: {ex.Message}");
+                Logger.Error("MainWindow", $"Erreur ToggleLoot: {ex.Message}\n{ex}");
+                
+                // Garder le comportement historique: ne pas réinitialiser agressivement la fenêtre
+                // pour éviter de perdre le contexte loot/session après un combat.
+                // On tente uniquement de redémarrer le watcher si une instance existe déjà.
+                if (lootWindow != null)
+                {
+                    try
+                    {
+                        string chatLogPath = config.LootChatLogPath ?? "";
+                        string kikimeterLogPath = config.KikimeterLogPath ?? "";
+                        if (!string.IsNullOrEmpty(chatLogPath))
+                        {
+                            lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
+                            Logger.Info("MainWindow", $"ToggleLoot recovery: StartWatching relancé sur {chatLogPath}");
+                        }
+                    }
+                    catch (Exception restartEx)
+                    {
+                        Logger.Error("MainWindow", $"ToggleLoot recovery: échec du redémarrage watcher: {restartEx.Message}\n{restartEx}");
+                    }
+                }
+
             }
         }
         
@@ -1976,7 +2035,19 @@ namespace GameOverlay.App
             try
             {
                 var label = string.IsNullOrWhiteSpace(e.ServerName) ? "déconnexion" : e.ServerName;
-                Logger.Info("MainWindow", $"Changement de serveur détecté ({label}), réinitialisation des affichages.");
+                Logger.Info("MainWindow", $"Changement de serveur détecté ({label}).");
+
+                // Ne déclencher un reset complet que pour un VRAI changement de serveur.
+                // Cela évite de vider les personnages après combat si des événements de reconnexion
+                // transientes apparaissent sur le même serveur.
+                bool isRealServerChange = !e.IsDisconnect
+                    && !string.IsNullOrWhiteSpace(e.ServerName)
+                    && !string.Equals(_lastDetectedServerName, e.ServerName, StringComparison.OrdinalIgnoreCase);
+
+                if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
+                {
+                    _lastDetectedServerName = e.ServerName;
+                }
                 
                 // Si c'est une connexion (pas une déconnexion), vider le fichier de log du chat
                 // pour ne garder que les nouvelles ventes de cette session
@@ -2025,64 +2096,14 @@ namespace GameOverlay.App
                     // Réinitialiser le SaleTracker même en cas de déconnexion
                     InitializeSaleTracker();
                 }
-                
-                // Réinitialiser le fichier de configuration des personnages
-                LootWindow_ResetButton_ExtraHandler(sender, new RoutedEventArgs());
-                
-                // Réinitialiser l'ordre manuel des joueurs en supprimant le fichier de sauvegarde
-                try
+
+                if (isRealServerChange)
                 {
-                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                    var manualOrderPath = Path.Combine(appData, "Amaliassistant", "kikimeter_manual_order.json");
-                    if (File.Exists(manualOrderPath))
-                    {
-                        File.Delete(manualOrderPath);
-                        Logger.Info("MainWindow", $"Fichier d'ordre manuel supprimé: {manualOrderPath}");
-                    }
-                    
-                    // Si KikimeterWindow existe, réinitialiser aussi l'ordre en mémoire
-                    if (kikimeterWindow != null)
-                    {
-                        kikimeterWindow.Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            try
-                            {
-                                // Réinitialiser l'ordre manuel dans KikimeterWindow
-                                // On ne peut pas accéder directement aux champs privés, mais le fichier est déjà supprimé
-                                // donc au prochain chargement, l'ordre sera réinitialisé
-                                Logger.Info("MainWindow", "Fichier d'ordre manuel supprimé, KikimeterWindow le rechargera au prochain démarrage");
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Info("MainWindow", $"Erreur lors de la notification à KikimeterWindow: {ex.Message}");
-                            }
-                        }), DispatcherPriority.Normal);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("MainWindow", $"Erreur lors de la suppression du fichier d'ordre manuel: {ex.Message}");
-                }
-                
-                // Réinitialiser la liste des personnages et l'ordre dans SettingsWindow si elle existe
-                if (settingsWindow != null)
-                {
-                    try
-                    {
-                        settingsWindow.ResetCharacterList();
-                        settingsWindow.ResetPlayerOrder();
-                        Logger.Info("MainWindow", "Liste des personnages et ordre réinitialisés dans SettingsWindow suite au changement de serveur.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors de la réinitialisation de SettingsWindow: {ex.Message}");
-                    }
+                    Logger.Info("MainWindow", $"Vrai changement de serveur détecté ({_lastDetectedServerName}) - reset loot uniquement (personnages/ordre conservés).");
                 }
                 else
                 {
-                    // SettingsWindow n'existe pas encore - le reset des personnages a déjà été fait
-                    // dans ResetAllLoot via ResetCharacterStorage, donc c'est OK
-                    Logger.Info("MainWindow", "SettingsWindow n'existe pas encore, reset des personnages déjà effectué via LootWindow.ResetAllLoot");
+                    Logger.Info("MainWindow", "Événement serveur sur le même serveur: aucun reset personnages/ordre.");
                 }
             }
             catch (Exception ex)
@@ -2101,13 +2122,48 @@ namespace GameOverlay.App
                 {
                     lootWindow.Left = positions.LootWindow.Left;
                     lootWindow.Top = positions.LootWindow.Top;
-                    lootWindow.Width = positions.LootWindow.Width;
-                    lootWindow.Height = positions.LootWindow.Height;
+                    lootWindow.Width = positions.LootWindow.Width > 0 ? positions.LootWindow.Width : 320;
+                    lootWindow.Height = positions.LootWindow.Height > 0 ? positions.LootWindow.Height : 550;
+                    EnsureLootWindowIsOnScreen();
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error("MainWindow", $"Erreur LoadLootWindowPosition: {ex.Message}");
+            }
+        }
+
+        private void EnsureLootWindowIsOnScreen()
+        {
+            if (lootWindow == null)
+            {
+                return;
+            }
+
+            double minWidth = lootWindow.MinWidth > 0 ? lootWindow.MinWidth : 320;
+            double minHeight = lootWindow.MinHeight > 0 ? lootWindow.MinHeight : 400;
+            if (lootWindow.Width < minWidth) lootWindow.Width = minWidth;
+            if (lootWindow.Height < minHeight) lootWindow.Height = minHeight;
+
+            var screenLeft = SystemParameters.VirtualScreenLeft;
+            var screenTop = SystemParameters.VirtualScreenTop;
+            var screenRight = screenLeft + SystemParameters.VirtualScreenWidth;
+            var screenBottom = screenTop + SystemParameters.VirtualScreenHeight;
+
+            var margin = 40d;
+            var maxLeft = screenRight - lootWindow.Width;
+            var maxTop = screenBottom - lootWindow.Height;
+
+            if (double.IsNaN(lootWindow.Left) || double.IsInfinity(lootWindow.Left) ||
+                lootWindow.Left < screenLeft - margin || lootWindow.Left > maxLeft + margin)
+            {
+                lootWindow.Left = Math.Max(screenLeft, (SystemParameters.PrimaryScreenWidth - lootWindow.Width) / 2);
+            }
+
+            if (double.IsNaN(lootWindow.Top) || double.IsInfinity(lootWindow.Top) ||
+                lootWindow.Top < screenTop - margin || lootWindow.Top > maxTop + margin)
+            {
+                lootWindow.Top = Math.Max(screenTop, (SystemParameters.PrimaryScreenHeight - lootWindow.Height) / 2);
             }
         }
         
