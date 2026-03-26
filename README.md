@@ -1,87 +1,215 @@
-# 🎮 Amaliassistant
+🧠 Amaliassistant
 
-Application d'overlay pour Wakfu offrant plusieurs fonctionnalités utiles pour améliorer votre expérience de jeu.
+Amaliassistant est une application desktop Windows (WPF / .NET) conçue pour analyser en temps réel les logs de jeu et fournir des outils de suivi, d’analyse et de visualisation pendant une session de jeu.
 
-## ✨ Fonctionnalités Principales
+Le projet a été pensé avec trois objectifs clairs :
 
-### 📊 Kikimeter
+📊 Donner une lecture fiable et claire de ce qui se passe en jeu
 
-Statistiques de combat en temps réel (dégâts infligés, reçus, soins, etc.)
+🧩 Être modulaire, extensible et maintenable dans le temps
 
-**⚠️ Important** : Vous devez spécifier votre launcher (Steam ou Ankama Launcher) dans les paramètres
+🎓 Servir de support d’apprentissage sérieux pour la programmation et l’architecture logicielle
 
-### 💰 Loot Tracker
+Ce n’est pas une usine à gaz, et ce n’est pas un prototype jetable.
 
-Suivi automatique du butin depuis les logs de chat
+🚀 Fonctionnalités principales (côté utilisateur)
+⚔️ Kikimeter (analyse de combat)
 
-Filtrage par personnage
+Le Kikimeter est le cœur historique de l’application.
 
-Statistiques détaillées
+Il permet de :
 
-Notification d'objets vendu hors connexion et meme pendant la session de jeu avec le prix total de celles ci avec un son de notification.(Le son est gérable directement dans les parametres)
+détecter automatiquement l’entrée et la sortie de combat
 
-### 🌐 Navigateur Web Intégré
+identifier les joueurs présents (personnage principal, groupe, adversaires)
 
-Navigation web complète avec WebView2
+afficher les statistiques de combat en temps réel
 
-Mode Picture-in-Picture pour YouTube
+maintenir un affichage stable pendant le combat
 
-Recherche intelligente (Google pour les termes non-URL)
+figer les résultats une fois le combat terminé
 
-Zoom adaptatif selon la taille de la fenêtre
+👉 Le comportement est volontairement prévisible :
 
-Historique de navigation sauvegardé
+en combat → affichage dynamique
 
-Connexions sauvegardées (cookies persistants)
+hors combat → affichage figé jusqu’au prochain combat
 
-### ⚙️ Fenêtre Paramètres
+👥 Gestion des joueurs
 
-Chemins de logs : Détection automatique Steam/Ankama Launcher
+L’application est capable de :
 
-Ordre des joueurs : Réorganisez l'ordre d'affichage dans le Kikimeter automatiquement pendant le combat
+détecter automatiquement les joueurs via les logs ou via un fichier JSON
 
-Gestion des personnages : Liste automatique des personnages détectés dans les logs
+identifier le personnage principal
 
-Démarrage automatique : Option pour lancer l'application au démarrage de Windows
+gérer un groupe limité (6 joueurs max)
 
-## 🚀 Installation
+conserver l’ordre de tour
 
-Téléchargez le dernier installateur depuis les Releases (désormais vous avez l'inforamtion lorsqu'une mise à jour est disponible et vous pouvez faire la recherche manuellement avec l'icon dans la barre des taches)
+gérer les changements de serveur (reset propre et sécurisé)
 
-Exécutez l'installateur
+Tout est fait pour éviter :
 
-Suivez les instructions d'installation
+les resets intempestifs
 
-Lancez l'application et configurez les chemins de logs dans les paramètres
+les disparitions de joueurs en plein combat
 
-## 📋 Prérequis
+les incohérences d’état
 
-Windows 10/11
+🎒 Fenêtre de loot (session complète)
 
-Microsoft Edge WebView2 Runtime (installé automatiquement si nécessaire)
+La fenêtre de loot permet de répertorier tous les objets obtenus sur une session de jeu, indépendamment des combats.
 
-Wakfu avec Steam ou Ankama Launcher
+Fonctionnement :
 
-## ⚙️ Configuration
+chaque loot détecté est ajouté à la liste
 
-### Configuration des Logs
+si l’objet existe déjà → la quantité est incrémentée
 
-Ouvrez les Paramètres depuis le menu principal
+la liste ne se reset jamais automatiquement
 
-Allez dans l'onglet "Chemins de Logs"
+les suppressions sont manuelles et définitives
 
-Cliquez sur "Steam" ou "Ankama Launcher" pour la détection automatique
+⭐ Système de favoris
 
-Ou utilisez "📁 Parcourir" pour sélectionner manuellement le fichier wakfu.log
+un item peut être marqué comme favori (étoile)
 
-Configurez également le chemin du log de chat (wakfu_chat.log) pour le Loot Tracker
+les favoris remontent en haut de la liste
 
-### Ordre des Joueurs
+un item favori ne peut pas être supprimé
 
-Dans les paramètres, onglet "Ordre des Joueurs" (Cette section se met à jours également automatiquement, mais reste presente au cas où un bug non vue au préalable soit présent)
+idéal pour suivre des drops importants
 
-Sélectionnez un joueur dans la liste
+⚙️ Paramètres et configuration
 
-Utilisez les boutons ▲ et ▼ pour réorganiser
+sélection du personnage principal
 
-Cliquez sur "Valider" pour sauvegarder
+gestion de l’affichage
+
+comportement stable même après redémarrage de combat
+
+aucune action destructrice automatique
+
+🧩 Architecture générale (pour les curieux et les devs)
+🧱 Philosophie
+
+Amaliassistant repose sur quelques principes forts :
+
+une seule source de vérité par système
+
+pas de logique métier dans l’UI
+
+séparation claire des responsabilités
+
+logs détaillés pour comprendre ce qui se passe
+
+Le projet est volontairement découpé en services plutôt qu’en “gros managers magiques”.
+
+🔌 Système de providers (lecture des données)
+
+Les données joueurs peuvent venir de plusieurs sources :
+
+LogParserPlayerDataProvider
+→ lecture directe des logs (système historique, toujours fonctionnel)
+
+JsonPlayerDataProvider
+→ polling d’un fichier JSON externe (source de vérité moderne)
+
+Un fallback automatique est prévu :
+
+si le JSON est absent ou invalide → retour au LogParser
+
+👉 Le reste de l’application ne dépend pas de la source des données.
+
+🧠 PlayerManagementService
+
+Service central chargé de :
+
+synchroniser les joueurs
+
+gérer les états (combat actif / hors combat)
+
+nettoyer intelligemment les joueurs inactifs
+
+protéger les resets (serveur, UI, loot)
+
+Il garantit :
+
+aucune suppression pendant un combat
+
+aucun reset parasite
+
+cohérence entre affichage, logique et données
+
+🎒 LootManagementService
+
+contient la collection de loot de session
+
+unique source de vérité
+
+aucune reconstruction depuis les logs
+
+logique de favoris et de suppression protégée
+
+La fenêtre de loot est passive :
+elle observe, elle n’invente rien.
+
+🧪 Logs & debug
+
+Le projet contient de nombreux logs explicites :
+
+ajout / suppression de joueurs
+
+détection de combat
+
+synchronisation JSON
+
+ajout / incrément de loot
+
+refus de suppression (favoris)
+
+Objectif :
+👉 comprendre un bug sans “deviner”.
+
+🛠️ Pour les développeurs
+Pourquoi ce projet est intéressant à lire
+
+vraie application WPF, pas un tuto
+
+gestion d’état complexe (combat / hors combat)
+
+synchronisation de données temps réel
+
+fallback propre entre plusieurs sources
+
+bugs réels, corrigés méthodiquement
+
+architecture pensée pour évoluer
+
+Ce que le projet n’est pas
+
+❌ un framework générique
+
+❌ un code généré sans réflexion
+
+❌ un prototype jetable
+
+📌 État du projet
+
+application fonctionnelle
+
+en amélioration continue
+
+utilisée comme terrain d’apprentissage sérieux
+
+ouverte aux retours et aux tests
+
+❤️ Mot de la fin
+
+Amaliassistant est né d’un besoin réel, a grandi avec des contraintes réelles, et continue d’évoluer avec une exigence simple :
+
+que le logiciel fasse exactement ce qu’il dit, ni plus, ni moins.
+
+Si tu es utilisateur : explore.
+Si tu es développeur : lis le code, il a des choses à dire.
