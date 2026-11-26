@@ -219,9 +219,8 @@ public class PlayerManagementService
         }
 
         // Vérifier le changement de serveur
-        if (_dataProvider is JsonPlayerDataProvider jsonProvider)
         {
-            var currentServer = jsonProvider.GetCurrentServerName();
+            var currentServer = _dataProvider.GetCurrentServerName();
             if (!string.IsNullOrEmpty(currentServer) && 
                 !string.IsNullOrEmpty(_lastServerName) &&
                 !string.Equals(currentServer, _lastServerName, StringComparison.OrdinalIgnoreCase))
@@ -517,9 +516,8 @@ public class PlayerManagementService
         }
 
         // Vérifier le changement de serveur
-        if (_dataProvider is JsonPlayerDataProvider jsonProvider)
         {
-            var currentServer = jsonProvider.GetCurrentServerName();
+            var currentServer = _dataProvider.GetCurrentServerName();
             if (!string.IsNullOrEmpty(currentServer) && 
                 !string.IsNullOrEmpty(_lastServerName) &&
                 !string.Equals(currentServer, _lastServerName, StringComparison.OrdinalIgnoreCase))
@@ -602,11 +600,7 @@ public class PlayerManagementService
     public void EndReset()
     {
         _isResetting = false;
-        _lastServerName = null;
-        if (_dataProvider is JsonPlayerDataProvider jsonProvider)
-        {
-            _lastServerName = jsonProvider.GetCurrentServerName();
-        }
+        _lastServerName = _dataProvider.GetCurrentServerName();
         Logger.Info(LogCategory, "Reset serveur terminé, nettoyage et synchronisation réactivés");
     }
 }
