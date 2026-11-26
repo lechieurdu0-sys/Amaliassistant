@@ -19,6 +19,7 @@ public class PlayerManagementService
     private const int CombatInactivityTimeoutSeconds = 30; // Délai avant de considérer un joueur comme inactif après la fin d'un combat
 
     private readonly IPlayerDataProvider _dataProvider;
+    private readonly TimeProvider _timeProvider;
     private DateTime _lastCombatEndTime = DateTime.MinValue;
     private string? _lastServerName;
     private bool _isResetting = false; // Flag pour éviter le nettoyage pendant un reset serveur
@@ -62,8 +63,14 @@ public class PlayerManagementService
     }
 
     public PlayerManagementService(IPlayerDataProvider dataProvider)
+        : this(dataProvider, TimeProvider.System)
+    {
+    }
+
+    public PlayerManagementService(IPlayerDataProvider dataProvider, TimeProvider timeProvider)
     {
         _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
     
     /// <summary>
@@ -269,7 +276,7 @@ public class PlayerManagementService
         Dictionary<string, PlayerData> currentPlayerData,
         HashSet<string> playersInCombat)
     {
-        var now = DateTime.Now;
+        var now = _timeProvider.GetLocalNow().DateTime;
 
         foreach (var player in playersCollection.ToList())
         {
@@ -315,7 +322,7 @@ public class PlayerManagementService
         HashSet<string> playersInCombat)
     {
         var playersToRemove = new List<PlayerStats>();
-        var now = DateTime.Now;
+        var now = _timeProvider.GetLocalNow().DateTime;
         var timeSinceCombatEnd = (now - _lastCombatEndTime).TotalSeconds;
 
         foreach (var player in playersCollection.ToList())
