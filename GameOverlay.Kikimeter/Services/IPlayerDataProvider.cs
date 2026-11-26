@@ -26,6 +26,11 @@ public interface IPlayerDataProvider
     /// Vérifie si un combat est actuellement actif
     /// </summary>
     bool IsCombatActive { get; }
+
+    /// <summary>
+    /// Nom du serveur courant, ou null si le fournisseur ne dispose pas de cette information.
+    /// </summary>
+    string? GetCurrentServerName() => null;
 }
 
 /// <summary>
