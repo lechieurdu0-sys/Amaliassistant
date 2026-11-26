@@ -1,0 +1,104 @@
+using System.Collections.ObjectModel;
+using GameOverlay.Kikimeter.Models;
+using GameOverlay.Kikimeter.Services;
+
+internal static class Program
+{
+    [STAThread]
+    private static int Main()
+    {
+        var cases = new (string Name, Action Run)[]
+        {
+            ("Active combat preserves players", () => Guard(true, false, false)),
+            ("Frozen combat preserves players", () => Guard(false, true, false)),
+            ("Reset preserves players", () => Guard(false, false, true)),
+            ("Expired outsider removed, group and main preserved", Cleanup),
+            ("Main selection is case insensitive", MainSelection),
+            ("Sync adds active players only", Sync),
+            ("Turn damage reset preserves total", TurnDamage)
+        };
+        int failures = 0;
+        foreach (var test in cases)
+        {
+            try { test.Run(); Console.WriteLine("PASS " + test.Name); }
+            catch (Exception ex) { failures++; Console.Error.WriteLine("FAIL " + test.Name + ": " + ex); }
+        }
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static void Check(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static PlayerStats Player(string name, long id) => new()
+    {
+        Name = name, PlayerId = id, IsActive = false,
+        LastSeenInCombat = DateTime.Now.AddMinutes(-5)
+    };
+
+    private static void Guard(bool active, bool frozen, bool resetting)
+    {
+        var provider = new Provider { IsCombatActive = active };
+        var service = new PlayerManagementService(provider);
+        var players = new ObservableCollection<PlayerStats> { Player("Outsider", 1) };
+        if (resetting) service.BeginReset();
+        service.CleanupPlayersAfterCombat(players, DateTime.Now, freezeAfterCombat: frozen);
+        Check(players.Count == 1, "Guard removed a player");
+        Check(provider.Reads == 0, "Guard read provider");
+    }
+
+    private static void Cleanup()
+    {
+        var service = new PlayerManagementService(new Provider());
+        var main = Player("Main", 1); main.IsMainCharacter = true;
+        var group = Player("Group", 2); group.IsInGroup = true;
+        var outsider = Player("Outsider", 3);
+        var players = new ObservableCollection<PlayerStats> { main, group, outsider };
+        service.CleanupPlayersAfterCombat(players, DateTime.Now);
+        Check(players.Count == 2 && players.Contains(main) && players.Contains(group), "Unexpected cleanup");
+    }
+
+    private static void MainSelection()
+    {
+        var service = new PlayerManagementService(new Provider());
+        var first = Player("First", 1); first.IsMainCharacter = true;
+        var second = Player("Second", 2);
+        service.SetPlayersCollection(new ObservableCollection<PlayerStats> { first, second });
+        PlayerStats? notified = null;
+        service.MainCharacterChanged += (_, player) => notified = player;
+        service.SetMainCharacter("SECOND");
+        Check(!first.IsMainCharacter && second.IsMainCharacter, "Incorrect main flags");
+        Check(ReferenceEquals(service.GetMainCharacter(), second) && ReferenceEquals(notified, second), "Incorrect selection or notification");
+    }
+
+    private static void Sync()
+    {
+        var provider = new Provider { IsCombatActive = true };
+        provider.Players["1"] = new PlayerData { Id = "1", Name = "Active", IsActive = true, IsInGroup = true };
+        provider.Players["2"] = new PlayerData { Id = "2", Name = "Inactive", IsActive = false };
+        var service = new PlayerManagementService(provider);
+        var players = new ObservableCollection<PlayerStats>();
+        service.SyncPlayersWithJson(players);
+        Check(players.Count == 1 && players[0].PlayerId == 1 && players[0].IsMainCharacter, "Incorrect sync");
+        service.SyncPlayersWithJson(players);
+        Check(players.Count == 1, "Duplicate player");
+    }
+
+    private static void TurnDamage()
+    {
+        var player = new PlayerStats { DamageDealt = 1200, DamageThisTurn = 400 };
+        Check(player.DamagePerTurn == 400, "Unexpected current turn damage");
+        player.ResetTurnDamage();
+        Check(player.DamagePerTurn == 0 && player.DamageDealt == 1200, "Reset changed total damage");
+    }
+
+    private sealed class Provider : IPlayerDataProvider
+    {
+        public Dictionary<string, PlayerData> Players { get; } = new();
+        public bool IsCombatActive { get; set; }
+        public int Reads { get; private set; }
+        public Dictionary<string, PlayerData> GetCurrentPlayers() { Reads++; return Players; }
+        public HashSet<string> GetPlayersInCombat() { Reads++; return new(); }
+    }
+}
