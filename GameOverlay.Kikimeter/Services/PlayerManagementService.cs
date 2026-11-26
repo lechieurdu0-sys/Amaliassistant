@@ -276,10 +276,7 @@ public class PlayerManagementService
             if (playerData != null)
             {
                 // Mettre à jour les propriétés depuis le JSON
-                player.IsInGroup = playerData.IsInGroup;
-                player.IsMainCharacter = playerData.IsMainCharacter;
-                player.IsActive = playerData.IsActive;
-                player.LastSeenInCombat = playerData.LastSeenInCombat;
+                UpdatePlayerFromJson(player, playerData);
 
                 // Si le joueur est dans le combat actuel, mettre à jour LastSeenInCombat
                 if (playersInCombat.Contains(player.Name) || playersInCombat.Contains(player.PlayerId.ToString()))
