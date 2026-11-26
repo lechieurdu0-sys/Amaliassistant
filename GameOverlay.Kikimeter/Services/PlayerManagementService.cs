@@ -218,19 +218,8 @@ public class PlayerManagementService
             return;
         }
 
-        // Vérifier le changement de serveur
-        {
-            var currentServer = _dataProvider.GetCurrentServerName();
-            if (!string.IsNullOrEmpty(currentServer) && 
-                !string.IsNullOrEmpty(_lastServerName) &&
-                !string.Equals(currentServer, _lastServerName, StringComparison.OrdinalIgnoreCase))
-            {
-                Logger.Info(LogCategory, $"Changement de serveur détecté ({_lastServerName} -> {currentServer}), nettoyage ignoré (sera géré par le reset serveur)");
-                _lastServerName = currentServer;
-                return;
-            }
-            _lastServerName = currentServer;
-        }
+        if (HasServerChanged(true))
+            return;
 
         _lastCombatEndTime = combatEndTime;
         Logger.Info(LogCategory, $"Nettoyage des joueurs après combat terminé à {combatEndTime:HH:mm:ss}");
@@ -515,19 +504,8 @@ public class PlayerManagementService
             return;
         }
 
-        // Vérifier le changement de serveur
-        {
-            var currentServer = _dataProvider.GetCurrentServerName();
-            if (!string.IsNullOrEmpty(currentServer) && 
-                !string.IsNullOrEmpty(_lastServerName) &&
-                !string.Equals(currentServer, _lastServerName, StringComparison.OrdinalIgnoreCase))
-            {
-                Logger.Info(LogCategory, $"Changement de serveur détecté ({_lastServerName} -> {currentServer}), synchronisation ignorée");
-                _lastServerName = currentServer;
-                return;
-            }
-            _lastServerName = currentServer;
-        }
+        if (HasServerChanged(false))
+            return;
 
         try
         {
@@ -581,6 +559,25 @@ public class PlayerManagementService
         {
             Logger.Error(LogCategory, $"Erreur lors de la synchronisation avec JSON: {ex.Message}");
         }
+    }
+
+    private bool HasServerChanged(bool isCleanup)
+    {
+        var currentServer = _dataProvider.GetCurrentServerName();
+        var changed = !string.IsNullOrEmpty(currentServer) &&
+            !string.IsNullOrEmpty(_lastServerName) &&
+            !string.Equals(currentServer, _lastServerName, StringComparison.OrdinalIgnoreCase);
+
+        if (changed)
+        {
+            var operation = isCleanup
+                ? "nettoyage ignoré (sera géré par le reset serveur)"
+                : "synchronisation ignorée";
+            Logger.Info(LogCategory, $"Changement de serveur détecté ({_lastServerName} -> {currentServer}), {operation}");
+        }
+
+        _lastServerName = currentServer;
+        return changed;
     }
 
     /// <summary>
