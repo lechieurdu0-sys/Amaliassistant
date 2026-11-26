@@ -15,7 +15,8 @@ internal static class Program
             ("Expired outsider removed, group and main preserved", Cleanup),
             ("Main selection is case insensitive", MainSelection),
             ("Sync adds active players only", Sync),
-            ("Turn damage reset preserves total", TurnDamage)
+            ("Turn damage reset preserves total", TurnDamage),
+            ("Outsider expires strictly after 30 seconds", TimeoutBoundary)
         };
         int failures = 0;
         foreach (var test in cases)
@@ -83,6 +84,31 @@ internal static class Program
         Check(players.Count == 1 && players[0].PlayerId == 1 && players[0].IsMainCharacter, "Incorrect sync");
         service.SyncPlayersWithJson(players);
         Check(players.Count == 1, "Duplicate player");
+    }
+
+    private static void TimeoutBoundary()
+    {
+        var clock = new ManualClock();
+        var service = new PlayerManagementService(new Provider(), clock);
+        var start = clock.GetLocalNow().DateTime;
+        var outsider = Player("Outsider", 1);
+        outsider.LastSeenInCombat = start;
+        var players = new ObservableCollection<PlayerStats> { outsider };
+        foreach (var seconds in new[] { 29, 30, 31 })
+        {
+            clock.Now = clock.Initial.AddSeconds(seconds);
+            service.CleanupPlayersAfterCombat(players, start);
+            Check(players.Contains(outsider) == (seconds <= 30),
+                $"Unexpected expiry at {seconds} seconds");
+        }
+    }
+
+    private sealed class ManualClock : TimeProvider
+    {
+        public DateTimeOffset Initial { get; } = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now { get; set; } = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
 
     private static void TurnDamage()
