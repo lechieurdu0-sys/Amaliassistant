@@ -16,7 +16,10 @@ internal static class Program
             ("Main selection is case insensitive", MainSelection),
             ("Sync adds active players only", Sync),
             ("Turn damage reset preserves total", TurnDamage),
-            ("Outsider expires strictly after 30 seconds", TimeoutBoundary)
+            ("Outsider expires strictly after 30 seconds", TimeoutBoundary),
+            ("Server change skips cleanup once", ServerCleanup),
+            ("Server change skips sync once", ServerSync),
+            ("Reset refreshes server baseline", ServerReset)
         };
         int failures = 0;
         foreach (var test in cases)
@@ -119,11 +122,56 @@ internal static class Program
         Check(player.DamagePerTurn == 0 && player.DamageDealt == 1200, "Reset changed total damage");
     }
 
+    private static void ServerCleanup()
+    {
+        var provider = new Provider { Server = "Alpha" };
+        var service = new PlayerManagementService(provider);
+        service.EndReset();
+        var players = new ObservableCollection<PlayerStats> { Player("Outsider", 1) };
+        provider.Server = "Beta";
+        service.CleanupPlayersAfterCombat(players, DateTime.Now);
+        Check(players.Count == 1 && provider.Reads == 0, "Server transition did not skip cleanup");
+        service.CleanupPlayersAfterCombat(players, DateTime.Now);
+        Check(players.Count == 0 && provider.Reads == 2, "Cleanup did not resume");
+    }
+
+    private static void ServerSync()
+    {
+        var provider = new Provider { Server = "Alpha", IsCombatActive = true };
+        var service = new PlayerManagementService(provider);
+        service.EndReset();
+        provider.Players["1"] = new PlayerData { Id = "1", Name = "Active", IsActive = true };
+        var players = new ObservableCollection<PlayerStats>();
+        provider.Server = "Beta";
+        service.SyncPlayersWithJson(players);
+        Check(players.Count == 0 && provider.Reads == 0, "Server transition did not skip sync");
+        service.SyncPlayersWithJson(players);
+        Check(players.Count == 1 && provider.Reads == 2, "Sync did not resume");
+    }
+
+    private static void ServerReset()
+    {
+        var provider = new Provider { Server = "Alpha", IsCombatActive = true };
+        var service = new PlayerManagementService(provider);
+        service.EndReset();
+        service.BeginReset();
+        provider.Server = "Beta";
+        var players = new ObservableCollection<PlayerStats>();
+        service.SyncPlayersWithJson(players);
+        Check(provider.Reads == 0, "Reset did not suspend sync");
+        service.EndReset();
+        provider.Server = "BETA";
+        service.SyncPlayersWithJson(players);
+        Check(provider.Reads == 2, "Reset baseline or case-insensitive comparison failed");
+    }
+
     private sealed class Provider : IPlayerDataProvider
     {
         public Dictionary<string, PlayerData> Players { get; } = new();
         public bool IsCombatActive { get; set; }
         public int Reads { get; private set; }
+        public string? Server { get; set; }
+        public string? GetCurrentServerName() => Server;
         public Dictionary<string, PlayerData> GetCurrentPlayers() { Reads++; return Players; }
         public HashSet<string> GetPlayersInCombat() { Reads++; return new(); }
     }
