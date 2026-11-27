@@ -1336,61 +1336,26 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     private void ResetLootButton_Click(object sender, RoutedEventArgs e)
     {
-        // Retired destructive action: retained only for legacy XAML compatibility.
-        return;
-    }
-
-    private void LegacyResetLootButton_Click(object sender, RoutedEventArgs e)
-    {
+        if (System.Windows.MessageBox.Show(this,
+            "Réinitialiser les statistiques du Kikimeter, les personnages détectés et leur ordre ? Les journaux de Wakfu et les anciennes données de butin seront conservés.",
+            "Réinitialisation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
         try
         {
-            Logger.Info("SettingsWindow", "Reset demandé depuis le bouton Reset");
-            
-            // 1. Réinitialiser le fichier de configuration des personnages (comme LootWindow_ResetButton_ExtraHandler)
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var lootDir = Path.Combine(appData, "Amaliassistant", "Loot");
-            Directory.CreateDirectory(lootDir);
-
-            var configPath = Path.Combine(lootDir, "loot_characters.json");
-            var freshConfig = new LootCharacterConfig
-            {
-                LastUpdate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-            };
-
-            var json = Newtonsoft.Json.JsonConvert.SerializeObject(freshConfig, Newtonsoft.Json.Formatting.Indented);
-            File.WriteAllText(configPath, json);
-            Logger.Info("SettingsWindow", $"loot_characters.json réinitialisé ({configPath})");
-            
-            // 2. Réinitialiser la liste des personnages
             ResetCharacterList();
-            
-            // 3. Réinitialiser l'ordre des personnages
-            ResetPlayerOrder();
-            
-            // 4. Appeler le callback si fourni (pour réinitialiser le Kikimeter)
             _onResetLootRequested?.Invoke();
-            
-            Logger.Info("SettingsWindow", "Reset complet effectué : loot, liste des personnages et ordre réinitialisés");
-            
-            CustomMessageBox.Show(
-                this,
-                "Reset effectué :\n- Liste des loots réinitialisée\n- Liste des personnages réinitialisée\n- Ordre des personnages réinitialisé",
-                "Reset effectué",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            ResetPlayerOrder();
+            UpdateCharactersList();
+            CustomMessageBox.Show(this, "Kikimeter réinitialisé. Les prochains combats alimenteront les statistiques.",
+                "Reset effectué", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             Logger.Error("SettingsWindow", $"Erreur lors du reset: {ex.Message}");
-            CustomMessageBox.Show(
-                this,
-                $"Erreur lors de la réinitialisation: {ex.Message}",
-                "Erreur",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            CustomMessageBox.Show(this, ex.Message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-    
+
     private void ConfirmLogPaths_Click(object sender, RoutedEventArgs e)
     {
         // Valider les chemins si remplis
@@ -1405,11 +1370,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             return;
         }
         
-        // Retired loot path is not a prerequisite for saving Kikimeter settings.
+        // Sale log may not exist until the game starts; the reader waits for creation.
         
         // Sauvegarder la configuration
         _config.KikimeterLogPath = string.IsNullOrWhiteSpace(KikimeterLogPath) ? null : KikimeterLogPath;
-        // Preserve legacy loot preferences without modifying them.
+        _config.LootChatLogPath = string.IsNullOrWhiteSpace(LootChatLogPath) ? null : LootChatLogPath;
         _onConfigChanged(_config);
         
         // Réinitialiser le détecteur de personnages si nécessaire

@@ -3232,6 +3232,28 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         catch { }
     }
 
+    public void ResetKikimeter()
+    {
+        // Called from the settings UI. Detach and replace the reader rather than
+        // resetting a parser that can still be receiving log lines.
+        StopWatching();
+        foreach (var window in _playerWindows.Values.ToList())
+            window.Close();
+        _playerWindows.Clear();
+        _indicatorWindow?.Close();
+        _indicatorWindow = null;
+        foreach (var row in _playersCollection)
+            row.PropertyChanged -= Player_PropertyChanged;
+        _playersCollection.Clear();
+        _playerKikis.Clear();
+        _freezeAfterCombat = false;
+        _initialPlayerOrderLearned = false;
+        SetPlayerOrder(Array.Empty<string>());
+        if (CombatStatusText != null)
+            CombatStatusText.Text = "En attente de combat...";
+        StartWatching();
+    }
+
     public void StopWatching()
     {
         _logWatcher?.StopWatching();

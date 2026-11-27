@@ -708,8 +708,8 @@ public class LootCharacterDetector : IDisposable
     {
         Logger.Info("LootCharacterDetector", "Réinitialisation demandée des personnages détectés");
 
-        // Utiliser la méthode avec troncature des logs pour éviter de recharger les anciens personnages
-        ResetStoredCharactersWithLogTruncation();
+        // Utiliser la méthode sans modification des logs pour éviter de recharger les anciens personnages
+        ResetStoredCharactersAtEnd();
 
         bool previousSuppression = _suppressServerNotifications;
         if (suppressServerEvents)
@@ -882,17 +882,12 @@ public class LootCharacterDetector : IDisposable
         }
     }
     
-    private void ResetStoredCharactersWithLogTruncation()
+    private void ResetStoredCharactersAtEnd()
     {
         _recentCharacters.Clear();
         
-        // Tronquer les fichiers de logs pour éviter de recharger les anciens personnages
-        TryTruncateLogFile(_logFilePath, "wakfu_chat.log");
-        TryTruncateLogFile(_kikimeterLogPath, "wakfu.log");
-        
-        // Réinitialiser les positions de lecture
-        _lastPosition = 0;
-        _lastKikimeterPosition = 0;
+        // Skip existing history without modifying the game's log files.
+        InitializeLogPositions(initialLoad: false);
         
         try
         {
@@ -909,7 +904,7 @@ public class LootCharacterDetector : IDisposable
 
             var json = JsonConvert.SerializeObject(emptyConfig, Formatting.Indented);
             File.WriteAllText(_configFilePath, json, Encoding.UTF8);
-            Logger.Info("LootCharacterDetector", $"Configuration réinitialisée avec troncature des logs ({_configFilePath})");
+            Logger.Info("LootCharacterDetector", $"Configuration réinitialisée sans modification des logs ({_configFilePath})");
             
             // Forcer la mise à jour de la liste pour notifier les UI
             var characterList = emptyConfig.Characters.Keys.ToList();
@@ -926,31 +921,12 @@ public class LootCharacterDetector : IDisposable
     /// </summary>
     public void FullReset()
     {
-        Logger.Info("LootCharacterDetector", "Réinitialisation complète demandée (avec troncature des logs)");
-        ResetStoredCharactersWithLogTruncation();
+        Logger.Info("LootCharacterDetector", "Réinitialisation complète demandée (sans modification des logs)");
+        ResetStoredCharactersAtEnd();
         // Ne pas appeler RehydrateCharactersAfterReset() pour une réinitialisation complète
         Logger.Info("LootCharacterDetector", "Réinitialisation complète terminée");
     }
 
-    private void TryTruncateLogFile(string? path, string description)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            return;
-        }
-
-        try
-        {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
-            stream.SetLength(0);
-            Logger.Info("LootCharacterDetector", $"Fichier {description} tronqué au démarrage");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning("LootCharacterDetector", $"Impossible de tronquer {description}: {ex.Message}");
-        }
-    }
-    
     public void SetMainCharacter(string characterName)
     {
         var config = LoadConfig();

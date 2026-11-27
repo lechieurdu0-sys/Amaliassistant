@@ -506,7 +506,11 @@ namespace GameOverlay.App
             
             contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
             
-            // Sale tracking retired alongside loot.
+            var saleItem = new ToolStripMenuItem("📍 Placer notification de vente");
+            saleItem.ForeColor = textColor;
+            saleItem.Click += (s, e) => TestSaleNotification_Click(s, e);
+            contextMenu.Items.Insert(insertIndex++, saleItem);
+            contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
             
             // Item "Plugins"
             var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
@@ -1040,25 +1044,8 @@ namespace GameOverlay.App
             {
                 Logger.Debug("MainWindow", "Chargement de la configuration");
                 
-                // Vider wakfu_chat.log pour commencer une nouvelle session
-                try
-                {
-                    string? wakfuLogPath = GameOverlay.Kikimeter.Services.WakfuLogFinder.FindFirstLogFile();
-                    if (!string.IsNullOrEmpty(wakfuLogPath))
-                    {
-                        string chatLogPath = GameOverlay.Kikimeter.Services.WakfuLogFinder.FindChatLogFile(wakfuLogPath);
-                        if (!string.IsNullOrEmpty(chatLogPath) && File.Exists(chatLogPath))
-                        {
-                            File.WriteAllText(chatLogPath, string.Empty);
-                            Logger.Debug("MainWindow", $"✓ wakfu_chat.log vidé pour nouvelle session: {chatLogPath}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    GameOverlay.Models.Logger.Warning("MainWindow", "Erreur lors du vidage de wakfu_chat.log: " + ex.Message);
-                }
-                
+                // Game logs are read-only inputs. Never truncate them at startup.
+
                 if (File.Exists(configFile))
                 {
                     try
@@ -1921,53 +1908,8 @@ namespace GameOverlay.App
                     _lastDetectedServerName = e.ServerName;
                 }
                 
-                // Si c'est une connexion (pas une déconnexion), vider le fichier de log du chat
-                // pour ne garder que les nouvelles ventes de cette session
-                if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
-                {
-                    try
-                    {
-                        string? chatLogPath = config.LootChatLogPath;
-                        if (!string.IsNullOrEmpty(chatLogPath) && File.Exists(chatLogPath))
-                        {
-                            // Tronquer le fichier en le vidant
-                            File.WriteAllText(chatLogPath, string.Empty);
-                            Logger.Info("MainWindow", $"Fichier de log du chat tronqué pour nouvelle session: {chatLogPath}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        GameOverlay.Models.Logger.Warning("MainWindow", $"Erreur lors du tronquage du fichier de log du chat: {ex.Message}");
-                    }
-                    
-                    // Attendre 2 secondes avant de lire le log pour laisser le jeu écrire l'information
-                }
-                
-                // Si c'est une connexion (pas une déconnexion), afficher la notification de vente
-                // On attend un délai pour laisser le jeu écrire l'information dans le log
-                if (!e.IsDisconnect && !string.IsNullOrWhiteSpace(e.ServerName))
-                {
-                    Logger.Info("MainWindow", $"Connexion au serveur détectée: {e.ServerName}");
-                    
-                    // Réinitialiser le SaleTracker AVANT de lire les notifications de vente
-                    InitializeSaleTracker();
-                    
-                    // Attendre 2 secondes avant de lire le log pour laisser le jeu écrire l'information
-                    System.Threading.Tasks.Task.Delay(2000).ContinueWith(_ =>
-                    {
-                        // S'assurer que l'appel se fait sur le thread UI
-                        Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            Logger.Info("MainWindow", "Lecture des notifications de vente depuis les lignes récentes");
-                            ShowSaleNotificationFromRecentLines();
-                        }), DispatcherPriority.Normal);
-                    });
-                }
-                else
-                {
-                    // Réinitialiser le SaleTracker même en cas de déconnexion
-                    InitializeSaleTracker();
-                }
+                // The sale reader handles rotation and does not replay or truncate logs.
+                InitializeSaleTracker();
 
                 if (isRealServerChange)
                 {
@@ -2152,7 +2094,7 @@ namespace GameOverlay.App
                             {
                                 playerManagementService = kikimeterWindow.PlayerManagementService;
                                 currentPlayers = playerManagementService.GetCurrentPlayerNames().ToList();
-                                getCurrentPlayers = () => playerManagementService.GetCurrentPlayerNames();
+                                getCurrentPlayers = () => kikimeterWindow?.PlayerManagementService?.GetCurrentPlayerNames() ?? Enumerable.Empty<string>();
                                 Logger.Info("MainWindow", $"Récupération de {currentPlayers.Count()} joueurs depuis PlayerManagementService pour SettingsWindow");
                             }
                             catch (Exception ex)
@@ -2204,26 +2146,13 @@ namespace GameOverlay.App
                                     }
                                 }
                                 
-                                if (!string.IsNullOrEmpty(updatedConfig.LootChatLogPath) && 
-                                    lootWindow != null)
-                                {
-                                    try
-                                    {
-                                        string chatLogPath = updatedConfig.LootChatLogPath ?? "";
-                                        string kikimeterLogPath = updatedConfig.KikimeterLogPath ?? "";
-                                        lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Logger.Error("MainWindow", $"Impossible de redémarrer LootWindow: {ex.Message}");
-                                    }
-                                }
+                                InitializeSaleTracker();
                             },
                             currentPlayers,
                             getCurrentPlayers,
                             accentBrush,
                             sectionBrush,
-                            () => LootWindow_ResetButton_ExtraHandler(null, new RoutedEventArgs()),
+                            () => kikimeterWindow?.ResetKikimeter(),
                             playerManagementService
                         );
                         
@@ -2410,7 +2339,8 @@ namespace GameOverlay.App
                     }
                 }
                 
-                // LootWindow and SaleTracker are intentionally not started.
+                // Sale notifications are independent of the retired loot window.
+                InitializeSaleTracker();
             }
             catch (Exception ex)
             {
@@ -2611,27 +2541,7 @@ namespace GameOverlay.App
                     }
                 }
                 
-                // Redémarrer SaleTracker si nécessaire
-                if (!string.IsNullOrEmpty(config.LootChatLogPath))
-                {
-                    try
-                    {
-                        // Arrêter l'ancien tracker s'il existe
-                        if (_saleTracker != null)
-                        {
-                            _saleTracker.Dispose();
-                            _saleTracker = null;
-                        }
-                        
-                        // Recréer le tracker avec le nouveau chemin
-                        InitializeSaleTracker();
-                        Logger.Info("MainWindow", $"SaleTracker redémarré avec le nouveau chemin: {config.LootChatLogPath}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors du redémarrage du SaleTracker: {ex.Message}");
-                    }
-                }
+                InitializeSaleTracker();
             }
             catch (Exception ex)
             {
@@ -3253,7 +3163,23 @@ namespace GameOverlay.App
         /// </summary>
         private void InitializeSaleTracker()
         {
-            // Intentionally retired; legacy callers must not start background tracking.
+            string? path = config.LootChatLogPath;
+            if (string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(config.KikimeterLogPath))
+                path = WakfuLogFinder.FindChatLogFile(config.KikimeterLogPath);
+            if (_saleTracker != null &&
+                string.Equals(_saleTracker.LogFilePath, path, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (_saleTracker != null)
+            {
+                _saleTracker.SaleDetected -= SaleTracker_SaleDetected;
+                _saleTracker.Dispose();
+                _saleTracker = null;
+            }
+            if (string.IsNullOrWhiteSpace(path)) return;
+            _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(path);
+            _saleTracker.SaleDetected += SaleTracker_SaleDetected;
+            _saleTracker.Start();
         }
 
         private void SaleTrackerTimer_Tick(object? sender, EventArgs e)
@@ -3287,6 +3213,7 @@ namespace GameOverlay.App
         
         private void SaleTracker_SaleDetected(object? sender, SaleInfo saleInfo)
         {
+            if (!ReferenceEquals(sender, _saleTracker)) return;
             Logger.Info("MainWindow", $"Événement SaleDetected reçu: {saleInfo.ItemCount} items pour {saleInfo.TotalKamas} kamas");
             ShowSaleNotification(saleInfo);
         }

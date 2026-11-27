@@ -32,7 +32,8 @@ internal static class Program
             ("Observed KO and double revival messages", ParticipantStateRegression.Run),
             ("KO evidence ledger and reversible defeat inference", KnockoutLedgerRegression.Run),
             ("Browser address and persistent profile preferences", BrowserPreferencesRegression.Run),
-            ("Test build marker protects update and startup entry points", TestBuildModeRegression.Run)
+            ("Test build marker protects update and startup entry points", TestBuildModeRegression.Run),
+            ("Independent sale reader and identical sales", SaleReaderRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

@@ -1,7 +1,5 @@
 # Scope of the modernisation
 
-The active product is the Kikimeter and existing WebView2 browser. Keep the current themes and Windows compatibility.
+Active features: Kikimeter, existing WebView2 browser, sale notifications (sound, volume, position, and configured chat log), character settings and recovery/reset controls. Preserve themes and Windows compatibility.
 
-Loot tracking is retired, not hidden while continuing to run. The main window must not create LootWindow or SaleTracker, including during startup, path changes and menu actions. Legacy source is retained for history; no loot repair or automatic reactivation is planned. Sales notifications are also outside the active scope. Do not delete the user's historical loot data. The game logs are inputs; combat totals must reflect observed events rather than simulated damage.
-
-The existing plugin/updater and other legacy UI paths are not refactored by this commit. The next integration step is to eliminate remaining combat dependencies on the retired loot subsystem and verify the actual combat event source. The multi-monitor fix uses canvas-local virtual desktop coordinates; monitor hot-plug, mixed DPI, non-rectangular layouts and actual hardware remain to be tested.
+Only loot/butin tracking is retired. No LootWindow or LootTracker may be created by the active app. Sale notifications are independent from loot and remain active. Never delete historical loot data or truncate game logs. Reset clears application character preferences, order and combat display, then resumes reading at the current end of the logs. It intentionally does not reconstruct the combat already underway. Real Windows behavior, multi-monitor gaps and DPI, and actual sale syntax remain to be validated.

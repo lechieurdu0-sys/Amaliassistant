@@ -181,8 +181,8 @@
                         <RowDefinition Height="591.08"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Retired sale controls -->
-                    <Grid Visibility="Collapsed"
+                    <!-- Sale notification volume -->
+                    <Grid
                         Margin="45,0,0,0"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
@@ -309,18 +309,18 @@
                         </Grid>
                     </Border>
 
-                    <!-- Retired loot controls -->
-                    <Border Visibility="Collapsed"
+                    <!-- Chat log for sale notifications and character discovery -->
+                    <Border
                             BorderThickness="0,0,0,1"
                             Padding="0,0,0,20"
                             Margin="0,267,0,170">
                         <StackPanel>
-                            <TextBlock Text="Log Loot (wakfu_chat.log)"
+                            <TextBlock Text="Log ventes (wakfu_chat.log)"
                                        FontSize="13"
                                        FontWeight="Bold"
                                        Foreground="#FF6E5C2A"
                                        Margin="44,0,0,10" Cursor="" />
-                            <TextBlock Text="Chemin du fichier de log de chat Wakfu pour le suivi du butin:"
+                            <TextBlock Text="Journal de chat pour les notifications de vente :"
                                        FontSize="11"
                                        Foreground="#FF4E421F"
                                        Margin="44,0,0,8"
@@ -462,11 +462,11 @@
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom" Cursor="Hand" Margin="0,0,104,82">
-                        <Button Content="Reset" Visibility="Collapsed"
+                        <Button Content="Reset"
                                 Width="100"
                                 Style="{StaticResource DialogButtonStyle}"
                                 Margin="0,-1,10,-1"
-                                ToolTip="Réinitialiser les loots, la liste des personnages et l'ordre des personnages"
+                                ToolTip="Réinitialiser le Kikimeter, les personnages détectés et leur ordre sans effacer les journaux Wakfu"
                                 Click="ResetLootButton_Click" BorderBrush="#FF6E5C2A" Foreground="#FF6E5C2A" >
                             <Button.Background>
                                 <SolidColorBrush Color="#FF4E421F" Opacity="0.25"/>
