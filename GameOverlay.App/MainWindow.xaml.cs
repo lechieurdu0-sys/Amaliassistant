@@ -1296,12 +1296,15 @@ namespace GameOverlay.App
                 int posX = config.KikimeterBubbleX;
                 int posY = config.KikimeterBubbleY;
                 
-                // Si position invalide ou hors écran, utiliser la valeur par défaut
-                double screenWidth = SystemParameters.PrimaryScreenWidth;
-                double screenHeight = SystemParameters.PrimaryScreenHeight;
-                
-                if (posX == -1 || posX < 0 || posX > screenWidth) posX = x;
-                if (posY == -1 || posY < 0 || posY > screenHeight) posY = y;
+                // Saved positions are relative to the full virtual desktop Canvas, not the primary monitor.
+                double canvasWidth = MainCanvas.ActualWidth > 0 ? MainCanvas.ActualWidth : Width;
+                double canvasHeight = MainCanvas.ActualHeight > 0 ? MainCanvas.ActualHeight : Height;
+                var restored = OverlayCanvasBounds.Restore(posX, posY,
+                    x - SystemParameters.VirtualScreenLeft, y - SystemParameters.VirtualScreenTop,
+                    canvasWidth, canvasHeight,
+                    GameOverlay.Windows.KikimeterBubble.LayoutWidth, GameOverlay.Windows.KikimeterBubble.LayoutHeight);
+                posX = (int)restored.X;
+                posY = (int)restored.Y;
 
                 // Créer la bulle Kikimeter
                 string logPath = config.KikimeterLogPath ?? "";

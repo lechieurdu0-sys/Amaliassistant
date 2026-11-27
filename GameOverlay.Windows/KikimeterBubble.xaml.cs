@@ -16,6 +16,9 @@ namespace GameOverlay.Windows;
 
 public partial class KikimeterBubble : UserControl
 {
+    public const double LayoutWidth = 70;
+    public const double LayoutHeight = 172;
+
     // Fenêtre gérée par MainWindow via l'événement OnOpenKikimeter
     private string _logPath;
     private KikimeterIndividualMode _individualMode;
@@ -95,8 +98,8 @@ public partial class KikimeterBubble : UserControl
             
             // La hauteur est 4x 40px pour les quatre carrés empilés + 3x 4px d'espacement (Kikimeter, Loot, Web, Paramètres)
             // La largeur inclut le carré (40px) + la colonne de la croix (30px) = 70px
-            double totalWidth = 40 + 30; // 40px carré + 30px colonne croix
-            double totalHeight = 40 * 4 + 4 * 3; // 4 carrés de 40px + 3 espaces de 4px = 172px
+            double totalWidth = LayoutWidth;
+            double totalHeight = LayoutHeight;
             Width = totalWidth;
             Height = totalHeight;
             
@@ -217,11 +220,11 @@ public partial class KikimeterBubble : UserControl
                 var newX = _dragStartPoint.X + delta.X;
                 var newY = _dragStartPoint.Y + delta.Y;
                 
-                // Limiter aux bounds de l'écran
-                var screenWidth = SystemParameters.PrimaryScreenWidth;
-                var screenHeight = SystemParameters.PrimaryScreenHeight;
-                newX = Math.Max(0, Math.Min(newX, screenWidth - this.Width));
-                newY = Math.Max(0, Math.Min(newY, screenHeight - this.Height));
+                // Coordinates are local to the virtual-desktop Canvas, including monitors left/above primary.
+                var position = OverlayCanvasBounds.Clamp(newX, newY,
+                    parentCanvas.ActualWidth, parentCanvas.ActualHeight, Width, Height);
+                newX = position.X;
+                newY = position.Y;
                 
                 System.Windows.Controls.Canvas.SetLeft(this, newX);
                 System.Windows.Controls.Canvas.SetTop(this, newY);
