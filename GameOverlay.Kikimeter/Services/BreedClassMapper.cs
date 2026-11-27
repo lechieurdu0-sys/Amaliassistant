@@ -40,6 +40,8 @@ internal static class BreedClassMapper
 
     public static string? GetClassName(int breedId)
     {
+        if (LocalWakfuCatalog.Present)
+            return LocalWakfuCatalog.Catalog?.ClassForBreed(breedId);
         return BreedToClass.TryGetValue(breedId, out var className) ? className : null;
     }
 }

@@ -31,7 +31,8 @@ internal static class Program
             ("Estimated global rounds and participant availability", CombatRoundRegression.Run),
             ("Observed KO and double revival messages", ParticipantStateRegression.Run),
             ("KO evidence ledger and reversible defeat inference", KnockoutLedgerRegression.Run),
-            ("Browser address and persistent profile preferences", BrowserPreferencesRegression.Run)
+            ("Browser address and persistent profile preferences", BrowserPreferencesRegression.Run),
+            ("Test build marker protects update and startup entry points", TestBuildModeRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

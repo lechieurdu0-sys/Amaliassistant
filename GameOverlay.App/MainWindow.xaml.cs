@@ -893,6 +893,7 @@ namespace GameOverlay.App
 
         private void ToggleStartup()
         {
+            if (TestBuildMode.IsEnabled) return;
             try
             {
                 using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true))
@@ -903,7 +904,8 @@ namespace GameOverlay.App
                     }
                     else
                     {
-                        key?.SetValue("Amaliassistant", System.Reflection.Assembly.GetExecutingAssembly().Location);
+                        if (!string.IsNullOrEmpty(Environment.ProcessPath))
+                            key?.SetValue("Amaliassistant", $"\"{Environment.ProcessPath}\"");
                     }
                 }
             }
@@ -915,6 +917,11 @@ namespace GameOverlay.App
 
         private void CheckForUpdatesManually()
         {
+            if (TestBuildMode.IsEnabled)
+            {
+                CustomMessageBox.Show("Les mises à jour sont désactivées dans cette version de test.", "Amaliassistant", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             try
             {
                 Logger.Info("MainWindow", "Vérification manuelle des mises à jour demandée par l'utilisateur");

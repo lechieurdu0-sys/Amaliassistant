@@ -43,6 +43,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path test-build/GameOverlay.App.exe)) { throw "Executable missing" }
+          Set-Content -Path test-build/AMALIASSISTANT_TEST -Value "Test build: updater and Windows startup changes disabled"
       - uses: actions/upload-artifact@v4
         with:
           name: Amaliassistant-Windows-x64-test

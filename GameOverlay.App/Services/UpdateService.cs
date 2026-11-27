@@ -53,6 +53,7 @@ namespace GameOverlay.App.Services
         /// </summary>
         public static void Initialize()
         {
+            if (TestBuildMode.IsEnabled) return;
             // Éviter les initialisations multiples
             if (_isInitialized)
             {
@@ -93,6 +94,7 @@ namespace GameOverlay.App.Services
         /// </summary>
         public static void CheckForUpdateAsync()
         {
+            if (TestBuildMode.IsEnabled) return;
             if (_isChecking)
             {
                 Logger.Info("UpdateService", "Une vérification de mise à jour est déjà en cours");

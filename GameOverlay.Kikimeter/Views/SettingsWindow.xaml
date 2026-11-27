@@ -181,8 +181,8 @@
                         <RowDefinition Height="591.08"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Slider de volume notification de vente (flottant dans la zone vide en haut de page) -->
-                    <Grid
+                    <!-- Retired sale controls -->
+                    <Grid Visibility="Collapsed"
                         Margin="45,0,0,0"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
@@ -309,8 +309,8 @@
                         </Grid>
                     </Border>
 
-                    <!-- Section Loot Log -->
-                    <Border
+                    <!-- Retired loot controls -->
+                    <Border Visibility="Collapsed"
                             BorderThickness="0,0,0,1"
                             Padding="0,0,0,20"
                             Margin="0,267,0,170">
@@ -462,7 +462,7 @@
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom" Cursor="Hand" Margin="0,0,104,82">
-                        <Button Content="Reset"
+                        <Button Content="Reset" Visibility="Collapsed"
                                 Width="100"
                                 Style="{StaticResource DialogButtonStyle}"
                                 Margin="0,-1,10,-1"

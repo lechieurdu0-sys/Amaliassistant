@@ -1336,6 +1336,12 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     private void ResetLootButton_Click(object sender, RoutedEventArgs e)
     {
+        // Retired destructive action: retained only for legacy XAML compatibility.
+        return;
+    }
+
+    private void LegacyResetLootButton_Click(object sender, RoutedEventArgs e)
+    {
         try
         {
             Logger.Info("SettingsWindow", "Reset demandé depuis le bouton Reset");
@@ -1399,20 +1405,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             return;
         }
         
-        if (!string.IsNullOrWhiteSpace(LootChatLogPath) && !File.Exists(LootChatLogPath))
-        {
-            CustomMessageBox.Show(
-                this,
-                "Le fichier de log Loot spécifié n'existe pas.",
-                "Fichier introuvable",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            return;
-        }
+        // Retired loot path is not a prerequisite for saving Kikimeter settings.
         
         // Sauvegarder la configuration
         _config.KikimeterLogPath = string.IsNullOrWhiteSpace(KikimeterLogPath) ? null : KikimeterLogPath;
-        _config.LootChatLogPath = string.IsNullOrWhiteSpace(LootChatLogPath) ? null : LootChatLogPath;
+        // Preserve legacy loot preferences without modifying them.
         _onConfigChanged(_config);
         
         // Réinitialiser le détecteur de personnages si nécessaire
@@ -1471,38 +1468,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     private void EnableStartup()
     {
+        if (TestBuildMode.IsEnabled) return;
         try
         {
-            string? exePath = null;
-            
-            var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            if (!string.IsNullOrEmpty(assemblyLocation) && File.Exists(assemblyLocation))
-            {
-                exePath = assemblyLocation;
-            }
-            
-            if (string.IsNullOrEmpty(exePath))
-            {
-                try
-                {
-                    var processPath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-                    if (!string.IsNullOrEmpty(processPath) && File.Exists(processPath))
-                    {
-                        exePath = processPath;
-                    }
-                }
-                catch { }
-            }
-            
-            if (string.IsNullOrEmpty(exePath))
-            {
-                var args = Environment.GetCommandLineArgs();
-                if (args.Length > 0 && !string.IsNullOrEmpty(args[0]) && File.Exists(args[0]))
-                {
-                    exePath = args[0];
-                }
-            }
-            
+            string? exePath = Environment.ProcessPath;
+
             if (string.IsNullOrEmpty(exePath))
             {
                 Logger.Error("SettingsWindow", "Impossible de déterminer le chemin de l'exécutable");
@@ -1538,6 +1508,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     private void DisableStartup()
     {
+        if (TestBuildMode.IsEnabled) return;
         try
         {
             using (var key = Registry.CurrentUser.OpenSubKey(StartupRegistryKey, true))
