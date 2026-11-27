@@ -24,7 +24,8 @@ internal static class Program
             ("Wakfu catalog authority and ambiguity", WakfuCatalogRegression.Run),
             ("Virtual desktop canvas positioning", OverlayCanvasRegression.Run),
             ("Combat roster comes from log events", CombatRosterRegression.Run),
-            ("Combat attribution and ambiguous summons", CombatAttributionRegression.Run)
+            ("Combat attribution and ambiguous summons", CombatAttributionRegression.Run),
+            ("Incremental log cursor preserves complete lines", LogTailRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)
