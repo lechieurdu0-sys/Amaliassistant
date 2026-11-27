@@ -57,17 +57,20 @@ internal static class ParticipantStateRegression
         Line("A est KO !");
         Line("Vous avez été vaincu(e) !");
         Line("Vous avez été vaincu(e) !");
+        Check(rounds.GetState("A") == RoundParticipantState.DefeatInferred &&
+              !rounds.ObservedOrder.Contains("A"), "Defeat inference did not exclude participant");
         Line("A est ressuscité !");
-        Check(rounds.GetState("A") == RoundParticipantState.Dead &&
-              !rounds.ObservedOrder.Contains("A"), "Dead participant restored");
+        Check(rounds.GetState("A") == RoundParticipantState.Available &&
+              rounds.ObservedOrder.SequenceEqual(new[] {"A", "B"}), "Named revival did not repair inference");
         Check(parser.PlayerStats["A"].DamageDealt == 110 &&
               parser.PlayerStats["A"].DamageTaken == 3082 &&
               rounds.GetState("B") == RoundParticipantState.Available,
               "Defeat modified cumulative stats or the survivor");
+        long before = parser.PlayerStats["B"].DamageDealt;
         Line("Enemy lance le sort Test");
         Line("B lance le sort Test");
         Line("Enemy: -12 PV (Feu)");
-        Check(parser.PlayerStats["B"].DamageDealt == 12, "Personal defeat ended the fight");
+        Check(parser.PlayerStats["B"].DamageDealt == before + 12, "Personal defeat ended the fight");
 
         // A second fight: an unnamed defeat is ambiguous when two players are KO.
         parser.ProcessLogLine("CREATION DU COMBAT");

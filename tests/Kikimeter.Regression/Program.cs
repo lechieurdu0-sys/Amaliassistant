@@ -29,7 +29,8 @@ internal static class Program
             ("Observed French turn boundary and critical spell suffix", ObservedTurnRegression.Run),
             ("Individual passages group summons and distinguish monster actions", IndividualPassageRegression.Run),
             ("Estimated global rounds and participant availability", CombatRoundRegression.Run),
-            ("Observed KO and double revival messages", ParticipantStateRegression.Run)
+            ("Observed KO and double revival messages", ParticipantStateRegression.Run),
+            ("KO evidence ledger and reversible defeat inference", KnockoutLedgerRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

@@ -20,6 +20,7 @@ public class CombatContext
     public string? ActivePassageOwner { get; set; }
     public bool CarryoverPending { get; set; }
     public CombatRoundTracker Rounds { get; } = new();
+    public KnockoutLedger Knockouts { get; } = new();
     
     /// <summary>
     /// Dernier sort lancé
@@ -143,6 +144,7 @@ public class CombatContext
         ActivePassageOwner = null;
         CarryoverPending = false;
         Rounds.Reset();
+        Knockouts.Reset();
         CurrentSpell = null;
         IsSummonSpell = false;
         PendingSummonOwner = null;

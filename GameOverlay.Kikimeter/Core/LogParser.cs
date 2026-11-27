@@ -234,6 +234,8 @@ public class LogParser
                 }
             }
 
+            _combatContext.Knockouts.ObserveLine(line);
+
             if (TurnCarryoverRegex.IsMatch(line))
             {
                 // Carryover is a personal boundary hint, not a global round.
@@ -510,6 +512,7 @@ public class LogParser
             }
         }
         
+        _combatContext.Knockouts.ObserveCast();
         ObserveIndividualPassage(caster);
 
         // Mettre à jour le contexte
@@ -542,26 +545,12 @@ public class LogParser
     {
         if (DefeatRegex.IsMatch(line))
         {
-            // The client reports defeat without naming the character. Only resolve
-            // an unambiguous known KO candidate; never guess among several.
-            var candidates = _currentCombatPlayers
-                .Where(name => _combatContext.Rounds.GetState(name) == RoundParticipantState.KnockedOut)
-                .Take(2).ToArray();
-            if (candidates.Length == 1)
-            {
-                string defeated = candidates[0];
-                _combatContext.Rounds.SetState(defeated, RoundParticipantState.Dead);
-                if (string.Equals(_combatContext.ActivePassageOwner, defeated, StringComparison.OrdinalIgnoreCase))
-                {
-                    _combatContext.ActivePassageOwner = null;
-                    _combatContext.CarryoverPending = false;
-                }
-                Logger.Info(LogCategory, "Défaite attribuée au seul participant KO : " + defeated);
-            }
+            string? defeated = _combatContext.Knockouts.InferDefeat();
+            if (defeated != null &&
+                _combatContext.Rounds.SetState(defeated, RoundParticipantState.DefeatInferred))
+                Logger.Info(LogCategory, "Défaite déduite (réversible) : " + defeated);
             else
-            {
-                Logger.Debug(LogCategory, "Défaite sans identité unique : aucune modification des participants.");
-            }
+                Logger.Debug(LogCategory, "Défaite sans identité unique : aucune modification.");
             // This is not a combat-end marker. Other players may continue fighting.
             return true;
         }
@@ -578,13 +567,21 @@ public class LogParser
             return true;
 
         var rounds = _combatContext.Rounds;
-        // A resurrection cannot create a new participant or revive a permanently removed one.
-        if (!knockout && rounds.GetState(player) != RoundParticipantState.KnockedOut)
+        var state = rounds.GetState(player);
+        // Explicit death (if a future verified named event is added) is distinct
+        // from an unnamed inferred defeat. Named revival overrides inference.
+        if (state == RoundParticipantState.Dead ||
+            (!knockout && state != RoundParticipantState.KnockedOut &&
+                          state != RoundParticipantState.DefeatInferred))
             return true;
 
         var next = knockout ? RoundParticipantState.KnockedOut : RoundParticipantState.Available;
         if (rounds.SetState(player, next))
         {
+            if (knockout)
+                _combatContext.Knockouts.KnockOut(player, EstimatedRound);
+            else
+                _combatContext.Knockouts.Revive(player);
             if (knockout && string.Equals(_combatContext.ActivePassageOwner, player,
                 StringComparison.OrdinalIgnoreCase))
             {
@@ -720,7 +717,10 @@ public class LogParser
         }
 
         if (_currentCombatPlayers.Contains(target) && _playerStats.TryGetValue(target, out var recipient))
+        {
             recipient.DamageTaken += damage;
+            _combatContext.Knockouts.ObserveDamage(target, damage);
+        }
 
         var owner = ResolveActionOwner(effect, target);
         if (owner != null)

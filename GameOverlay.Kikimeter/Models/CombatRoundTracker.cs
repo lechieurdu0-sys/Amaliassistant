@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace GameOverlay.Kikimeter.Models;
 
-public enum RoundParticipantState { Available, KnockedOut, Dead }
+public enum RoundParticipantState { Available, KnockedOut, DefeatInferred, Dead }
 
 /// <summary>
 /// Estimated global round from observed player passages. Monsters provide separation
@@ -22,7 +22,7 @@ public sealed class CombatRoundTracker
 
     public int Round { get; private set; }
     public string? Anchor => _order.FirstOrDefault(IsAvailable);
-    public IReadOnlyList<string> ObservedOrder => _order.ToArray();
+    public IReadOnlyList<string> ObservedOrder => _order.Where(p => GetState(p) != RoundParticipantState.DefeatInferred).ToArray();
 
     public RoundParticipantState? GetState(string name) =>
         _states.TryGetValue(name, out var state) ? state : null;
