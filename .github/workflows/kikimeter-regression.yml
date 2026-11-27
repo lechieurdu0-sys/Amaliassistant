@@ -26,3 +26,26 @@ jobs:
         run: dotnet build tests/Kikimeter.Regression/Kikimeter.Regression.csproj --configuration ${{ matrix.configuration }} --no-restore
       - name: Run regression assertions
         run: dotnet run --project tests/Kikimeter.Regression/Kikimeter.Regression.csproj --configuration ${{ matrix.configuration }} --no-build --no-restore
+  test-executable:
+    needs: regression
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build portable test folder
+        run: dotnet publish GameOverlay.App/GameOverlay.App.csproj -c Release -r win-x64 --self-contained false -o test-build
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path test-build/GameOverlay.App.exe)) { throw "Executable missing" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amaliassistant-Windows-x64-test
+          path: test-build/
+          retention-days: 7
+          if-no-files-found: error

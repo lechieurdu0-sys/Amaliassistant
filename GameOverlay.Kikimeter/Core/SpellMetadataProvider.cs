@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using GameOverlay.Kikimeter;
+using GameOverlay.Kikimeter.Services.Catalog;
 
 namespace GameOverlay.Kikimeter.Core;
 
@@ -49,6 +50,9 @@ public static class SpellMetadataProvider
         if (string.IsNullOrWhiteSpace(spellName))
             return string.Empty;
 
+        if (LocalWakfuCatalog.Present)
+            return spellName.Trim();
+
         return SpellAliases.TryGetValue(spellName.Trim(), out var mapped)
             ? mapped
             : spellName.Trim();
@@ -56,12 +60,16 @@ public static class SpellMetadataProvider
 
     public static string? GetClassForSpell(string spellName)
     {
+        if (LocalWakfuCatalog.Present)
+            return string.IsNullOrWhiteSpace(spellName) ? null : LocalWakfuCatalog.Catalog?.ClassForSpell(spellName);
         var metadata = TryGetMetadata(spellName);
         return metadata?.ClassName;
     }
 
     public static int? GetCostForSpell(string spellName)
     {
+        if (LocalWakfuCatalog.Present)
+            return string.IsNullOrWhiteSpace(spellName) ? null : LocalWakfuCatalog.Catalog?.CostForSpell(spellName);
         var metadata = TryGetMetadata(spellName);
         return metadata?.Cost;
     }

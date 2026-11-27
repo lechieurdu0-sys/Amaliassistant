@@ -20,7 +20,8 @@ internal static class Program
             ("Server change skips cleanup once", ServerCleanup),
             ("Server change skips sync once", ServerSync),
             ("Reset refreshes server baseline", ServerReset),
-            ("Catalog manifest preflight", CatalogManifestRegression.Run)
+            ("Catalog manifest preflight", CatalogManifestRegression.Run),
+            ("Wakfu catalog authority and ambiguity", WakfuCatalogRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

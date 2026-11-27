@@ -32,7 +32,7 @@ public static class CatalogManifestValidator
         {
             using var manifestStream = File.OpenRead(manifestPath);
             var bytes = new byte[MaxManifestBytes + 1];
-            int length = manifestStream.ReadAtLeast(bytes, bytes.Length, throwIfEndOfStream: false);
+            int length = manifestStream.ReadAtLeast(bytes, bytes.Length, false);
             if (length > MaxManifestBytes)
                 return new(CatalogValidationStatus.InvalidManifest);
 

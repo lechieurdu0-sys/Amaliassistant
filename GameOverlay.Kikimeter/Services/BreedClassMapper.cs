@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using GameOverlay.Kikimeter.Services.Catalog;
 
 namespace GameOverlay.Kikimeter.Services;
 
@@ -34,7 +35,7 @@ internal static class BreedClassMapper
         if (!int.TryParse(breedValue.Trim(), out var breedId))
             return null;
 
-        return BreedToClass.TryGetValue(breedId, out var className) ? className : null;
+        return GetClassName(breedId);
     }
 
     public static string? GetClassName(int breedId)
