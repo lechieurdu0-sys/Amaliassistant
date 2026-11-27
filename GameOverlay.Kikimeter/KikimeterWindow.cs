@@ -72,7 +72,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private bool _suspendFocusReturn;
     private bool _isCollapsed = false;
     private DateTime _lastClickTime = DateTime.MinValue;
-    private bool _firstTurnComplete = false; // Indique si le premier tour complet est terminé
+    private bool _initialPlayerOrderLearned = false; // Indique si l'ordre initial des joueurs observés est établi
     private Services.PlayerManagementService? _playerManagementService;
     private Services.IPlayerDataProvider? _playerDataProvider;
     
@@ -2961,7 +2961,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             }
 
             // Réinitialiser le flag du premier tour complet
-            _firstTurnComplete = false;
+            _initialPlayerOrderLearned = false;
             
             // Réinitialiser les compteurs de kikis
             _playerKikis.Clear();
@@ -3095,8 +3095,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     {
         // Mise à jour des valeurs max si nécessaire
         
-        // Si le premier tour complet est terminé, ne plus trier (le tri automatique au premier tour a la priorité sur l'ordre manuel)
-        if (_firstTurnComplete)
+        // Si l'ordre initial des joueurs est établi, ne plus trier (le tri automatique au premier tour a la priorité sur l'ordre manuel)
+        if (_initialPlayerOrderLearned)
             return;
         
         // Si la propriété NumberOfTurns change, vérifier si c'est le premier tour d'un joueur
@@ -3127,10 +3127,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                         
                         // Vérifier si tous les joueurs ont joué au moins une fois
                         bool allPlayersPlayed = _playersCollection.All(p => p.NumberOfTurns >= 1);
-                        if (allPlayersPlayed && !_firstTurnComplete)
+                        if (allPlayersPlayed && !_initialPlayerOrderLearned)
                         {
-                            _firstTurnComplete = true;
-                            Logger.Info("KikimeterWindow", "Premier tour complet terminé - ordre des joueurs figé");
+                            _initialPlayerOrderLearned = true;
+                            Logger.Info("KikimeterWindow", "Ordre initial des joueurs observés établi - ordre figé");
                         }
                         
                         UpdateFirstPlayerFlag();

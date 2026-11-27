@@ -171,6 +171,7 @@ public class PlayerStats : INotifyPropertyChanged
     public long DamageBySummon { get; set; }
     public long DamageByAOE { get; set; }
 
+    // Count of observed individual player passages, not completed global rounds.
     public int NumberOfTurns
     {
         get => _numberOfTurns;
@@ -194,6 +195,7 @@ public class PlayerStats : INotifyPropertyChanged
         }
     }
 
+    // Existing DPT display: damage attributed during the player's current/last observed passage.
     public long DamagePerTurn => _damageThisTurn;
 
     public double DamageDealtMapped => MapValue(_damageDealt);

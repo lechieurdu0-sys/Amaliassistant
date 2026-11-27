@@ -223,9 +223,9 @@ public class LogParser
 
             if (TurnCarryoverRegex.IsMatch(line))
             {
-                // A single player can take consecutive turns without a monster casting a spell.
-                // Retain effect ownership but do not reuse the preceding direct cast.
-                _combatContext.PreviousCaster = null;
+                // Carryover is a personal boundary hint, not a global round.
+                // Keep the master's passage open for their following summons.
+                _combatContext.CarryoverPending = _combatContext.ActivePassageOwner != null;
                 _combatContext.CurrentCaster = null;
                 _combatContext.CurrentSpell = null;
                 _combatContext.PendingSummonOwner = null;
@@ -493,11 +493,8 @@ public class LogParser
             }
         }
         
-        // Détecter un nouveau tour : si le caster change d'un joueur à un autre, c'est un nouveau tour
-        bool isNewTurnForCaster = _combatContext.PreviousCaster != caster && 
-                                   _combatContext.PreviousCaster != null && 
-                                   _combatContext.PreviousCaster != string.Empty;
-        
+        ObserveIndividualPassage(caster);
+
         // Mettre à jour le contexte
         var now = DateTime.Now;
         
@@ -520,30 +517,42 @@ public class LogParser
         _combatContext.PendingSummonOwner = _combatContext.IsSummonSpell ? ResolvePlayerOwner(caster) : null;
         _combatContext.PendingSummonName = null;
         
-        // Compter les tours : quand le caster change vers un nouveau joueur, c'est un nouveau tour
-        if (_playerStats.ContainsKey(caster))
-        {
-            // Si c'est un changement de joueur (nouveau tour), réinitialiser les dégâts du tour et incrémenter
-            if (isNewTurnForCaster)
-            {
-                // Nouveau tour pour le nouveau caster
-                _playerStats[caster].NumberOfTurns++;
-                _playerStats[caster].ResetTurnDamage(); // Réinitialiser pour le nouveau tour
-                Logger.Info(LogCategory, $"Nouveau tour pour {caster} - tours enregistrés: {_playerStats[caster].NumberOfTurns}");
-            }
-            else if (_combatContext.PreviousCaster == null || _combatContext.PreviousCaster == string.Empty)
-            {
-                // Premier tour de ce joueur dans ce combat
-                _playerStats[caster].NumberOfTurns++;
-                _playerStats[caster].ResetTurnDamage(); // Initialiser à 0 pour le premier tour
-                Logger.Info(LogCategory, $"Premier tour pour {caster}");
-            }
-            
-            // Mettre à jour PreviousCaster pour la prochaine détection
-            _combatContext.PreviousCaster = caster;
-        }
     }
-    
+
+    // A passage is a player's actions plus those of their summons.
+    // Only observed actions establish a passage; missing/passive turns cannot establish a global round.
+    private void ObserveIndividualPassage(string actor)
+    {
+        string? owner = ResolvePlayerOwner(actor);
+        if (owner == null)
+        {
+            // A known monster acting closes the preceding player passage.
+            // Ambiguous summons and unknown actors are not reliable turn boundaries.
+            if (_combatContext.IsObservedUnownedAi(actor))
+            {
+                _combatContext.ActivePassageOwner = null;
+                _combatContext.CarryoverPending = false;
+            }
+            return;
+        }
+
+        bool sameOwner = string.Equals(owner, _combatContext.ActivePassageOwner,
+            StringComparison.OrdinalIgnoreCase);
+        bool directPlayer = string.Equals(actor, owner, StringComparison.OrdinalIgnoreCase);
+
+        // A carryover marker followed by the master's summon is still the master's passage.
+        // If the same master acts directly again, the marker can separate otherwise invisible solo passages.
+        if (sameOwner && !(_combatContext.CarryoverPending && directPlayer))
+            return;
+
+        _combatContext.ActivePassageOwner = owner;
+        _combatContext.CarryoverPending = false;
+        var stats = _playerStats[owner];
+        stats.ResetTurnDamage();
+        stats.NumberOfTurns++;
+        Logger.Info(LogCategory, $"Passage individuel observé pour {owner}: {stats.NumberOfTurns}");
+    }
+
     private void ParseSummonDeclaration(string line)
     {
         var match = SummonDeclarationRegex.Match(line);

@@ -26,7 +26,8 @@ internal static class Program
             ("Combat roster comes from log events", CombatRosterRegression.Run),
             ("Combat attribution and ambiguous summons", CombatAttributionRegression.Run),
             ("Incremental log cursor preserves complete lines", LogTailRegression.Run),
-            ("Observed French turn boundary and critical spell suffix", ObservedTurnRegression.Run)
+            ("Observed French turn boundary and critical spell suffix", ObservedTurnRegression.Run),
+            ("Individual passages group summons and distinguish monster actions", IndividualPassageRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

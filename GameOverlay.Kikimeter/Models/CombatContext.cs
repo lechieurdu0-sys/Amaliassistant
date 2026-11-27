@@ -14,9 +14,11 @@ public class CombatContext
     public string? CurrentCaster { get; set; }
     
     /// <summary>
-    /// Joueur précédent qui avait lancé un sort (pour détecter les changements de tour)
+    /// Owner of the currently observed individual passage, including their summons.
+    /// Not a global round counter.
     /// </summary>
-    public string? PreviousCaster { get; set; }
+    public string? ActivePassageOwner { get; set; }
+    public bool CarryoverPending { get; set; }
     
     /// <summary>
     /// Dernier sort lancé
@@ -57,6 +59,10 @@ public class CombatContext
             _summonIdsByName[name] = ids = new HashSet<long>();
         ids.Add(id);
     }
+
+    public bool IsObservedUnownedAi(string name) =>
+        _summonIdsByName.TryGetValue(name, out var ids) &&
+        ids.Count > 0 && !System.Linq.Enumerable.Any(ids, id => SummonOwnership.ContainsKey(id));
 
     public string? ResolveSummonOwner(string name)
     {
@@ -133,7 +139,8 @@ public class CombatContext
     public void Reset()
     {
         CurrentCaster = null;
-        PreviousCaster = null;
+        ActivePassageOwner = null;
+        CarryoverPending = false;
         CurrentSpell = null;
         IsSummonSpell = false;
         PendingSummonOwner = null;
