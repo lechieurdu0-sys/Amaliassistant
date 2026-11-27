@@ -1,0 +1,3 @@
+# French log observations
+
+Local user-provided logs (not committed) establish that breed 20 is Bellaphone, that the combat journal includes joins with AI flags, explicit combat start/end, a critical-cast suffix, double element annotations, and a message reporting seconds carried over to the next turn. The chat journal also contains older multi-character sessions. Carryover is evidence of a boundary, not an explicit actor ID or a complete enumeration of all turns. Counting turns remains approximate when a player passes without such a marker or a reaction is logged as a cast. Synthetic fixtures intentionally avoid player identities, private messages, original timestamps and raw log files. No chat log ingestion is added to the Kikimeter.

@@ -25,7 +25,8 @@ internal static class Program
             ("Virtual desktop canvas positioning", OverlayCanvasRegression.Run),
             ("Combat roster comes from log events", CombatRosterRegression.Run),
             ("Combat attribution and ambiguous summons", CombatAttributionRegression.Run),
-            ("Incremental log cursor preserves complete lines", LogTailRegression.Run)
+            ("Incremental log cursor preserves complete lines", LogTailRegression.Run),
+            ("Observed French turn boundary and critical spell suffix", ObservedTurnRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

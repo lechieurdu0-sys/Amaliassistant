@@ -37,6 +37,14 @@ public class LogParser
         @".*?\[_FL_\].*?fightId=\d+\s+(.+?)\s+breed\s*:\s*(\d+)\s+\[(\d+)\]\s+isControlledByAI=(true|false)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     
+    // Observed in the French client: this is a turn boundary, not a named actor or round number.
+    private static readonly Regex TurnCarryoverRegex = new(
+        @"\[Information \(combat\)\]\s+\d+ secondes? reportées? pour le tour suivant\.",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CriticalSuffixRegex = new(
+        @"\s+\(Critiques?\)\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     private static readonly Regex SpellCastRegex = new Regex(
         @".*?\[Information \(combat\)\]\s+(.+?)\s+lance\s+le\s+sort\s+(.+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -211,6 +219,19 @@ public class LogParser
                 {
                     return;
                 }
+            }
+
+            if (TurnCarryoverRegex.IsMatch(line))
+            {
+                // A single player can take consecutive turns without a monster casting a spell.
+                // Retain effect ownership but do not reuse the preceding direct cast.
+                _combatContext.PreviousCaster = null;
+                _combatContext.CurrentCaster = null;
+                _combatContext.CurrentSpell = null;
+                _combatContext.PendingSummonOwner = null;
+                _combatContext.PendingSummonName = null;
+                _combatContext.RecentSpells.Clear();
+                return;
             }
 
             if (TryHandleEffectApplication(line))
@@ -458,7 +479,7 @@ public class LogParser
             return;
         
         string caster = NormalizeEntityName(match.Groups[1].Value);
-        string spell = SpellMetadataProvider.NormalizeSpellName(match.Groups[2].Value.Trim());
+        string spell = SpellMetadataProvider.NormalizeSpellName(CriticalSuffixRegex.Replace(match.Groups[2].Value.Trim(), string.Empty));
 
         if (string.IsNullOrEmpty(caster))
             return;
@@ -513,7 +534,7 @@ public class LogParser
             else if (_combatContext.PreviousCaster == null || _combatContext.PreviousCaster == string.Empty)
             {
                 // Premier tour de ce joueur dans ce combat
-                _playerStats[caster].NumberOfTurns = 1;
+                _playerStats[caster].NumberOfTurns++;
                 _playerStats[caster].ResetTurnDamage(); // Initialiser à 0 pour le premier tour
                 Logger.Info(LogCategory, $"Premier tour pour {caster}");
             }

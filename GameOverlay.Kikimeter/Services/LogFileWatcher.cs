@@ -19,7 +19,7 @@ public class LogFileWatcher : IDisposable
         public Session(string path) { Path = path; }
         public string Path { get; }
         public LogTailCursor Cursor { get; } = new();
-        public Timer? Timer { get; set; }
+        public System.Threading.Timer? Timer { get; set; }
         public DateTime? CreationTimeUtc { get; set; }
         public bool MissingAfterOpen { get; set; }
         public bool SkipHistoryOnFirstOpen { get; set; }
@@ -56,7 +56,7 @@ public class LogFileWatcher : IDisposable
                 catch (UnauthorizedAccessException) { }
             }
             Volatile.Write(ref _session, session);
-            session.Timer = new Timer(_ => Poll(session), null, 0, PollingIntervalMs);
+            session.Timer = new System.Threading.Timer(_ => Poll(session), null, 0, PollingIntervalMs);
         }
         Logger.Info(LogCategory, "Surveillance séquentielle du journal démarrée.");
     }
