@@ -42,6 +42,10 @@ public class LogParser
         @"\[Information \(combat\)\]\s+\d+ secondes? reportées? pour le tour suivant\.",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex DefeatRegex = new(
+        @"\[Information \(combat\)\]\s+Vous avez été vaincu\(e\)\s*!\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     private static readonly Regex KnockoutRegex = new(
         @"\[Information \(combat\)\]\s+(.+?)\s+est KO\s*!\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -536,6 +540,32 @@ public class LogParser
     // Only observed actions establish a passage; missing/passive turns cannot establish a global round.
     private bool TryHandleParticipantState(string line)
     {
+        if (DefeatRegex.IsMatch(line))
+        {
+            // The client reports defeat without naming the character. Only resolve
+            // an unambiguous known KO candidate; never guess among several.
+            var candidates = _currentCombatPlayers
+                .Where(name => _combatContext.Rounds.GetState(name) == RoundParticipantState.KnockedOut)
+                .Take(2).ToArray();
+            if (candidates.Length == 1)
+            {
+                string defeated = candidates[0];
+                _combatContext.Rounds.SetState(defeated, RoundParticipantState.Dead);
+                if (string.Equals(_combatContext.ActivePassageOwner, defeated, StringComparison.OrdinalIgnoreCase))
+                {
+                    _combatContext.ActivePassageOwner = null;
+                    _combatContext.CarryoverPending = false;
+                }
+                Logger.Info(LogCategory, "Défaite attribuée au seul participant KO : " + defeated);
+            }
+            else
+            {
+                Logger.Debug(LogCategory, "Défaite sans identité unique : aucune modification des participants.");
+            }
+            // This is not a combat-end marker. Other players may continue fighting.
+            return true;
+        }
+
         var match = KnockoutRegex.Match(line);
         bool knockout = match.Success;
         if (!knockout)

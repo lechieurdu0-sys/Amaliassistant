@@ -53,9 +53,38 @@ internal static class ParticipantStateRegression
         Line("Unknown est ressuscité !");
         Check(rounds.GetState("Unknown") == null && rounds.GetState("Enemy") == null &&
               parser.PlayerStats.Count == 2, "Nonplayers entered rotation");
-        rounds.SetState("A", RoundParticipantState.Dead);
+        // Defeat message has no name, but only A is KO.
+        Line("A est KO !");
+        Line("Vous avez été vaincu(e) !");
+        Line("Vous avez été vaincu(e) !");
         Line("A est ressuscité !");
         Check(rounds.GetState("A") == RoundParticipantState.Dead &&
               !rounds.ObservedOrder.Contains("A"), "Dead participant restored");
+        Check(parser.PlayerStats["A"].DamageDealt == 110 &&
+              parser.PlayerStats["A"].DamageTaken == 3082 &&
+              rounds.GetState("B") == RoundParticipantState.Available,
+              "Defeat modified cumulative stats or the survivor");
+        Line("Enemy lance le sort Test");
+        Line("B lance le sort Test");
+        Line("Enemy: -12 PV (Feu)");
+        Check(parser.PlayerStats["B"].DamageDealt == 12, "Personal defeat ended the fight");
+
+        // A second fight: an unnamed defeat is ambiguous when two players are KO.
+        parser.ProcessLogLine("CREATION DU COMBAT");
+        Join("A", 101); Join("B", 102); Join("C", 103);
+        Line("Vous avez été vaincu(e) !");
+        Check(rounds.GetState("A") == RoundParticipantState.Available &&
+              rounds.GetState("B") == RoundParticipantState.Available,
+              "Defeat without a known KO removed a player");
+        Line("A lance le sort Test");
+        Line("B lance le sort Test");
+        Line("C lance le sort Test");
+        Line("A est KO !");
+        Line("B est KO !");
+        Line("Vous avez été vaincu(e) !");
+        Check(rounds.GetState("A") == RoundParticipantState.KnockedOut &&
+              rounds.GetState("B") == RoundParticipantState.KnockedOut &&
+              rounds.GetState("C") == RoundParticipantState.Available,
+              "Ambiguous defeat guessed a victim");
     }
 }
