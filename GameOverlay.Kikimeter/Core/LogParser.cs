@@ -439,23 +439,16 @@ public class LogParser
         if (summonId >= 0)
             return;
         
-        // Associer l'invocation à son propriétaire si en attente
-        if (_combatContext.PendingSummonOwner != null)
+        _combatContext.RegisterSummonName(summonName, summonId);
+        if (_combatContext.PendingSummonOwner != null &&
+            string.Equals(_combatContext.PendingSummonName, summonName, StringComparison.OrdinalIgnoreCase))
         {
-            _combatContext.SummonOwnership[summonId] = _combatContext.PendingSummonOwner;
-            _combatContext.SummonNameToId[summonName] = summonId;
-            Logger.Debug(LogCategory, $"Invocation associée: {summonName} -> {_combatContext.PendingSummonOwner}");
+            _combatContext.SummonOwnership.TryAdd(summonId, _combatContext.PendingSummonOwner);
             _combatContext.PendingSummonOwner = null;
-        }
-        else
-        {
-            // Essayer de trouver le propriétaire via le nom (pour les invocations homonymes)
-            // En cas d'échec, on pourra faire une association ultérieure
-            _combatContext.SummonNameToId[summonName] = summonId;
-            Logger.Debug(LogCategory, $"Invocation enregistrée sans propriétaire: {summonName}");
+            _combatContext.PendingSummonName = null;
         }
     }
-    
+
     private void ParseSpellCast(string line)
     {
         EnsureRosterFinalized();
@@ -503,11 +496,8 @@ public class LogParser
                                       spell.Contains("Invocation", StringComparison.OrdinalIgnoreCase) ||
                                       spell.Contains("invoke", StringComparison.OrdinalIgnoreCase);
         
-        if (_combatContext.IsSummonSpell)
-        {
-            _combatContext.PendingSummonOwner = caster;
-            _combatContext.LastSummonOwner = caster;
-        }
+        _combatContext.PendingSummonOwner = _combatContext.IsSummonSpell ? ResolvePlayerOwner(caster) : null;
+        _combatContext.PendingSummonName = null;
         
         // Compter les tours : quand le caster change vers un nouveau joueur, c'est un nouveau tour
         if (_playerStats.ContainsKey(caster))
@@ -552,14 +542,8 @@ public class LogParser
             
             _combatContext.CurrentCaster = caster;
             _combatContext.IsSummonSpell = true;
-            _combatContext.PendingSummonOwner = caster;
-            _combatContext.LastSummonOwner = caster;
-        }
-        else if (!string.IsNullOrEmpty(_combatContext.CurrentCaster))
-        {
-            // Fallback : utiliser le dernier lanceur de sort
-            _combatContext.PendingSummonOwner = _combatContext.CurrentCaster;
-            _combatContext.LastSummonOwner = _combatContext.CurrentCaster;
+            _combatContext.PendingSummonOwner = ResolvePlayerOwner(caster);
+            _combatContext.PendingSummonName = summonName;
         }
     }
     
@@ -577,12 +561,14 @@ public class LogParser
         
         long summonId = long.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
         
-        var owner = _combatContext.PendingSummonOwner ?? _combatContext.LastSummonOwner;
+        var owner = _combatContext.PendingSummonOwner;
         
         if (owner != null)
         {
-            _combatContext.SummonOwnership[summonId] = owner;
-            Logger.Debug(LogCategory, $"Association fallback invocation: id={summonId} -> {owner}");
+            _combatContext.SummonOwnership.TryAdd(summonId, owner);
+            _combatContext.PendingSummonOwner = null;
+            _combatContext.PendingSummonName = null;
+            Logger.Debug(LogCategory, $"Association invocation: id={summonId} -> {owner}");
         }
     }
     
@@ -590,14 +576,10 @@ public class LogParser
     {
         if (line.Contains("PV", StringComparison.Ordinal))
         {
-            if (line.Contains("+", StringComparison.Ordinal))
-            {
-                ParseHealing(line);
-            }
-            else if (line.Contains("-", StringComparison.Ordinal))
-            {
+            if (DamageRegex.IsMatch(line))
                 ParseDamage(line);
-            }
+            else if (HealingRegex.IsMatch(line))
+                ParseHealing(line);
         }
         else if (line.Contains("Armure", StringComparison.Ordinal))
         {
@@ -619,239 +601,83 @@ public class LogParser
         
         string target = NormalizeEntityName(match.Groups[1].Value);
         long damage = ParseCombatAmount(match.Groups[2].Value);
-        var now = DateTime.Now;
+        string? effect = NormalizeEffectName(match.Groups[4].Value);
+        if (string.IsNullOrEmpty(effect))
+        {
+            var first = NormalizeEffectName(match.Groups[3].Value);
+            if (IsKnownIndirectEffect(first))
+                effect = first;
+        }
 
-        string? effectName = null;
-        if (match.Groups.Count > 4)
-        {
-            effectName = NormalizeEffectName(match.Groups[4].Value);
-        }
-        
-        Logger.Debug(LogCategory, $"ParseDamage - cible='{target}', valeur={damage}, caster courant={_combatContext.CurrentCaster}");
-        
-        // Dégâts subis par la cible
-        if (!string.IsNullOrEmpty(target) && _playerStats.ContainsKey(target))
-        {
-            _playerStats[target].DamageTaken += damage;
-            Logger.Debug(LogCategory, $"{target} dégâts subis cumulés: {_playerStats[target].DamageTaken}");
-        }
-        else
-        {
-            Logger.Warning(LogCategory, $"Impossible d'attribuer les dégâts subis à '{target}' (joueur inconnu)");
-            RegisterUnaccountedLine(line, "Damage-TargetUnknown");
-        }
-        
-        // Dégâts infligés : déterminer le propriétaire
-        string? damageOwner = null;
-        if (!string.IsNullOrEmpty(effectName))
-        {
-            var ownerFromEffect = _combatContext.TryResolveEffectOwner(effectName, target, now);
-            if (!string.IsNullOrEmpty(ownerFromEffect))
-            {
-                damageOwner = ownerFromEffect;
-                Logger.Debug(LogCategory, $"Propriétaire déterminé via effet '{effectName}': {damageOwner}");
-            }
-        }
-        
-        // PRIORITÉ 1: Vérifier d'abord si CurrentCaster est une invocation (logique originale qui fonctionnait)
-        // Cela permet de gérer les invocations correctement avant d'utiliser l'historique des sorts
-        if (string.IsNullOrEmpty(damageOwner) && !string.IsNullOrEmpty(_combatContext.CurrentCaster))
-        {
-            // Si CurrentCaster est une invocation, trouver son propriétaire
-            if (IsSummonDamage(_combatContext.CurrentCaster))
-            {
-                damageOwner = GetDamageOwner(_combatContext.CurrentCaster);
-                Logger.Debug(LogCategory, $"Dégâts d'invocation {_combatContext.CurrentCaster} -> propriétaire: {damageOwner}");
-                if (damageOwner != null)
-                {
-                    if (_playerStats.ContainsKey(damageOwner))
-                    {
-                        _playerStats[damageOwner].DamageDealt += damage;
-                        _playerStats[damageOwner].DamageThisTurn += damage;
-                        _playerStats[damageOwner].DamageBySummon += damage;
-                        Logger.Debug(LogCategory, $"{damageOwner} dégâts (invocation) cumulés: {_playerStats[damageOwner].DamageDealt} | Dégâts invocations: {_playerStats[damageOwner].DamageBySummon}");
-                    }
-                    return; // Retourner immédiatement pour les invocations (comme avant)
-                }
-            }
-        }
-        
-        // PRIORITÉ 2: Pour les sorts spammés (AoE rapides), chercher dans l'historique des sorts récents
-        // pour trouver le sort le plus récent qui est encore dans sa fenêtre de temps
-        (string Caster, string Spell, DateTime Timestamp)? matchingSpell = null;
-        
-        // Parcourir l'historique des sorts récents (du plus récent au plus ancien)
-        if (string.IsNullOrEmpty(damageOwner))
-        {
-        for (int i = _combatContext.RecentSpells.Count - 1; i >= 0; i--)
-        {
-            var recentSpell = _combatContext.RecentSpells[i];
-            var timeSinceSpell = (now - recentSpell.Timestamp).TotalSeconds;
-            
-            // Si le sort est dans sa fenêtre de temps, l'utiliser
-            if (timeSinceSpell <= CombatContext.SpellDamageWindowSeconds)
-            {
-                matchingSpell = recentSpell;
-                break; // Prendre le plus récent qui est dans la fenêtre
-                }
-            }
-        }
-        
-        // Si on a trouvé un sort dans la fenêtre, l'utiliser
-        if (string.IsNullOrEmpty(damageOwner) && matchingSpell.HasValue)
-        {
-            damageOwner = matchingSpell.Value.Caster;
-            Logger.Debug(LogCategory, $"Dégâts attribués au sort '{matchingSpell.Value.Spell}' de {damageOwner} (delta {(now - matchingSpell.Value.Timestamp).TotalSeconds:F2}s)");
-        }
-        // Sinon, utiliser CurrentCaster (qui n'est pas une invocation, sinon on serait déjà sorti)
-        else if (string.IsNullOrEmpty(damageOwner) && !string.IsNullOrEmpty(_combatContext.CurrentCaster))
-        {
-            damageOwner = _combatContext.CurrentCaster;
-            Logger.Debug(LogCategory, $"Propriétaire des dégâts (joueur): {damageOwner}");
-        }
-        else
-        {
-            // Fallback : utiliser GetDamageOwner
-            damageOwner ??= GetDamageOwner(target);
-            Logger.Debug(LogCategory, $"Propriétaire des dégâts (fallback): {damageOwner}");
-        }
-        
-        // Vérifier si c'est un rebond en analysant les groupes capturés
-        string? bounceInfo = match.Groups.Count > 4 && !string.IsNullOrEmpty(match.Groups[4].Value) 
-            ? match.Groups[4].Value 
-            : null;
-            
-        if (!string.IsNullOrEmpty(bounceInfo) && 
-            (bounceInfo.Contains("rebond", StringComparison.OrdinalIgnoreCase) || 
-             bounceInfo.Contains("bounce", StringComparison.OrdinalIgnoreCase)))
-        {
-            Logger.Debug(LogCategory, $"Dégâts avec rebond détecté: {bounceInfo} pour {damageOwner}");
-        }
-        
-        // Attribuer les dégâts au propriétaire
-        if (damageOwner != null && _playerStats.ContainsKey(damageOwner))
-        {
-            _playerStats[damageOwner].DamageDealt += damage;
-            _playerStats[damageOwner].DamageThisTurn += damage;
-            Logger.Debug(LogCategory, $"{damageOwner} dégâts infligés: {_playerStats[damageOwner].DamageDealt}, DPT courant: {_playerStats[damageOwner].DamagePerTurn}");
+        if (_currentCombatPlayers.Contains(target) && _playerStats.TryGetValue(target, out var recipient))
+            recipient.DamageTaken += damage;
 
-            if (!string.IsNullOrEmpty(effectName))
-            {
-                _combatContext.RegisterEffectOwnership(effectName, damageOwner, target, now);
-            }
-        }
-        else
+        var owner = ResolveActionOwner(effect, target);
+        if (owner != null)
         {
+            var stats = _playerStats[owner];
+            stats.DamageDealt += damage;
+            stats.DamageThisTurn += damage;
+            if (!string.Equals(_combatContext.CurrentCaster, owner, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ResolvePlayerOwner(_combatContext.CurrentCaster), owner, StringComparison.OrdinalIgnoreCase))
+                stats.DamageBySummon += damage;
+        }
+        else if (_combatContext.CurrentCaster == null ||
+                 _combatContext.SummonNameToId.ContainsKey(_combatContext.CurrentCaster) ||
+                 IsKnownIndirectEffect(effect))
             RegisterUnaccountedLine(line, "Damage-OwnerUnknown");
-            Logger.Warning(LogCategory, $"Impossible d'attribuer les dégâts à un propriétaire: {line}");
-        }
+        // Monsters are not tracked as players. Their damage to players was counted above.
     }
-    
+
     private void ParseHealing(string line)
     {
         EnsureRosterFinalized();
-
         var match = HealingRegex.Match(line);
-        if (!match.Success)
-        {
-            Logger.Warning(LogCategory, $"Ligne soins ignorée (pas de match regex): {line}");
-            RegisterUnaccountedLine(line, "Healing-Regex");
-            return;
-        }
-        
+        if (!match.Success) return;
         string target = NormalizeEntityName(match.Groups[1].Value);
-        long healing = ParseCombatAmount(match.Groups[2].Value);
-        
-        // Soins reçus par la cible
-        if (!string.IsNullOrEmpty(target) && _playerStats.ContainsKey(target))
-        {
-            // Si le soin vient d'un autre joueur, attribuer au lanceur
-            if (_combatContext.CurrentCaster != null && 
-                _playerStats.ContainsKey(_combatContext.CurrentCaster) &&
-                _combatContext.CurrentCaster != target)
-            {
-                _playerStats[_combatContext.CurrentCaster].HealingDone += healing;
-            }
-            else if (_combatContext.CurrentCaster == target)
-            {
-                // Soins sur soi-même
-                _playerStats[target].HealingDone += healing;
-            }
-        }
-        else
-        {
-            RegisterUnaccountedLine(line, "Healing-TargetUnknown");
-            Logger.Warning(LogCategory, $"Impossible d'attribuer un soin (cible inconnue) : {line}");
-        }
+        var owner = ResolveActionOwner(NormalizeEffectName(match.Groups[3].Value), target);
+        if (_currentCombatPlayers.Contains(target) && owner != null)
+            _playerStats[owner].HealingDone += ParseCombatAmount(match.Groups[2].Value);
     }
-    
+
     private void ParseShield(string line)
     {
         EnsureRosterFinalized();
-
         var match = ShieldRegex.Match(line);
-        if (!match.Success)
-        {
-            Logger.Warning(LogCategory, $"Ligne bouclier ignorée (pas de match regex): {line}");
-            RegisterUnaccountedLine(line, "Shield-Regex");
-            return;
-        }
-        
+        if (!match.Success) return;
         string target = NormalizeEntityName(match.Groups[1].Value);
-        long shield = ParseCombatAmount(match.Groups[2].Value);
-        
-        // Bouclier donné : attribuer au lanceur du sort
-        if (_combatContext.CurrentCaster != null && 
-            _playerStats.ContainsKey(_combatContext.CurrentCaster))
-        {
-            _playerStats[_combatContext.CurrentCaster].ShieldGiven += shield;
-        }
-        else
-        {
-            RegisterUnaccountedLine(line, "Shield-OwnerUnknown");
-            Logger.Warning(LogCategory, $"Impossible d'attribuer un bouclier : {line}");
-        }
+        var owner = ResolvePlayerOwner(_combatContext.CurrentCaster);
+        if (_currentCombatPlayers.Contains(target) && owner != null)
+            _playerStats[owner].ShieldGiven += ParseCombatAmount(match.Groups[2].Value);
     }
-    
-    /// <summary>
-    /// Détermine le propriétaire des dégâts (joueur ou propriétaire de l'invocation)
-    /// </summary>
-    private string? GetDamageOwner(string entityName)
+
+    private static bool IsKnownIndirectEffect(string? effect) =>
+        !string.IsNullOrEmpty(effect) &&
+        (SpellMetadataProvider.IsIndirectEffect(effect) ||
+         string.Equals(effect, "Courroux", StringComparison.OrdinalIgnoreCase));
+
+    private string? ResolveActionOwner(string? effect, string target)
     {
-        var normalizedName = NormalizeEntityName(entityName);
+        if (!string.IsNullOrEmpty(effect))
+        {
+            var registered = _combatContext.TryResolveEffectOwner(effect, target, DateTime.Now);
+            if (registered != null)
+                return ResolvePlayerOwner(registered);
+            if (IsKnownIndirectEffect(effect))
+                return null;
+        }
+        return ResolvePlayerOwner(_combatContext.CurrentCaster);
+    }
 
-        if (string.IsNullOrEmpty(normalizedName))
+    private string? ResolvePlayerOwner(string? entity)
+    {
+        if (string.IsNullOrEmpty(entity))
             return null;
-
-        // Si c'est un joueur, c'est lui le propriétaire
-        if (_playerStats.ContainsKey(normalizedName))
-        {
-            Logger.Debug(LogCategory, $"{normalizedName} identifié comme joueur");
-            return normalizedName;
-        }
-        
-        // Si c'est une invocation, trouver son propriétaire
-        if (_combatContext.SummonNameToId.TryGetValue(normalizedName, out long summonId))
-        {
-            Logger.Debug(LogCategory, $"{normalizedName} identifié comme invocation (ID: {summonId})");
-            if (_combatContext.SummonOwnership.TryGetValue(summonId, out string? owner))
-            {
-                Logger.Debug(LogCategory, $"Propriétaire de l'invocation {summonId} trouvé: {owner}");
-                return owner;
-            }
-            else
-            {
-                Logger.Warning(LogCategory, $"Aucun propriétaire enregistré pour l'invocation {summonId}");
-            }
-        }
-        else
-        {
-            Logger.Warning(LogCategory, $"{normalizedName} n'est ni un joueur ni une invocation connue");
-        }
-        
-        // Fallback : utiliser le dernier lanceur de sort
-        Logger.Debug(LogCategory, $"Attribution fallback sur caster courant: {_combatContext.CurrentCaster}");
-        return _combatContext.CurrentCaster;
+        if (_currentCombatPlayers.Contains(entity) && _playerStats.ContainsKey(entity))
+            return entity;
+        var owner = _combatContext.ResolveSummonOwner(entity);
+        return owner != null && _currentCombatPlayers.Contains(owner) && _playerStats.ContainsKey(owner)
+            ? owner : null;
     }
 
     private static long ParseCombatAmount(string rawValue)
@@ -868,21 +694,6 @@ public class LogParser
             : 0;
     }
     
-    /// <summary>
-    /// Vérifie si les dégâts proviennent d'une invocation
-    /// </summary>
-    private bool IsSummonDamage(string entityName)
-    {
-        var normalizedName = NormalizeEntityName(entityName);
-
-        if (string.IsNullOrEmpty(normalizedName))
-            return false;
-
-        // Si l'entité n'est pas un joueur ET qu'elle existe dans SummonNameToId, c'est une invocation
-        return !_playerStats.ContainsKey(normalizedName) && 
-               _combatContext.SummonNameToId.ContainsKey(normalizedName);
-    }
-
     private bool TryHandleEffectApplication(string line)
     {
         var match = EffectApplicationRegex.Match(line);
@@ -896,9 +707,7 @@ public class LogParser
         if (string.IsNullOrEmpty(effectName))
             return false;
 
-        var owner = _combatContext.CurrentCaster;
-        owner ??= _combatContext.GetRecentCaster(TimeSpan.FromSeconds(CombatContext.SpellDamageWindowSeconds));
-        owner ??= target;
+        var owner = ResolvePlayerOwner(_combatContext.CurrentCaster);
 
         if (string.IsNullOrEmpty(owner))
             return false;

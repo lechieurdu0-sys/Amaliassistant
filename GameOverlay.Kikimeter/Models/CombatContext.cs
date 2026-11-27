@@ -32,6 +32,7 @@ public class CombatContext
     /// Propriétaire de la prochaine invocation en attente d'instanciation
     /// </summary>
     public string? PendingSummonOwner { get; set; }
+    public string? PendingSummonName { get; set; }
     
     /// <summary>
     /// Dernier propriétaire ayant lancé un sort d'invocation (fallback pour traits passifs)
@@ -47,6 +48,31 @@ public class CombatContext
     /// Dictionnaire pour mapper les noms d'invocations à leur ID (pour les invocations homonymes)
     /// </summary>
     public Dictionary<string, long> SummonNameToId { get; set; }
+    private readonly Dictionary<string, HashSet<long>> _summonIdsByName = new(StringComparer.OrdinalIgnoreCase);
+
+    public void RegisterSummonName(string name, long id)
+    {
+        SummonNameToId[name] = id;
+        if (!_summonIdsByName.TryGetValue(name, out var ids))
+            _summonIdsByName[name] = ids = new HashSet<long>();
+        ids.Add(id);
+    }
+
+    public string? ResolveSummonOwner(string name)
+    {
+        if (!_summonIdsByName.TryGetValue(name, out var ids))
+            return null;
+        string? owner = null;
+        foreach (long id in ids)
+        {
+            if (!SummonOwnership.TryGetValue(id, out var candidate))
+                return null;
+            if (owner != null && !string.Equals(owner, candidate, StringComparison.OrdinalIgnoreCase))
+                return null;
+            owner = candidate;
+        }
+        return owner;
+    }
     
     /// <summary>
     /// Timestamp du dernier sort lancé (pour gérer les rebonds/multi-cibles)
@@ -111,11 +137,13 @@ public class CombatContext
         CurrentSpell = null;
         IsSummonSpell = false;
         PendingSummonOwner = null;
+        PendingSummonName = null;
         LastSummonOwner = null;
         LastSpellCastTime = DateTime.MinValue;
         RecentSpells.Clear();
         SummonOwnership.Clear();
         SummonNameToId.Clear();
+        _summonIdsByName.Clear();
         EffectOwnerships.Clear();
         UnaccountedLines.Clear();
     }
@@ -136,9 +164,7 @@ public class CombatContext
         var lifetime = customLifetime ?? GetEffectLifetime(effectName);
         EffectOwnerships[keyWithTarget] = new EffectOwnership(effectName, owner, target, timestamp, lifetime);
 
-        // Enregistrer également une entrée générique sans cible pour couverture globale
-        string genericKey = CreateEffectKey(effectName, null);
-        EffectOwnerships[genericKey] = new EffectOwnership(effectName, owner, null, timestamp, lifetime);
+        // A targeted application is not evidence of ownership on a different target.
     }
 
     public string? TryResolveEffectOwner(string effectName, string? target, DateTime timestamp)

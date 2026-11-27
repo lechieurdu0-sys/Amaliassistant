@@ -23,7 +23,8 @@ internal static class Program
             ("Catalog manifest preflight", CatalogManifestRegression.Run),
             ("Wakfu catalog authority and ambiguity", WakfuCatalogRegression.Run),
             ("Virtual desktop canvas positioning", OverlayCanvasRegression.Run),
-            ("Combat roster comes from log events", CombatRosterRegression.Run)
+            ("Combat roster comes from log events", CombatRosterRegression.Run),
+            ("Combat attribution and ambiguous summons", CombatAttributionRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)
