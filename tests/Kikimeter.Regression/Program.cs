@@ -27,7 +27,8 @@ internal static class Program
             ("Combat attribution and ambiguous summons", CombatAttributionRegression.Run),
             ("Incremental log cursor preserves complete lines", LogTailRegression.Run),
             ("Observed French turn boundary and critical spell suffix", ObservedTurnRegression.Run),
-            ("Individual passages group summons and distinguish monster actions", IndividualPassageRegression.Run)
+            ("Individual passages group summons and distinguish monster actions", IndividualPassageRegression.Run),
+            ("Estimated global rounds and participant availability", CombatRoundRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

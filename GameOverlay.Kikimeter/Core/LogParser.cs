@@ -149,6 +149,8 @@ public class LogParser
     
     public CombatContext CombatContext => _combatContext;
 
+    public int EstimatedRound => _combatContext.Rounds.Round;
+
     // Publish membership on the parser thread; readers never enumerate the mutable roster.
     public PlayerStats[] GetPlayerSnapshot() =>
         System.Threading.Volatile.Read(ref _playerSnapshot).ToArray();
@@ -428,6 +430,7 @@ public class LogParser
             }
         }
 
+        _combatContext.Rounds.RegisterPlayer(playerName);
         bool firstJoin = _currentCombatPlayers.Add(playerName);
         stats.IsActive = true;
         stats.LastSeenInCombat = DateTime.Now;
@@ -530,6 +533,7 @@ public class LogParser
             // Ambiguous summons and unknown actors are not reliable turn boundaries.
             if (_combatContext.IsObservedUnownedAi(actor))
             {
+                _combatContext.Rounds.ObserveMonsterAction();
                 _combatContext.ActivePassageOwner = null;
                 _combatContext.CarryoverPending = false;
             }
@@ -545,6 +549,7 @@ public class LogParser
         if (sameOwner && !(_combatContext.CarryoverPending && directPlayer))
             return;
 
+        _combatContext.Rounds.ObservePlayerPassage(owner);
         _combatContext.ActivePassageOwner = owner;
         _combatContext.CarryoverPending = false;
         var stats = _playerStats[owner];
