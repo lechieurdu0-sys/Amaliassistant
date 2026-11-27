@@ -366,10 +366,7 @@ namespace GameOverlay.App
                 kikimeterItem.Click += (s, e) => ToggleKikimeter();
                 contextMenu.Items.Add(kikimeterItem);
 
-                var lootItem = new ToolStripMenuItem("💎 Ouvrir le Loot");
-                lootItem.ForeColor = textColor;
-                lootItem.Click += (s, e) => ToggleLoot();
-                contextMenu.Items.Add(lootItem);
+                // Loot tracking retired: no menu entry.
                 
                 var mapItem = new ToolStripMenuItem("🗺️ Carte interactive Wakfu");
                 mapItem.ForeColor = textColor;
@@ -509,13 +506,7 @@ namespace GameOverlay.App
             
             contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
             
-            // Item "Placer notification de vente"
-            var saleItem = new ToolStripMenuItem("📍 Placer notification de vente");
-            saleItem.ForeColor = textColor;
-            saleItem.Click += (s, e) => TestSaleNotification_Click(s, e);
-            contextMenu.Items.Insert(insertIndex++, saleItem);
-            
-            contextMenu.Items.Insert(insertIndex++, new ToolStripSeparator());
+            // Sale tracking retired alongside loot.
             
             // Item "Plugins"
             var pluginsItem = new ToolStripMenuItem("🔌 Plugins");
@@ -1326,18 +1317,7 @@ namespace GameOverlay.App
                         CustomMessageBox.Show($"Erreur lors de l'ouverture du kikimeter: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 };
-                kikimeterBubble.OnOpenLoot += (sender, e) =>
-                {
-                    try
-                    {
-                        ToggleLoot();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur dans OnOpenLoot (depuis KikimeterBubble): {ex.Message}");
-                        CustomMessageBox.Show($"Erreur lors de l'ouverture du loot: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                };
+                // The hidden legacy loot button has no handler.
                 kikimeterBubble.OnOpenWeb += (sender, e) =>
                 {
                     try
@@ -1837,127 +1817,9 @@ namespace GameOverlay.App
 
         private void ToggleLoot()
         {
-            try
-            {
-                // Si la fenêtre n'existe pas encore, l'initialiser en arrière-plan d'abord
-                if (lootWindow == null)
-                {
-                    InitializeWindowsInBackground();
-                }
-                
-                if (lootWindow == null || !lootWindow.IsVisible)
-                {
-                    // Créer ou réouvrir la fenêtre
-                    if (lootWindow == null)
-                    {
-                        lootWindow = new GameOverlay.Kikimeter.Views.LootWindow();
-                        lootWindow.ServerSwitched += LootWindow_ServerSwitched;
-                        
-                        // Intercepter la fermeture pour utiliser Hide() au lieu de Close()
-                        lootWindow.Closing += (s, e) =>
-                        {
-                            e.Cancel = true; // Annuler la fermeture
-                            SaveLootWindowPosition();
-                            lootWindow.Hide(); // Masquer à la place
-                            // Ne pas mettre lootWindow à null pour pouvoir le rouvrir
-                        };
-                        
-                        lootWindow.Closed += (s, e) => 
-                        {
-                            // Ne rien faire ici car on utilise Closing avec Cancel
-                        };
-                        
-                        // Sauvegarder la position quand la fenêtre est déplacée ou redimensionnée
-                        lootWindow.LocationChanged += (s, e) => SaveLootWindowPosition();
-                        lootWindow.SizeChanged += (s, e) => SaveLootWindowPosition();
-                        
-                        // Charger la position sauvegardée
-                        LoadLootWindowPosition();
-                        lootWindow.Loaded += LootWindow_LoadedForResetHook;
-                        
-                        // Démarrer le tracking IMMÉDIATEMENT, même si la fenêtre n'est pas visible
-                        // Ne pas vérifier File.Exists - LootTracker surveille même si le fichier n'existe pas encore
-                        string chatLogPath = config.LootChatLogPath ?? "";
-                        string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                        if (!string.IsNullOrEmpty(chatLogPath))
-                        {
-                            lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                            Logger.Info("MainWindow", $"LootWindow.StartWatching appelé dès la création de la fenêtre sur {chatLogPath}");
-                            
-                            // Initialiser le suivi des ventes
-                            InitializeSaleTracker();
-                        }
-                        else
-                        {
-                            Logger.Info("MainWindow", "Chemin du log chat non configuré - StartWatching non démarré");
-                        }
-                    }
-                    else
-                    {
-                        // Si la fenêtre existe déjà mais n'est pas visible, s'assurer que StartWatching est actif
-                        if (!lootWindow.IsVisible)
-                        {
-                            string chatLogPath = config.LootChatLogPath ?? "";
-                            string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                            if (!string.IsNullOrEmpty(chatLogPath))
-                            {
-                                // Vérifier si StartWatching n'a pas encore été appelé
-                                try
-                                {
-                                    lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                                    Logger.Info("MainWindow", $"LootWindow.StartWatching appelé pour une fenêtre existante non visible sur {chatLogPath}");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Logger.Info("MainWindow", $"StartWatching déjà actif ou erreur: {ex.Message}");
-                                }
-                            }
-                        }
-                    }
-                    
-                    EnsureLootWindowIsOnScreen();
-                    lootWindow.WindowState = WindowState.Normal;
-                    lootWindow.Show();
-                    lootWindow.Visibility = Visibility.Visible;
-                    // Petit "topmost pulse" pour ramener la fenêtre au premier plan sans la bloquer durablement.
-                    lootWindow.Topmost = true;
-                    lootWindow.Topmost = false;
-                    lootWindow.Activate();
-                }
-                else
-                {
-                    // Masquer la fenêtre
-                    lootWindow.Hide();
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("MainWindow", $"Erreur ToggleLoot: {ex.Message}\n{ex}");
-                
-                // Garder le comportement historique: ne pas réinitialiser agressivement la fenêtre
-                // pour éviter de perdre le contexte loot/session après un combat.
-                // On tente uniquement de redémarrer le watcher si une instance existe déjà.
-                if (lootWindow != null)
-                {
-                    try
-                    {
-                        string chatLogPath = config.LootChatLogPath ?? "";
-                        string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                        if (!string.IsNullOrEmpty(chatLogPath))
-                        {
-                            lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                            Logger.Info("MainWindow", $"ToggleLoot recovery: StartWatching relancé sur {chatLogPath}");
-                        }
-                    }
-                    catch (Exception restartEx)
-                    {
-                        Logger.Error("MainWindow", $"ToggleLoot recovery: échec du redémarrage watcher: {restartEx.Message}\n{restartEx}");
-                    }
-                }
-
-            }
+            // Intentionally retired. Do not create a window or start a tracker.
         }
-        
+
         private void LootWindow_LoadedForResetHook(object? sender, RoutedEventArgs e)
         {
             if (sender is not GameOverlay.Kikimeter.Views.LootWindow window)
@@ -2543,65 +2405,7 @@ namespace GameOverlay.App
                     }
                 }
                 
-                // Initialiser LootWindow si elle n'existe pas encore
-                // TOUJOURS créer la fenêtre au démarrage pour démarrer le watcher immédiatement
-                // Même si le chemin n'est pas encore configuré, on peut le démarrer plus tard
-                if (lootWindow == null)
-                {
-                    try
-                    {
-                        lootWindow = new GameOverlay.Kikimeter.Views.LootWindow();
-                        lootWindow.Visibility = Visibility.Hidden; // Créer mais cacher - la fenêtre ne doit pas être visible par défaut
-                        lootWindow.ShowInTaskbar = false;
-                        lootWindow.ServerSwitched += LootWindow_ServerSwitched;
-                        
-                        // Configurer la fermeture pour utiliser Hide()
-                        lootWindow.Closing += (s, e) =>
-                        {
-                            e.Cancel = true;
-                            SaveLootWindowPosition();
-                            lootWindow.Hide();
-                        };
-                        
-                        lootWindow.LocationChanged += (s, e) => SaveLootWindowPosition();
-                        lootWindow.SizeChanged += (s, e) => SaveLootWindowPosition();
-                        
-                        LoadLootWindowPosition();
-                        
-                        // Démarrer la surveillance immédiatement si le chemin est configuré
-                        // LootTracker surveille même si le fichier n'existe pas encore
-                        string chatLogPath = config.LootChatLogPath ?? "";
-                        string kikimeterLogPath = config.KikimeterLogPath ?? "";
-                        if (!string.IsNullOrEmpty(chatLogPath))
-                        {
-                            lootWindow.StartWatching(chatLogPath, kikimeterLogPath);
-                            Logger.Info("MainWindow", $"LootWindow créée en arrière-plan - StartWatching démarré sur {chatLogPath}");
-                        }
-                        else
-                        {
-                            Logger.Info("MainWindow", "LootWindow créée en arrière-plan mais chemin du log non configuré - StartWatching sera démarré quand le chemin sera configuré");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors de l'initialisation de LootWindow en arrière-plan: {ex.Message}");
-                    }
-                }
-                
-                // Initialiser le SaleTracker même si la LootWindow n'est pas créée (si le chemin du log est configuré)
-                // Ne pas vérifier File.Exists - le SaleTracker surveille même si le fichier n'existe pas encore
-                if (_saleTracker == null && !string.IsNullOrEmpty(config.LootChatLogPath))
-                {
-                    try
-                    {
-                        InitializeSaleTracker();
-                        Logger.Info("MainWindow", "SaleTracker initialisé en arrière-plan (sans LootWindow)");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("MainWindow", $"Erreur lors de l'initialisation du SaleTracker en arrière-plan: {ex.Message}");
-                    }
-                }
+                // LootWindow and SaleTracker are intentionally not started.
             }
             catch (Exception ex)
             {
@@ -3444,58 +3248,9 @@ namespace GameOverlay.App
         /// </summary>
         private void InitializeSaleTracker()
         {
-            try
-            {
-                // Désactiver l'ancien tracker s'il existe
-                if (_saleTracker != null)
-                {
-                    _saleTracker.SaleDetected -= SaleTracker_SaleDetected;
-                    _saleTracker.Dispose();
-                    _saleTracker = null;
-                }
-                
-                // Arrêter l'ancien timer s'il existe
-                if (_saleTrackerTimer != null)
-                {
-                    _saleTrackerTimer.Stop();
-                    _saleTrackerTimer.Tick -= SaleTrackerTimer_Tick;
-                    _saleTrackerTimer = null;
-                }
-                
-                string? chatLogPath = config.LootChatLogPath;
-                if (string.IsNullOrWhiteSpace(chatLogPath))
-                {
-                    Logger.Debug("MainWindow", "Chemin du log de chat non configuré, SaleTracker non initialisé");
-                    return;
-                }
-                
-                // Le SaleTracker surveille maintenant même si le fichier n'existe pas encore
-                if (!File.Exists(chatLogPath))
-                {
-                    Logger.Info("MainWindow", $"Fichier de log chat n'existe pas encore: {chatLogPath} - SaleTracker surveillera la création du fichier");
-                }
-                
-                _saleTracker = new GameOverlay.Kikimeter.Services.SaleTracker(chatLogPath);
-                _saleTracker.SaleDetected += SaleTracker_SaleDetected;
-                
-                // Créer et démarrer le timer pour la lecture périodique
-                // Interval augmenté à 100ms pour mieux gérer les verrouillages de fichier
-                // Le FileSystemWatcher s'occupe des événements rapides, le timer est un backup
-                _saleTrackerTimer = new System.Windows.Threading.DispatcherTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(100)
-                };
-                _saleTrackerTimer.Tick += SaleTrackerTimer_Tick;
-                _saleTrackerTimer.Start();
-                
-                Logger.Info("MainWindow", $"SaleTracker initialisé pour la détection des ventes en temps réel (fichier: {chatLogPath}, interval: 100ms)");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("MainWindow", $"Erreur lors de l'initialisation du SaleTracker: {ex.Message}");
-            }
+            // Intentionally retired; legacy callers must not start background tracking.
         }
-        
+
         private void SaleTrackerTimer_Tick(object? sender, EventArgs e)
         {
             try
