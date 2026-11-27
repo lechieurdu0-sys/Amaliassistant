@@ -19,7 +19,8 @@ internal static class Program
             ("Outsider expires strictly after 30 seconds", TimeoutBoundary),
             ("Server change skips cleanup once", ServerCleanup),
             ("Server change skips sync once", ServerSync),
-            ("Reset refreshes server baseline", ServerReset)
+            ("Reset refreshes server baseline", ServerReset),
+            ("Catalog manifest preflight", CatalogManifestRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)
