@@ -211,7 +211,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         
         try
         {
-            // Mettre à jour le dictionnaire d'ordre manuel
+            // Replace, rather than merge, the user's current ordering.
+            _manualOrderMap.Clear();
             for (int i = 0; i < orderedNames.Count; i++)
             {
                 _manualOrderMap[orderedNames[i]] = i;

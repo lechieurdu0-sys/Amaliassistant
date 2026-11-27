@@ -88,8 +88,10 @@ public class PlayerManagementService
         if (_playersCollection == null)
             return Enumerable.Empty<string>();
             
+        var active = _dataProvider.IsCombatActive ? _dataProvider.GetPlayersInCombat() : null;
         return _playersCollection
-            .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+            .Where(p => !string.IsNullOrWhiteSpace(p.Name) &&
+                (active == null || active.Contains(p.Name) || active.Contains(p.PlayerId.ToString())))
             .Select(p => p.Name)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

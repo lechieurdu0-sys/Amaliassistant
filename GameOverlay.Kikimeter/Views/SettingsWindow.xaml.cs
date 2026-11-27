@@ -385,63 +385,20 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
 
     private void PopulatePlayersFromStoredData()
     {
-        try
+        // Stored order only ranks existing participants; it must not invent rows.
+        var live = _getCurrentPlayers?.Invoke()?.ToList()
+            ?? _playerManagementService?.GetCurrentPlayerNames().ToList();
+        if (live != null)
         {
-            var storedNames = LoadOrderedNamesFromManualOrder();
-            if (storedNames.Count == 0)
-            {
-                storedNames = LoadCharacterNamesFromConfig();
-            }
-
-            if (storedNames.Count == 0)
-            {
-                return;
-            }
-
-            var existing = new HashSet<string>(Items.Select(item => item.Name), StringComparer.OrdinalIgnoreCase);
-
-            if (Items.Count == 0)
-            {
-                for (int i = 0; i < storedNames.Count; i++)
-                {
-                    Items.Add(new PlayerOrderItem(storedNames[i], i));
-                }
-            }
-            else
-            {
-                int nextOrder = Items.Count;
-                foreach (var name in storedNames)
-                {
-                    if (!existing.Contains(name))
-                    {
-                        Items.Add(new PlayerOrderItem(name, nextOrder++));
-                    }
-                }
-            }
-
-            RenumberItems();
+            var ordered = PlayerOrderMembership.Order(live, Items.Select(i => i.Name),
+                LoadOrderedNamesFromManualOrder());
+            Items.Clear();
+            foreach (var name in ordered)
+                Items.Add(new PlayerOrderItem(name, Items.Count));
         }
-        catch (Exception ex)
-        {
-            Logger.Warning("SettingsWindow", $"PopulatePlayersFromStoredData: {ex.Message}");
-        }
+        RenumberItems();
     }
 
-    private void UpdateEmptyListMessage()
-    {
-        if (FindName("EmptyListMessage") is TextBlock emptyMessage)
-        {
-            emptyMessage.Visibility = Items.Count == 0
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        }
-    }
-    
-    private void PlayerListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateButtonStates();
-    }
-    
     private void UpdateButtonStates()
     {
         int index = PlayerListBox.SelectedIndex;
@@ -558,18 +515,9 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         try
         {
             // Utiliser PlayerManagementService en priorité (SOURCE UNIQUE DE VÉRITÉ)
-            var currentPlayers = _playerManagementService?.GetCurrentPlayerNames().ToList() 
-                ?? _getCurrentPlayers?.Invoke()?.ToList() 
+            var currentPlayers = _getCurrentPlayers?.Invoke()?.ToList()
+                ?? _playerManagementService?.GetCurrentPlayerNames().ToList()
                 ?? new List<string>();
-                
-            if (currentPlayers.Count == 0)
-            {
-                currentPlayers = LoadOrderedNamesFromManualOrder();
-                if (currentPlayers.Count == 0)
-                {
-                    currentPlayers = LoadCharacterNamesFromConfig();
-                }
-            }
             
             Logger.Info("SettingsWindow", $"UpdatePlayersList: {currentPlayers.Count} joueurs récupérés: {string.Join(", ", currentPlayers)}");
             
@@ -615,7 +563,6 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             }
             
             RenumberItems();
-            PopulatePlayersFromStoredData();
             
             // Forcer la mise à jour du binding et de l'affichage
             Dispatcher.BeginInvoke(new Action(() =>
@@ -825,7 +772,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             var config = GetActiveCharacterConfig();
             
             // Utiliser PlayerManagementService pour obtenir le personnage principal (SOURCE UNIQUE DE VÉRITÉ)
-            string? mainCharacter = _playerManagementService?.GetMainCharacter()?.Name ?? config.MainCharacter;
+            string? mainCharacter = config.MainCharacter;
+            if (config.IsRemoved(mainCharacter)) mainCharacter = null;
             
             var myCharacters = config.MyCharacters ?? new List<string>();
             var manualCharacters = config.ManualCharacters ?? new List<string>();
@@ -1547,6 +1495,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                     config.Characters = new Dictionary<string, bool>(config.Characters ?? new Dictionary<string, bool>(), StringComparer.OrdinalIgnoreCase);
                     config.MyCharacters ??= new List<string>();
                     config.ManualCharacters ??= new List<string>();
+                    config.Normalize();
                     return config;
                 }
             }
@@ -1655,7 +1604,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     {
         if (_characterDetector != null)
         {
+            if (string.Equals(characterName, _characterDetector.GetConfig().MainCharacter, StringComparison.OrdinalIgnoreCase))
+                return false;
             _characterDetector.RemoveCharacter(characterName);
+            RemoveCharacterFromOrder(characterName);
+            _onConfigChanged(_config);
             return true;
         }
 
@@ -1668,31 +1621,11 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
                 return false;
             }
 
-            bool changed = false;
-            if (config.Characters.Remove(characterName))
-            {
-                changed = true;
-            }
-
-            if (config.ManualCharacters?.RemoveAll(c => string.Equals(c, characterName, StringComparison.OrdinalIgnoreCase)) > 0)
-            {
-                changed = true;
-            }
-
-            if (config.MyCharacters?.RemoveAll(c => string.Equals(c, characterName, StringComparison.OrdinalIgnoreCase)) > 0)
-            {
-                changed = true;
-            }
-
-            if (changed)
-            {
-                SaveCharacterConfigToDisk(config);
-                
-                // Retirer aussi des listes d'ordre et de l'affichage des joueurs
-                RemoveCharacterFromOrder(characterName);
-            }
-
-            return changed;
+            config.Forget(characterName);
+            SaveCharacterConfigToDisk(config);
+            RemoveCharacterFromOrder(characterName);
+            _onConfigChanged(_config);
+            return true;
         }
         catch (Exception ex)
         {
@@ -1818,12 +1751,12 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         try
         {
             var state = PersistentStorageHelper.LoadJsonWithFallback<ManualOrderState>(ManualOrderConfigFileName) ?? new ManualOrderState();
-            if (state.Orders != null && state.Orders.Remove(characterName))
+            if (state.Orders != null && state.Orders.Keys.Any(n => string.Equals(n, characterName, StringComparison.OrdinalIgnoreCase)))
             {
                 // Re-normaliser les indices (ordre) après suppression
                 var ordered = state.Orders
                     .OrderBy(kvp => kvp.Value)
-                    .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key))
+                    .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && !string.Equals(kvp.Key, characterName, StringComparison.OrdinalIgnoreCase))
                     .Select(kvp => kvp.Key)
                     .ToList();
 

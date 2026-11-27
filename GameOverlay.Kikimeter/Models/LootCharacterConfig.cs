@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 
 namespace GameOverlay.Kikimeter.Models;
@@ -39,6 +40,42 @@ public class LootCharacterConfig
     /// <summary>
     /// Timestamp de la dernière mise à jour
     /// </summary>
+    [JsonProperty("removedCharacters")]
+    public List<string> RemovedCharacters { get; set; } = new();
+
+    public bool IsRemoved(string? name) => !string.IsNullOrWhiteSpace(name) &&
+        (RemovedCharacters?.Contains(name, StringComparer.OrdinalIgnoreCase) ?? false);
+
+    public void Normalize()
+    {
+        Characters = new Dictionary<string, bool>(
+            Characters ?? new Dictionary<string, bool>(), StringComparer.OrdinalIgnoreCase);
+        MyCharacters ??= new();
+        ManualCharacters ??= new();
+        RemovedCharacters ??= new();
+        foreach (string name in RemovedCharacters.ToArray())
+        {
+            Characters.Remove(name);
+            MyCharacters.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            ManualCharacters.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            if (string.Equals(MainCharacter, name, StringComparison.OrdinalIgnoreCase))
+                MainCharacter = null;
+        }
+    }
+
+    public void Forget(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        RemovedCharacters ??= new();
+        if (!IsRemoved(name)) RemovedCharacters.Add(name);
+        Normalize();
+    }
+
+    public void Allow(string name)
+    {
+        RemovedCharacters?.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+    }
+
     [JsonProperty("lastUpdate")]
     public string LastUpdate { get; set; } = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 }

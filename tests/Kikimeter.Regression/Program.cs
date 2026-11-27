@@ -33,7 +33,8 @@ internal static class Program
             ("KO evidence ledger and reversible defeat inference", KnockoutLedgerRegression.Run),
             ("Browser address and persistent profile preferences", BrowserPreferencesRegression.Run),
             ("Test build marker protects update and startup entry points", TestBuildModeRegression.Run),
-            ("Independent sale reader and identical sales", SaleReaderRegression.Run)
+            ("Independent sale reader and identical sales", SaleReaderRegression.Run),
+            ("Deleted character persistence and live roster ordering", CharacterRosterRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

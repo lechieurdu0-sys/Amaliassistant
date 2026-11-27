@@ -129,7 +129,7 @@ public class LootCharacterDetector : IDisposable
         {
             // Si le fichier existe, le conserver tel quel.
             // On refait un scan initial pour réamorcer proprement les watchers sans perdre la config.
-            InitializeLogPositions(initialLoad: true);
+            InitializeLogPositions(initialLoad: false);
         }
         
         // Surveiller le fichier pour les nouveaux personnages
@@ -362,10 +362,7 @@ public class LootCharacterDetector : IDisposable
                         using var reader = new StreamReader(new FileStream(_kikimeterLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
                         reader.BaseStream.Seek(_lastKikimeterPosition, SeekOrigin.Begin);
 
-                        if (_lastKikimeterPosition > 0)
-                        {
-                            reader.ReadLine(); // Ignorer la ligne partielle
-                        }
+                        // The saved offset follows the last consumed line.
                         
                         string? line;
                         while ((line = reader.ReadLine()) != null)
@@ -519,6 +516,7 @@ public class LootCharacterDetector : IDisposable
         // Ajouter les personnages détectés récemment
         foreach (var character in sortedCharacters)
         {
+            if (config.IsRemoved(character)) continue;
             if (!config.Characters.ContainsKey(character))
             {
                 config.Characters[character] = true;
@@ -604,7 +602,8 @@ public class LootCharacterDetector : IDisposable
         }
 
         var config = LoadConfig();
-        bool changed = false;
+        bool changed = config.IsRemoved(characterName);
+        config.Allow(characterName);
 
         if (!config.Characters.ContainsKey(characterName))
         {
@@ -650,6 +649,7 @@ public class LootCharacterDetector : IDisposable
                 var config = JsonConvert.DeserializeObject<LootCharacterConfig>(json);
                 if (config != null)
                 {
+                    config.Normalize();
                     Logger.Debug("LootCharacterDetector", $"Configuration chargée depuis {_configFilePath}: {config.Characters.Count} personnages");
                     return config;
                 }
@@ -680,22 +680,16 @@ public class LootCharacterDetector : IDisposable
                 Directory.CreateDirectory(directory);
             }
 
+            config.Normalize();
             var json = JsonConvert.SerializeObject(config, Formatting.Indented);
-            File.WriteAllText(_configFilePath, json);
+            string temp = _configFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(temp, json);
+            File.Move(temp, _configFilePath, overwrite: true);
             Logger.Info("LootCharacterDetector", $"Configuration sauvegardée ({_configFilePath})");
         }
         catch (Exception ex)
         {
             Logger.Error("LootCharacterDetector", $"Erreur lors de la sauvegarde de la config: {ex.Message}");
-            try
-            {
-                using var stream = File.Create(_configFilePath);
-                Logger.Warning("LootCharacterDetector", $"Fichier créé manuellement après échec de sauvegarde: {_configFilePath}");
-            }
-            catch (Exception inner)
-            {
-                Logger.Error("LootCharacterDetector", $"Echec de création manuelle de {_configFilePath}: {inner.Message}");
-            }
         }
     }
     
@@ -931,6 +925,7 @@ public class LootCharacterDetector : IDisposable
     {
         var config = LoadConfig();
         characterName = NormalizeCharacterName(characterName);
+        if (config.IsRemoved(characterName)) return;
         
         // S'assurer que le personnage existe dans la liste des personnages
         if (!config.Characters.ContainsKey(characterName))
@@ -1001,45 +996,18 @@ public class LootCharacterDetector : IDisposable
     /// </summary>
     public void RemoveCharacter(string characterName)
     {
-        var config = LoadConfig();
-        
-        // Ne pas permettre de retirer le personnage principal
-        if (string.Equals(characterName, config.MainCharacter, StringComparison.OrdinalIgnoreCase))
+        lock (_scanLock)
         {
-            Logger.Warning("LootCharacterDetector", $"Impossible de retirer le personnage principal: {characterName}");
-            return;
-        }
-        
-        // Retirer du dictionnaire de personnages
-        if (config.Characters.ContainsKey(characterName))
-        {
-            config.Characters.Remove(characterName);
-        }
-        
-        // Retirer de "mes personnages" si présent
-        config.MyCharacters.RemoveAll(c => string.Equals(c, characterName, StringComparison.OrdinalIgnoreCase));
-
-        // Retirer de la liste des personnages manuels
-        if (config.ManualCharacters != null)
-        {
-            config.ManualCharacters.RemoveAll(c => string.Equals(c, characterName, StringComparison.OrdinalIgnoreCase));
-        }
-        
-        // Retirer aussi de _recentCharacters
-        if (_recentCharacters.ContainsKey(characterName))
-        {
+            var config = LoadConfig();
+            if (string.Equals(characterName, config.MainCharacter, StringComparison.OrdinalIgnoreCase))
+                return;
+            config.Forget(characterName);
             _recentCharacters.Remove(characterName);
+            SaveConfig(config);
+            CharactersChanged?.Invoke(this, config.Characters.Keys.ToList());
         }
-        
-        SaveConfig(config);
-        
-        // Notifier le changement
-        var characterList = config.Characters.Keys.ToList();
-        CharactersChanged?.Invoke(this, characterList);
-        
-        Logger.Info("LootCharacterDetector", $"Personnage retiré de la liste: {characterName}");
     }
-    
+
     /// <summary>
     /// Force un scan manuel des nouveaux personnages (pour mise à jour périodique)
     /// </summary>
