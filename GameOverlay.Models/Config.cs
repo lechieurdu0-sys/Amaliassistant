@@ -59,6 +59,8 @@ namespace GameOverlay.Models
         
         // Paramètres de la fenêtre Web
         public string WebWindowUrl { get; set; } = "https://www.google.com";
+        public string? WebWindowProfileFolder { get; set; }
+        public bool WebWindowPositionSaved { get; set; }
         public int WebWindowX { get; set; } = -1;
         public int WebWindowY { get; set; } = -1;
         public double WebWindowWidth { get; set; } = 800;

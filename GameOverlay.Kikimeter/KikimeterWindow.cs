@@ -2344,6 +2344,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             return;
         }
         
+        if (string.Equals(_logPath, newLogPath, StringComparison.OrdinalIgnoreCase) &&
+            _logWatcher != null)
+            return;
+
         // Ne plus retourner si le fichier n'existe pas - LogFileWatcher peut maintenant surveiller
         // même si le fichier n'existe pas encore (il détectera sa création)
         if (!File.Exists(newLogPath))

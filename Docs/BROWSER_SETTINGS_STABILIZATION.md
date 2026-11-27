@@ -1,0 +1,5 @@
+# Browser and settings stabilization
+
+The existing WebView2 browser retains its theme, opacity, navigation, zoom and PiP features. Requests made before WebView2 initialization are queued (last request wins). The browser chooses its historical domain-based profile once, persists that folder name, and reuses it even when navigating to other sites. This preserves the selected legacy profile; it does not merge other historical cookie stores. Successful HTTP(S) navigation persists the last URL. Closing flushes the debounce timer and disposes the WebView2 control. Negative virtual desktop positions are accepted and clamped to the virtual rectangle; gaps, mixed DPI and physical monitor changes still require Windows testing.
+
+Settings apply a changed log path to the existing Kikimeter rather than hiding it and constructing a duplicate. An unchanged path is a no-op. This preserves the current combat when preferences unrelated to logs are edited. No loot tracking is re-enabled. Real WebView2 runtime, cookies, PiP and multi-monitor behavior still need interactive testing; automated tests cover address/profile logic and prior combat regressions.

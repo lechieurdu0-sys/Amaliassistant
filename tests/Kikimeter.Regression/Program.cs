@@ -30,7 +30,8 @@ internal static class Program
             ("Individual passages group summons and distinguish monster actions", IndividualPassageRegression.Run),
             ("Estimated global rounds and participant availability", CombatRoundRegression.Run),
             ("Observed KO and double revival messages", ParticipantStateRegression.Run),
-            ("KO evidence ledger and reversible defeat inference", KnockoutLedgerRegression.Run)
+            ("KO evidence ledger and reversible defeat inference", KnockoutLedgerRegression.Run),
+            ("Browser address and persistent profile preferences", BrowserPreferencesRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

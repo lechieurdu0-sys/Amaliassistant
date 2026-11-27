@@ -2189,9 +2189,7 @@ namespace GameOverlay.App
                                 {
                                     try
                                     {
-                                        kikimeterWindow.Hide();
-                                        kikimeterWindow = null;
-                                        ShowKikimeter();
+                                        kikimeterWindow.UpdateLogPath(updatedConfig.KikimeterLogPath);
                                     }
                                     catch (Exception ex)
                                     {

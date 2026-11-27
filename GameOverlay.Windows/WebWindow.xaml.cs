@@ -22,6 +22,9 @@ public partial class WebWindow : Window
 {
     private Config? _config;
     private bool _isYouTube = false;
+    private bool _closed;
+    private string? _pendingNavigation;
+    private System.Windows.Threading.DispatcherTimer? _saveTimer;
 
     public WebWindow(Config config)
     {
@@ -59,40 +62,39 @@ public partial class WebWindow : Window
         
         
         // Sauvegarder la position lors du déplacement (avec debounce pour éviter trop de sauvegardes)
-        System.Windows.Threading.DispatcherTimer? saveTimer = null;
         LocationChanged += (s, e) =>
         {
-            if (saveTimer == null)
+            if (_saveTimer == null)
             {
-                saveTimer = new System.Windows.Threading.DispatcherTimer
+                _saveTimer = new System.Windows.Threading.DispatcherTimer
                 {
                     Interval = TimeSpan.FromMilliseconds(500)
                 };
-                saveTimer.Tick += (timerSender, timerE) =>
+                _saveTimer.Tick += (timerSender, timerE) =>
                 {
-                    saveTimer.Stop();
+                    _saveTimer.Stop();
                     SaveWindowSettings();
                 };
             }
-            saveTimer.Stop();
-            saveTimer.Start();
+            _saveTimer.Stop();
+            _saveTimer.Start();
         };
         SizeChanged += (s, e) =>
         {
-            if (saveTimer == null)
+            if (_saveTimer == null)
             {
-                saveTimer = new System.Windows.Threading.DispatcherTimer
+                _saveTimer = new System.Windows.Threading.DispatcherTimer
                 {
                     Interval = TimeSpan.FromMilliseconds(500)
                 };
-                saveTimer.Tick += (timerSender, timerE) =>
+                _saveTimer.Tick += (timerSender, timerE) =>
                 {
-                    saveTimer.Stop();
+                    _saveTimer.Stop();
                     SaveWindowSettings();
                 };
             }
-            saveTimer.Stop();
-            saveTimer.Start();
+            _saveTimer.Stop();
+            _saveTimer.Start();
             
             // Ajuster le zoom en fonction de la taille de la fenêtre
             Dispatcher.BeginInvoke(new Action(() =>
@@ -201,7 +203,9 @@ public partial class WebWindow : Window
         {
             // Déterminer le dossier de données basé sur l'URL du domaine pour mémoriser les sessions/cookies
             string baseUrl = _config?.WebWindowUrl ?? "https://www.google.com";
-            string domainFolder = GetDomainFolderName(baseUrl);
+            string? savedProfile = _config?.WebWindowProfileFolder;
+            string domainFolder = BrowserPreferences.IsValidProfile(savedProfile)
+                ? savedProfile! : GetDomainFolderName(baseUrl);
             
             // Créer le dossier pour les données WebView2 basé sur le domaine
             string userDataFolder = Path.Combine(
@@ -238,14 +242,20 @@ public partial class WebWindow : Window
             }
             
             var environment = await CoreWebView2Environment.CreateAsync(browserExecutableFolder, userDataFolder);
+            if (_closed) return;
             await WebView2Control.EnsureCoreWebView2Async(environment);
+            if (_closed) return;
+            if (_config != null && _config.WebWindowProfileFolder != domainFolder)
+            {
+                _config.WebWindowProfileFolder = domainFolder;
+                NotifyConfigChanged?.Invoke();
+            }
             
             // Configurer pour mémoriser l'historique et les cookies
             if (WebView2Control.CoreWebView2 != null)
             {
                 // Activer la mémorisation des sessions et cookies (déjà activé par défaut avec userDataFolder)
-                // Activer l'historique de navigation
-                WebView2Control.CoreWebView2.HistoryChanged += CoreWebView2_HistoryChanged;
+                // HistoryChanged is subscribed once in InitializationCompleted.
                 
                 // Activer les fonctionnalités PWA (Progressive Web App) pour une meilleure expérience
                 // Cela permet aux sites web de se comporter comme des applications natives
@@ -316,7 +326,8 @@ public partial class WebWindow : Window
                 UpdateZoomFromWindowSize();
                 
                 // Naviguer vers l'URL depuis la config
-                string url = baseUrl;
+                string url = _pendingNavigation ?? baseUrl;
+                _pendingNavigation = null;
                 if (!string.IsNullOrWhiteSpace(url))
                 {
                     NavigateToUrlInternal(url);
@@ -325,6 +336,7 @@ public partial class WebWindow : Window
         }
         catch (Exception ex)
         {
+            if (_closed) return;
             Logger.Error("WebWindow", $"Erreur lors de l'initialisation de WebView2: {ex.Message}");
             CustomMessageBox.Show($"Erreur lors de l'initialisation du navigateur: {ex.Message}", 
                           "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
@@ -333,33 +345,17 @@ public partial class WebWindow : Window
 
     private void NavigateToUrlInternal(string url)
     {
-        if (WebView2Control.CoreWebView2 == null) return;
-        
+        if (_closed || string.IsNullOrWhiteSpace(url)) return;
+        if (WebView2Control.CoreWebView2 == null)
+        {
+            _pendingNavigation = url;
+            return;
+        }
+
         try
         {
-            // Nettoyer l'URL
-            url = url.Trim();
-            
-            // Si l'URL est vide, ne rien faire
-            if (string.IsNullOrWhiteSpace(url))
-                return;
-            
-            // Si ce n'est pas une URL valide (ne commence pas par http:// ou https://), faire une recherche Google
-            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
-                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                // Si ça ressemble à un domaine (contient un point), ajouter https://
-                if (url.Contains(".") && !url.Contains(" "))
-                {
-                    url = "https://" + url;
-                }
-                else
-                {
-                    // Sinon, faire une recherche Google
-                    url = "https://www.google.com/search?q=" + Uri.EscapeDataString(url);
-                }
-            }
-            
+            url = BrowserPreferences.ResolveAddress(url);
+
             // Naviguer vers l'URL
             WebView2Control.CoreWebView2.Navigate(url);
             
@@ -507,6 +503,11 @@ public partial class WebWindow : Window
                         UrlTextBox.Text = currentUrl;
                     }
                     
+                    if (_config != null && BrowserPreferences.IsWebAddress(currentUrl))
+                    {
+                        _config.WebWindowUrl = currentUrl;
+                        NotifyConfigChanged?.Invoke();
+                    }
                     // Mettre à jour les boutons de navigation (utilise l'historique natif de WebView2)
                     UpdateNavigationButtons();
                     
@@ -623,26 +624,21 @@ public partial class WebWindow : Window
     {
         if (_config == null) return;
 
-        // Charger la position
-        if (_config.WebWindowX >= 0 && _config.WebWindowY >= 0)
-        {
-            this.Left = _config.WebWindowX;
-            this.Top = _config.WebWindowY;
-        }
-        else
-        {
-            // Position par défaut (centre écran)
-            this.Left = SystemParameters.PrimaryScreenWidth / 2 - 400;
-            this.Top = SystemParameters.PrimaryScreenHeight / 2 - 300;
-        }
+        // Load dimensions before clamping a saved desktop position.
+        if (double.IsFinite(_config.WebWindowWidth) && _config.WebWindowWidth > 0)
+            Width = _config.WebWindowWidth;
+        if (double.IsFinite(_config.WebWindowHeight) && _config.WebWindowHeight > 0)
+            Height = _config.WebWindowHeight;
 
-        // Charger la taille
-        if (_config.WebWindowWidth > 0 && _config.WebWindowHeight > 0)
-        {
-            this.Width = _config.WebWindowWidth;
-            this.Height = _config.WebWindowHeight;
-        }
-        
+        bool saved = _config.WebWindowPositionSaved || _config.WebWindowX != -1 || _config.WebWindowY != -1;
+        double x = saved ? _config.WebWindowX : SystemParameters.PrimaryScreenWidth / 2 - 400;
+        double y = saved ? _config.WebWindowY : SystemParameters.PrimaryScreenHeight / 2 - 300;
+        var position = OverlayCanvasBounds.Clamp(
+            x - SystemParameters.VirtualScreenLeft, y - SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight, Width, Height);
+        Left = position.X + SystemParameters.VirtualScreenLeft;
+        Top = position.Y + SystemParameters.VirtualScreenTop;
+
         // Charger l'opacité de la fenêtre
         this.Opacity = Math.Max(0.1, Math.Min(1.0, _config.WebWindowOpacity));
         
@@ -714,6 +710,7 @@ public partial class WebWindow : Window
 
         try
         {
+            _config.WebWindowPositionSaved = true;
             _config.WebWindowX = (int)this.Left;
             _config.WebWindowY = (int)this.Top;
             _config.WebWindowWidth = this.Width;
@@ -886,8 +883,13 @@ public partial class WebWindow : Window
     
     protected override void OnClosed(EventArgs e)
     {
-        // Désabonner des événements de thème
+        _closed = true;
+        _saveTimer?.Stop();
+        SaveWindowSettings();
         ThemeManager.AccentColorChanged -= ThemeManager_AccentColorChanged;
+        if (WebView2Control.CoreWebView2 != null)
+            WebView2Control.CoreWebView2.HistoryChanged -= CoreWebView2_HistoryChanged;
+        WebView2Control.Dispose();
         base.OnClosed(e);
     }
 
@@ -925,10 +927,6 @@ public partial class WebWindow : Window
     public void NavigateToUrl(string url)
     {
         NavigateToUrlInternal(url);
-        if (_config != null)
-        {
-            _config.WebWindowUrl = url;
-        }
     }
     
     // Gestionnaires d'opacité de la fenêtre
