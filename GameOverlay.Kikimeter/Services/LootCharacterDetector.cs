@@ -27,6 +27,10 @@ public class LootCharacterDetector : IDisposable
     private readonly object _serverLock = new();
     private string _currentServer = string.Empty;
     private readonly object _scanLock = new();
+    private readonly CharacterPresenceCursor _combatPresence = new();
+    private readonly CharacterPresenceCursor _chatPresence = new();
+    private readonly System.Threading.Timer? _presenceTimer;
+    private volatile bool _disposed;
     private DateTime _lastScanTimestamp = DateTime.MinValue;
     private volatile bool _suppressServerNotifications;
     public static void EnsureConfigFileExists()
@@ -87,7 +91,7 @@ public class LootCharacterDetector : IDisposable
     public event EventHandler<string>? MainCharacterDetected;
     public event EventHandler<ServerChangeDetectedEventArgs>? ServerChanged;
     
-    public LootCharacterDetector(string logFilePath, string? kikimeterLogPath = null)
+    public LootCharacterDetector(string logFilePath, string? kikimeterLogPath = null, string? configFilePath = null, bool startPolling = true)
     {
         _logFilePath = logFilePath ?? throw new ArgumentNullException(nameof(logFilePath));
         
@@ -114,30 +118,17 @@ public class LootCharacterDetector : IDisposable
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var configDir = Path.Combine(appDataPath, "Amaliassistant", "Loot");
         Directory.CreateDirectory(configDir);
-        _configFilePath = Path.Combine(configDir, "loot_characters.json");
+        _configFilePath = configFilePath ?? Path.Combine(configDir, "loot_characters.json");
 
-        // Vérifier si le fichier existe déjà avant de le créer
-        bool fileAlreadyExists = File.Exists(_configFilePath);
-        
-        if (!fileAlreadyExists)
-        {
-            // Si le fichier n'existe pas, créer un fichier vide sans recharger depuis les logs
-            Logger.Info("LootCharacterDetector", $"Fichier de configuration non trouvé, création d'un nouveau fichier vide (sans rechargement depuis les logs)");
+        if (!File.Exists(_configFilePath))
             ResetStoredCharacters();
-        }
-        else
-        {
-            // Si le fichier existe, le conserver tel quel.
-            // On refait un scan initial pour réamorcer proprement les watchers sans perdre la config.
-            InitializeLogPositions(initialLoad: false);
-        }
-        
-        // Surveiller le fichier pour les nouveaux personnages
-        _fileWatcher = CreateWatcher(_logFilePath);
-        _kikimeterFileWatcher = CreateWatcher(_kikimeterLogPath);
 
-        ManualScan();
-        
+        // Never reconstruct a character list from existing history.
+        _combatPresence.InitializeAtEnd(_kikimeterLogPath);
+        _chatPresence.InitializeAtEnd(_logFilePath);
+        if (startPolling)
+            _presenceTimer = new System.Threading.Timer(_ => ScanNewCharacters(), null, 300, 300);
+
         Logger.Info("LootCharacterDetector", $"LootCharacterDetector initialisé pour: {_logFilePath}");
     }
     
@@ -328,118 +319,59 @@ public class LootCharacterDetector : IDisposable
     
     private void ScanNewCharacters()
     {
-        var nowUtc = DateTime.UtcNow;
-        if ((nowUtc - _lastScanTimestamp).TotalMilliseconds < ScanThrottleMilliseconds)
-        {
-            return;
-        }
-
-        if (!Monitor.TryEnter(_scanLock))
-        {
-            return;
-        }
-
+        if (_disposed || !Monitor.TryEnter(_scanLock)) return;
         try
         {
-            _lastScanTimestamp = nowUtc;
-
-            // Priorité : scanner wakfu.log pour les nouveaux joueurs
-            if (!string.IsNullOrEmpty(_kikimeterLogPath) && File.Exists(_kikimeterLogPath))
+            if (_disposed) return;
+            var config = LoadConfig();
+            bool changed = false;
+            void Observe(string name, CharacterPresenceCursor cursor)
             {
-                try
-                {
-                    var fileInfo = new FileInfo(_kikimeterLogPath);
-
-                    if (fileInfo.Length < _lastKikimeterPosition)
-                    {
-                        Logger.Info("LootCharacterDetector", "Troncature détectée sur wakfu.log, reprise depuis le début.");
-                        _lastKikimeterPosition = 0;
-                        ReplayServerContextFromTail();
-                    }
-
-                    if (fileInfo.Length > _lastKikimeterPosition)
-                    {
-                        using var reader = new StreamReader(new FileStream(_kikimeterLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-                        reader.BaseStream.Seek(_lastKikimeterPosition, SeekOrigin.Begin);
-
-                        // The saved offset follows the last consumed line.
-                        
-                        string? line;
-                        while ((line = reader.ReadLine()) != null)
-                        {
-                            HandleServerChangeLine(line);
-                            if (line.Contains("join the fight at") && line.Contains("isControlledByAI=false"))
-                            {
-                                var match = PlayerJoinRegex.Match(line);
-                                if (match.Success)
-                                {
-                                    string playerName = match.Groups[1].Value.Trim();
-                                    if (!string.IsNullOrEmpty(playerName) && !_recentCharacters.ContainsKey(playerName))
-                                    {
-                                        _recentCharacters[playerName] = DateTime.Now;
-                                        Logger.Debug("LootCharacterDetector", $"Nouveau joueur détecté (wakfu.log): {playerName}");
-                                    }
-                                }
-                            }
-                        }
-
-                        _lastKikimeterPosition = reader.BaseStream.Position;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("LootCharacterDetector", $"Erreur lors du scan du log Kikimeter: {ex.Message}");
-                }
+                name = NormalizeCharacterName(name);
+                if (string.IsNullOrWhiteSpace(name) ||
+                    string.Equals(name, "Vous", StringComparison.OrdinalIgnoreCase) ||
+                    !cursor.IsFresh(name)) return;
+                _recentCharacters[name] = DateTime.Now;
+                changed |= config.ObservePresence(name);
             }
-            
-            // Fallback : scanner wakfu_chat.log
-            if (File.Exists(_logFilePath))
-            {
-                try
-                {
-                    var fileInfo = new FileInfo(_logFilePath);
-                    if (fileInfo.Length < _lastPosition)
-                    {
-                        Logger.Info("LootCharacterDetector", "Troncature détectée sur wakfu_chat.log, reprise depuis le début.");
-                        _lastPosition = 0;
-                    }
-
-                    using var reader = new StreamReader(new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-                    reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
-                    
-                    if (reader.BaseStream.Position < reader.BaseStream.Length)
-                    {
-                        string? line;
-                        while ((line = reader.ReadLine()) != null)
-                        {
-                            HandleServerChangeLine(line);
-                            DetectCharacterInChatLogLine(line, DateTime.Now);
-                        }
-
-                        _lastPosition = reader.BaseStream.Position;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("LootCharacterDetector", $"Erreur lors du scan: {ex.Message}");
-                }
-            }
-            
             try
             {
-                UpdateRecentCharacters();
+                _combatPresence.Read(_kikimeterLogPath, line =>
+                {
+                    HandleServerChangeLine(line);
+                    var match = PlayerJoinRegex.Match(line);
+                    if (match.Success && match.Groups[4].Value == "false" &&
+                        line.Contains("join the fight at", StringComparison.Ordinal))
+                        Observe(match.Groups[1].Value, _combatPresence);
+                });
             }
-            catch (Exception updateEx)
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            try
             {
-                Logger.Error("LootCharacterDetector", $"Erreur lors de UpdateRecentCharacters: {updateEx.Message}");
+                _chatPresence.Read(_logFilePath, line =>
+                {
+                    HandleServerChangeLine(line);
+                    var match = JoinedGroupRegex.Match(line);
+                    if (match.Success) Observe(match.Groups[1].Value, _chatPresence);
+                });
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+
+            if (changed)
+            {
+                SaveConfig(config);
+                CharactersChanged?.Invoke(this, config.Characters.Keys.ToList());
             }
         }
-        finally
-        {
-            Monitor.Exit(_scanLock);
-        }
+        catch (Exception ex) { Logger.Error("LootCharacterDetector", ex.Message); }
+        finally { Monitor.Exit(_scanLock); }
     }
-    
+
+    // Synchronous entry point for deterministic regression and explicit refresh.
+    public void PollPresence() => ScanNewCharacters();
+
     private void ReplayServerContextFromTail()
     {
         if (string.IsNullOrEmpty(_kikimeterLogPath) || !File.Exists(_kikimeterLogPath))
@@ -703,6 +635,8 @@ public class LootCharacterDetector : IDisposable
         Logger.Info("LootCharacterDetector", "Réinitialisation demandée des personnages détectés");
 
         // Utiliser la méthode sans modification des logs pour éviter de recharger les anciens personnages
+        lock (_scanLock)
+        {
         ResetStoredCharactersAtEnd();
 
         bool previousSuppression = _suppressServerNotifications;
@@ -754,6 +688,7 @@ public class LootCharacterDetector : IDisposable
         catch (Exception notifyEx)
         {
             Logger.Warning("LootCharacterDetector", $"Impossible de notifier après reset: {notifyEx.Message}");
+        }
         }
     }
     
@@ -881,6 +816,8 @@ public class LootCharacterDetector : IDisposable
         _recentCharacters.Clear();
         
         // Skip existing history without modifying the game's log files.
+        _combatPresence.InitializeAtEnd(_kikimeterLogPath);
+        _chatPresence.InitializeAtEnd(_logFilePath);
         InitializeLogPositions(initialLoad: false);
         
         try
@@ -916,7 +853,7 @@ public class LootCharacterDetector : IDisposable
     public void FullReset()
     {
         Logger.Info("LootCharacterDetector", "Réinitialisation complète demandée (sans modification des logs)");
-        ResetStoredCharactersAtEnd();
+        lock (_scanLock) ResetStoredCharactersAtEnd();
         // Ne pas appeler RehydrateCharactersAfterReset() pour une réinitialisation complète
         Logger.Info("LootCharacterDetector", "Réinitialisation complète terminée");
     }
@@ -1001,6 +938,8 @@ public class LootCharacterDetector : IDisposable
             var config = LoadConfig();
             if (string.Equals(characterName, config.MainCharacter, StringComparison.OrdinalIgnoreCase))
                 return;
+            _combatPresence.Forget(_kikimeterLogPath, characterName);
+            _chatPresence.Forget(_logFilePath, characterName);
             config.Forget(characterName);
             _recentCharacters.Remove(characterName);
             SaveConfig(config);
@@ -1041,6 +980,8 @@ public class LootCharacterDetector : IDisposable
     
     public void Dispose()
     {
+        _disposed = true;
+        _presenceTimer?.Dispose();
         _fileWatcher?.Dispose();
         _kikimeterFileWatcher?.Dispose();
     }

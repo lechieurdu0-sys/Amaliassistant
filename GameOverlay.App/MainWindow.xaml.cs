@@ -73,6 +73,9 @@ namespace GameOverlay.App
         
         // Sale Notification System
         private GameOverlay.Kikimeter.Services.SaleTracker? _saleTracker;
+        private LootCharacterDetector? _characterDiscovery;
+        private string? _characterDiscoveryChat;
+        private string? _characterDiscoveryCombat;
         private readonly List<GameOverlay.Kikimeter.Views.SaleNotificationWindow> _saleNotificationWindows = new();
         private System.Windows.Threading.DispatcherTimer? _saleTrackerTimer;
 
@@ -163,6 +166,7 @@ namespace GameOverlay.App
                             }
                         }
                         
+                        InitializeCharacterDiscovery();
                         // Créer les fenêtres au démarrage pour démarrer la surveillance même si elles ne sont pas visibles
                         InitializeWindowsInBackground();
                         
@@ -216,6 +220,8 @@ namespace GameOverlay.App
                     try
                     {
                         Logger.Info("MainWindow", "Closed event déclenché");
+                        _characterDiscovery?.Dispose();
+                        _characterDiscovery = null;
                         
                         // Libérer le SaleTracker
                         if (_saleTracker != null)
@@ -2146,6 +2152,7 @@ namespace GameOverlay.App
                                     }
                                 }
                                 
+                                InitializeCharacterDiscovery();
                                 InitializeSaleTracker();
                             },
                             currentPlayers,
@@ -2153,7 +2160,8 @@ namespace GameOverlay.App
                             accentBrush,
                             sectionBrush,
                             () => kikimeterWindow?.ResetKikimeter(),
-                            playerManagementService
+                            playerManagementService,
+                            () => _characterDiscovery
                         );
                         
                         // Position par défaut
@@ -2541,6 +2549,7 @@ namespace GameOverlay.App
                     }
                 }
                 
+                InitializeCharacterDiscovery();
                 InitializeSaleTracker();
             }
             catch (Exception ex)
@@ -3161,6 +3170,25 @@ namespace GameOverlay.App
         /// <summary>
         /// Initialise le service de suivi des ventes en temps réel
         /// </summary>
+        private void InitializeCharacterDiscovery()
+        {
+            string combat = config.KikimeterLogPath ?? "";
+            string chat = config.LootChatLogPath ?? "";
+            if (string.IsNullOrWhiteSpace(chat) && !string.IsNullOrWhiteSpace(combat))
+                chat = Path.Combine(Path.GetDirectoryName(combat) ?? "", "wakfu_chat.log");
+            if (_characterDiscovery != null &&
+                string.Equals(chat, _characterDiscoveryChat, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(combat, _characterDiscoveryCombat, StringComparison.OrdinalIgnoreCase))
+                return;
+            _characterDiscovery?.Dispose();
+            _characterDiscovery = null;
+            _characterDiscoveryChat = chat;
+            _characterDiscoveryCombat = combat;
+            if (!string.IsNullOrWhiteSpace(chat) || !string.IsNullOrWhiteSpace(combat))
+                _characterDiscovery = new LootCharacterDetector(chat, combat);
+            settingsWindow?.RefreshCharacterDetector();
+        }
+
         private void InitializeSaleTracker()
         {
             string? path = config.LootChatLogPath;

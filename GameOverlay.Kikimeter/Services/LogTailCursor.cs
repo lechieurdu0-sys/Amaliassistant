@@ -14,11 +14,14 @@ public sealed class LogTailCursor
     private long _anchorOffset;
     private bool _discardLine;
     public long Position { get; private set; }
+    public long LastLineStart { get; private set; }
+    private long _lineStart;
 
     public void InitializeAtEnd(Stream stream)
     {
         Reset();
         Position = stream.Length;
+        _lineStart = Position;
         if (Position > 0)
         {
             stream.Position = Position - 1;
@@ -30,6 +33,7 @@ public sealed class LogTailCursor
     public void Reset()
     {
         Position = 0;
+        LastLineStart = _lineStart = 0;
         _pending.SetLength(0);
         _anchor = Array.Empty<byte>();
         _anchorOffset = 0;
@@ -64,6 +68,8 @@ public sealed class LogTailCursor
                             .TrimEnd('\r').TrimStart('\uFEFF');
                     _pending.SetLength(0);
                     _discardLine = false;
+                    LastLineStart = _lineStart;
+                    _lineStart = Position;
                     if (line != null) onLine(line);
                 }
                 else if (!_discardLine)

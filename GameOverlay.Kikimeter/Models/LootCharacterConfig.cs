@@ -71,6 +71,15 @@ public class LootCharacterConfig
         Normalize();
     }
 
+    // Only a new observed presence (or explicit user add) lifts a temporary removal.
+    public bool ObservePresence(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        bool changed = IsRemoved(name);
+        Allow(name);
+        return Characters.TryAdd(name, true) || changed;
+    }
+
     public void Allow(string name)
     {
         RemovedCharacters?.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));

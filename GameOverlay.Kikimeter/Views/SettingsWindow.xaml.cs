@@ -41,6 +41,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     // Onglet Gestion des personnages
     private LootCharacterDetector? _characterDetector;
+    private readonly Func<LootCharacterDetector?>? _getSharedCharacterDetector;
     private readonly SolidColorBrush _sectionBackgroundBrush;
     private DispatcherTimer? _characterListRefreshTimer;
     private bool _isCharacterManagementTabVisible = false;
@@ -115,7 +116,8 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         System.Windows.Media.Brush? accentBrush = null,
         System.Windows.Media.Brush? sectionBackgroundBrush = null,
         Action? onResetLootRequested = null,
-        GameOverlay.Kikimeter.Services.PlayerManagementService? playerManagementService = null)
+        GameOverlay.Kikimeter.Services.PlayerManagementService? playerManagementService = null,
+        Func<LootCharacterDetector?>? getSharedCharacterDetector = null)
     {
         InitializeComponent();
         
@@ -124,6 +126,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         _getCurrentPlayers = getCurrentPlayers;
         _onResetLootRequested = onResetLootRequested;
         _playerManagementService = playerManagementService;
+        _getSharedCharacterDetector = getSharedCharacterDetector;
         
         // S'abonner aux events du PlayerManagementService (SOURCE UNIQUE DE VÉRITÉ)
         if (_playerManagementService != null)
@@ -399,6 +402,17 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
         RenumberItems();
     }
 
+    private void UpdateEmptyListMessage()
+    {
+        if (FindName("EmptyListMessage") is TextBlock emptyMessage)
+            emptyMessage.Visibility = Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void PlayerListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateButtonStates();
+    }
+
     private void UpdateButtonStates()
     {
         int index = PlayerListBox.SelectedIndex;
@@ -607,8 +621,27 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
     
     #region Gestion des personnages
     
+    public void RefreshCharacterDetector()
+    {
+        CleanupCharacterDetector();
+        TryInitializeCharacterDetector();
+        if (IsVisible) StartCharacterListRefreshTimer();
+    }
+
     private void TryInitializeCharacterDetector()
     {
+        if (_getSharedCharacterDetector != null)
+        {
+            if (_characterDetector != null) return;
+            _characterDetector = _getSharedCharacterDetector();
+            if (_characterDetector != null)
+            {
+                _characterDetector.CharactersChanged += OnCharactersChanged;
+                _characterDetector.MainCharacterDetected += OnMainCharacterDetected;
+                UpdateCharactersList();
+            }
+            return;
+        }
         if (_characterDetector != null)
             return;
             
@@ -666,7 +699,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             {
                 _characterDetector.CharactersChanged -= OnCharactersChanged;
                 _characterDetector.MainCharacterDetected -= OnMainCharacterDetected;
-                _characterDetector.Dispose();
+                if (_getSharedCharacterDetector == null) _characterDetector.Dispose();
             }
             catch { }
             _characterDetector = null;
@@ -1052,7 +1085,7 @@ public partial class SettingsWindow : Window, INotifyPropertyChanged
             var removeButton = new System.Windows.Controls.Button
             {
                 Content = "✕",
-                ToolTip = "Retirer définitivement ce personnage",
+                ToolTip = "Retirer ce personnage jusqu’à sa prochaine présence détectée",
                 Foreground = new SolidColorBrush(borderColor),
                 FontSize = 14,
                 FontWeight = FontWeights.Normal,
