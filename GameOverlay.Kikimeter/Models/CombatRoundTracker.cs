@@ -24,18 +24,21 @@ public sealed class CombatRoundTracker
     public string? Anchor => _order.FirstOrDefault(IsAvailable);
     public IReadOnlyList<string> ObservedOrder => _order.ToArray();
 
-    private bool IsAvailable(string name) =>
-        _states.TryGetValue(name, out var state) && state == RoundParticipantState.Available;
+    public RoundParticipantState? GetState(string name) =>
+        _states.TryGetValue(name, out var state) ? state : null;
+
+    private bool IsAvailable(string name) => GetState(name) == RoundParticipantState.Available;
 
     public void RegisterPlayer(string name)
     {
         _states.TryAdd(name, RoundParticipantState.Available);
     }
 
-    public void SetState(string name, RoundParticipantState state)
+    public bool SetState(string name, RoundParticipantState state)
     {
-        if (!_states.TryGetValue(name, out var previous) || previous == RoundParticipantState.Dead)
-            return;
+        if (!_states.TryGetValue(name, out var previous) || previous == RoundParticipantState.Dead ||
+            previous == state)
+            return false;
         _states[name] = state;
         if (state == RoundParticipantState.Dead)
             _order.RemoveAll(p => StringComparer.OrdinalIgnoreCase.Equals(p, name));
@@ -43,6 +46,7 @@ public sealed class CombatRoundTracker
         if (state != RoundParticipantState.Available &&
             StringComparer.OrdinalIgnoreCase.Equals(_lastOwner, name))
             _interveningActor = true;
+        return true;
     }
 
     public void ObserveMonsterAction()

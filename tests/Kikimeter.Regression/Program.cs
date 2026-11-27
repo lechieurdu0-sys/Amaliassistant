@@ -28,7 +28,8 @@ internal static class Program
             ("Incremental log cursor preserves complete lines", LogTailRegression.Run),
             ("Observed French turn boundary and critical spell suffix", ObservedTurnRegression.Run),
             ("Individual passages group summons and distinguish monster actions", IndividualPassageRegression.Run),
-            ("Estimated global rounds and participant availability", CombatRoundRegression.Run)
+            ("Estimated global rounds and participant availability", CombatRoundRegression.Run),
+            ("Observed KO and double revival messages", ParticipantStateRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

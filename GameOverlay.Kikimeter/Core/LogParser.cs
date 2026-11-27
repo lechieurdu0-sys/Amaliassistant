@@ -42,6 +42,13 @@ public class LogParser
         @"\[Information \(combat\)\]\s+\d+ secondes? reportées? pour le tour suivant\.",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex KnockoutRegex = new(
+        @"\[Information \(combat\)\]\s+(.+?)\s+est KO\s*!\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex ReviveRegex = new(
+        @"\[Information \(combat\)\]\s+(.+?)(?:\s*:\s*est réanimé(?:e)?(?:\s+\([^)]*\))?|\s+est ressuscité(?:e)?\s*!)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     private static readonly Regex CriticalSuffixRegex = new(
         @"\s+\(Critiques?\)\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
@@ -235,6 +242,9 @@ public class LogParser
                 _combatContext.RecentSpells.Clear();
                 return;
             }
+
+            if (TryHandleParticipantState(line))
+                return;
 
             if (TryHandleEffectApplication(line))
                 return;
@@ -524,6 +534,38 @@ public class LogParser
 
     // A passage is a player's actions plus those of their summons.
     // Only observed actions establish a passage; missing/passive turns cannot establish a global round.
+    private bool TryHandleParticipantState(string line)
+    {
+        var match = KnockoutRegex.Match(line);
+        bool knockout = match.Success;
+        if (!knockout)
+            match = ReviveRegex.Match(line);
+        if (!match.Success)
+            return false;
+
+        string player = NormalizeEntityName(match.Groups[1].Value);
+        if (!_currentCombatPlayers.Contains(player))
+            return true;
+
+        var rounds = _combatContext.Rounds;
+        // A resurrection cannot create a new participant or revive a permanently removed one.
+        if (!knockout && rounds.GetState(player) != RoundParticipantState.KnockedOut)
+            return true;
+
+        var next = knockout ? RoundParticipantState.KnockedOut : RoundParticipantState.Available;
+        if (rounds.SetState(player, next))
+        {
+            if (knockout && string.Equals(_combatContext.ActivePassageOwner, player,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                _combatContext.ActivePassageOwner = null;
+                _combatContext.CarryoverPending = false;
+            }
+            Logger.Info(LogCategory, $"État du participant {player}: {next}");
+        }
+        return true;
+    }
+
     private void ObserveIndividualPassage(string actor)
     {
         string? owner = ResolvePlayerOwner(actor);
@@ -539,6 +581,9 @@ public class LogParser
             }
             return;
         }
+
+        if (_combatContext.Rounds.GetState(owner) != RoundParticipantState.Available)
+            return;
 
         bool sameOwner = string.Equals(owner, _combatContext.ActivePassageOwner,
             StringComparison.OrdinalIgnoreCase);
