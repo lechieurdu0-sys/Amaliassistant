@@ -75,8 +75,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     private bool _firstTurnComplete = false; // Indique si le premier tour complet est terminé
     private Services.PlayerManagementService? _playerManagementService;
     private Services.IPlayerDataProvider? _playerDataProvider;
-    private DateTime _lastPlayerSyncTime = DateTime.MinValue;
-    private const int PlayerSyncIntervalSeconds = 5; // Synchronisation toutes les 5 secondes
     
     // Flags de protection pour l'initialisation et le reset
     private bool _isInitialized = false;
@@ -187,7 +185,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             RestoreXpWindows();
             ApplyManualOrderIfNeeded();
         };
-        Logger.Info("KikimeterWindow", "KikimeterWindow créé avec timer de 50ms");
+        Logger.Info("KikimeterWindow", "KikimeterWindow créé avec surveillance des logs");
     }
     
     public ObservableCollection<PlayerStats> PlayersCollection => _playersCollection;
@@ -2236,7 +2234,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             }
             
             // Initialiser le fichier JSON AVANT tout (ne bloque jamais le démarrage)
-            PlayerDataJsonInitializer.EnsurePlayerDataJsonExists();
+            // Combat membership comes directly from Wakfu logs.
             
             // Ne plus retourner si le fichier n'existe pas - LogFileWatcher peut maintenant surveiller
             // même si le fichier n'existe pas encore (il détectera sa création)
@@ -2253,6 +2251,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             {
                 // Désabonner les événements avant de disposer
                 _logWatcher.Parser.PlayerAdded -= OnPlayerAdded;
+                _logWatcher.Parser.PlayerRemoved -= OnPlayerRemoved;
                 _logWatcher.Parser.CombatStarted -= OnCombatStarted;
                 _logWatcher.Parser.CombatEnded -= OnCombatEnded;
                 _logWatcher.LogLineProcessed -= OnLogLineProcessed;
@@ -2273,12 +2272,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         if (_updateTimer != null)
         {
             _updateTimer.Stop();
-            _updateTimer.Tick -= UpdateTimer_Tick;
             _updateTimer = null;
         }
         
         _logWatcher = new Services.LogFileWatcher();
-        _logWatcher.StartWatching(_logPath);
         
         if (_xpCoordinator != null)
         {
@@ -2288,19 +2285,13 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         _xpCoordinator = new XpTrackingCoordinator(_logWatcher);
         _xpCoordinator.ExperienceGained += OnExperienceGained;
         
-        // Initialiser le service de gestion des joueurs basé sur le polling JSON
-        // Essayer d'abord avec JsonPlayerDataProvider, sinon fallback sur LogParserPlayerDataProvider
-        try
+        _playerDataProvider = new Services.LogParserPlayerDataProvider(_logWatcher.Parser);
+        if (_playerManagementService != null)
         {
-            _playerDataProvider = new Services.JsonPlayerDataProvider();
-            Logger.Info("KikimeterWindow", "JsonPlayerDataProvider initialisé avec succès");
+            _playerManagementService.PlayersChanged -= OnPlayersChangedFromService;
+            _playerManagementService.MainCharacterChanged -= OnMainCharacterChangedFromService;
+            _playerManagementService.DetachPlayersCollection();
         }
-        catch (Exception ex)
-        {
-            Logger.Warning("KikimeterWindow", $"Impossible d'initialiser JsonPlayerDataProvider, utilisation du fallback: {ex.Message}");
-            _playerDataProvider = new Services.LogParserPlayerDataProvider(_logWatcher.Parser);
-        }
-        
         _playerManagementService = new Services.PlayerManagementService(_playerDataProvider);
         
         // Définir la collection de joueurs dans le service central (SOURCE UNIQUE DE VÉRITÉ)
@@ -2312,6 +2303,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         
         // S'abonner aux événements du parser
         _logWatcher.Parser.PlayerAdded += OnPlayerAdded;
+        _logWatcher.Parser.PlayerRemoved += OnPlayerRemoved;
         _logWatcher.Parser.CombatStarted += OnCombatStarted;
         _logWatcher.Parser.CombatEnded += OnCombatEnded;
         
@@ -2333,14 +2325,9 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         _logWatcher.ErrorOccurred += OnWatcherError;
         _logWatcher.LogFileNotFound += OnLogFileNotFound;
         
-        _updateTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(50)
-        };
-        _updateTimer.Tick += UpdateTimer_Tick;
-        _updateTimer.Start();
-        
+        // Subscribe before reading. The file watcher already drives the parser.
         _isInitialized = true;
+        _logWatcher.StartWatching(_logPath);
         Logger.Info("KikimeterWindow", "Surveillance du log démarrée avec succès");
         }
         finally
@@ -2366,14 +2353,7 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         
         Logger.Info("KikimeterWindow", $"Mise à jour du chemin de log: '{_logPath}' -> '{newLogPath}'");
         
-        // Arrêter l'ancienne surveillance
-        if (_logWatcher != null)
-        {
-            _logWatcher.StopWatching();
-            _logWatcher.Dispose();
-            _logWatcher = null;
-        }
-        
+        // StartWatching detaches the previous parser before replacing it.
         // Mettre à jour le chemin
         _logPath = newLogPath;
         
@@ -2395,46 +2375,14 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         {
             try
         {
+            if (!ReferenceEquals(sender, _logWatcher?.Parser))
+                return;
             var existing = _playersCollection.FirstOrDefault(p => string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase));
             if (existing == null)
             {
                     Logger.Info("KikimeterWindow", $"Ajout du nouveau joueur: {player.Name} (Total avant: {_playersCollection.Count})");
                 
-                // Initialiser les propriétés de gestion des joueurs depuis le polling JSON
-                if (_playerDataProvider != null)
-                {
-                    var currentPlayers = _playerDataProvider.GetCurrentPlayers();
-                    var playerData = currentPlayers.Values.FirstOrDefault(p => 
-                        string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(p.Id, player.PlayerId.ToString(), StringComparison.OrdinalIgnoreCase));
-                    
-                    if (playerData != null)
-                    {
-                        player.IsInGroup = playerData.IsInGroup;
-                        player.IsMainCharacter = playerData.IsMainCharacter;
-                        player.IsActive = playerData.IsActive;
-                        player.LastSeenInCombat = playerData.LastSeenInCombat != DateTime.MinValue 
-                            ? playerData.LastSeenInCombat 
-                            : DateTime.Now;
-                    }
-                    else
-                    {
-                        // Valeurs par défaut si non trouvé dans le JSON
-                        player.IsInGroup = false;
-                        player.IsMainCharacter = false;
-                        player.IsActive = true;
-                        player.LastSeenInCombat = DateTime.Now;
-                    }
-                }
-                else
-                {
-                    // Valeurs par défaut si le service n'est pas encore initialisé
-                    player.IsInGroup = false;
-                    player.IsMainCharacter = false;
-                    player.IsActive = true;
-                    player.LastSeenInCombat = DateTime.Now;
-                }
-                
+                // Use the parser's original live stats.
                 _playersCollection.Add(player);
                     Logger.Info("KikimeterWindow", $"Joueur ajouté avec succès. Total maintenant: {_playersCollection.Count}");
                 player.PropertyChanged += Player_PropertyChanged;
@@ -2456,7 +2404,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 {
                     ApplyManualOrderIfNeeded();
                 }
-                UpdateLootWindowCombatPlayers();
                     UpdatePreviewVisibility();
                     UpdateWindowHeight();
             }
@@ -2466,6 +2413,8 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 int index = _playersCollection.IndexOf(existing);
                 existing.PropertyChanged -= Player_PropertyChanged;
                 player.ManualOrder = existing.ManualOrder;
+                player.IsMainCharacter = existing.IsMainCharacter;
+                player.IsInGroup = existing.IsInGroup;
                 _manualOrderMap[player.Name] = player.ManualOrder;
                 _playersCollection[index] = player;
                 player.PropertyChanged += Player_PropertyChanged;
@@ -2473,7 +2422,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                 {
                     ApplyManualOrderIfNeeded();
                 }
-                UpdateLootWindowCombatPlayers();
                     UpdatePreviewVisibility();
                     UpdateWindowHeight();
                 }
@@ -2491,6 +2439,22 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         });
     }
     
+    private void OnPlayerRemoved(object? sender, string name)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (!ReferenceEquals(sender, _logWatcher?.Parser))
+                return;
+            var player = _playersCollection.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (player == null)
+                return;
+            player.PropertyChanged -= Player_PropertyChanged;
+            _playersCollection.Remove(player);
+            UpdatePreviewVisibility();
+            UpdateWindowHeight();
+        });
+    }
+
     private void OnExperienceGained(object? sender, XpGainEvent e)
     {
         _lastXpEvents[e.EntityName] = e;
@@ -2963,8 +2927,10 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     {
         Dispatcher.Invoke(() =>
         {
-            // Signaler qu'un nouveau combat commence (le dégel sera fait dans InitializePlayersForNewCombat)
-            _isNewCombat = true;
+            if (!ReferenceEquals(sender, _logWatcher?.Parser))
+                return;
+            _isNewCombat = false;
+            _freezeAfterCombat = false;
             Logger.Info("KikimeterWindow", "Nouveau combat détecté – initialisation complète des joueurs");
             
             // Fermer toutes les fenêtres individuelles du combat précédent
@@ -2986,19 +2952,14 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             }
             catch { }
             
-            // Réinitialiser les statistiques des joueurs existants
-            foreach (var player in _playersCollection)
+            // The parser has already reset its counters. Remove detached rows from a previous log path.
+            var livePlayers = _logWatcher!.Parser.GetPlayerSnapshot();
+            foreach (var row in _playersCollection.Where(p => !livePlayers.Contains(p)).ToList())
             {
-                player.DamageDealt = 0;
-                player.DamageTaken = 0;
-                player.HealingDone = 0;
-                player.ShieldGiven = 0;
-                player.DamageBySummon = 0;
-                player.DamageByAOE = 0;
-                player.NumberOfTurns = 0;
-                player.ResetTurnDamage();
+                row.PropertyChanged -= Player_PropertyChanged;
+                _playersCollection.Remove(row);
             }
-            
+
             // Réinitialiser le flag du premier tour complet
             _firstTurnComplete = false;
             
@@ -3006,7 +2967,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             _playerKikis.Clear();
             
             // Mettre à jour LootWindow pour réinitialiser les joueurs du combat
-            UpdateLootWindowCombatPlayers();
             
             // Réinitialiser les valeurs max affichées et cibles (progress bars)
             _displayedMaxDamage = 10000;
@@ -3035,315 +2995,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     }
     
     /// <summary>
-    /// Met à jour LootWindow avec les joueurs du combat actuel
-    /// IMPORTANT: Cette méthode est UNIDIRECTIONNELLE (Kikimeter → Loot)
-    /// Le loot ne doit JAMAIS être une source de vérité pour la présence des joueurs
-    /// </summary>
-    private void UpdateLootWindowCombatPlayers()
-    {
-        // Ne pas mettre à jour pendant un reset ou si non initialisé
-        if (_isResetInProgress || !_isInitialized)
-        {
-            return;
-        }
-
-        try
-        {
-            var lootWindow = System.Windows.Application.Current.Windows
-                .OfType<LootWindow>()
-                .FirstOrDefault();
-
-            if (lootWindow == null)
-            {
-                return;
-            }
-
-            // UNIQUEMENT envoyer les joueurs du Kikimeter vers LootWindow
-            // Le loot utilise ces informations pour afficher les loots, mais ne crée jamais de joueurs
-            // Récupérer depuis la collection centrale (même si figé après combat, on envoie quand même)
-            var players = _playersCollection
-                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
-                .Select(p => p.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (players.Count > 0)
-            {
-                // Envoi unidirectionnel : Kikimeter → Loot (pour affichage des loots uniquement)
-                lootWindow.RegisterCombatPlayers(players);
-                Logger.Debug("KikimeterWindow", $"Joueurs envoyés à LootWindow: {players.Count} joueurs");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("KikimeterWindow", $"Erreur dans UpdateLootWindowCombatPlayers: {ex.Message}");
-        }
-    }
-
-    private void ResyncPlayersFromParser()
-    {
-        try
-        {
-            if (_logWatcher?.Parser == null)
-            {
-                return;
-            }
-
-            var parserPlayers = _logWatcher.Parser.PlayerStats.Values
-                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
-                .ToList();
-
-            foreach (var parserPlayer in parserPlayers)
-            {
-                var existing = _playersCollection
-                    .FirstOrDefault(p => string.Equals(p.Name, parserPlayer.Name, StringComparison.OrdinalIgnoreCase));
-
-                if (existing == null)
-                {
-                    _playersCollection.Add(parserPlayer);
-                    parserPlayer.PropertyChanged += Player_PropertyChanged;
-                }
-                else if (!ReferenceEquals(existing, parserPlayer))
-                {
-                    existing.PropertyChanged -= Player_PropertyChanged;
-                    var index = _playersCollection.IndexOf(existing);
-                    _playersCollection[index] = parserPlayer;
-                    parserPlayer.PropertyChanged += Player_PropertyChanged;
-                }
-            }
-        }
-        catch (Exception resyncEx)
-        {
-            Logger.Error("KikimeterWindow", $"Erreur lors de la resynchronisation des joueurs: {resyncEx.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Initialise complètement les joueurs pour un nouveau combat
-    /// Reset du Kikimeter (progress bars et ordre de tour)
-    /// Ajout complet des joueurs présents (JSON ou LogParser)
-    /// Activation du suivi dynamique pour le combat
-    /// </summary>
-    private void InitializePlayersForNewCombat()
-    {
-        if (_playerDataProvider == null || _playerManagementService == null)
-            return;
-
-        try
-        {
-            Logger.Info("KikimeterWindow", "Début nouveau combat – initialisation joueurs");
-            
-            // DÉGELER le Kikimeter pour le nouveau combat (même si figé après le combat précédent)
-            _freezeAfterCombat = false;
-
-            // Récupérer tous les joueurs actuellement en combat depuis le provider
-            var currentPlayerData = _playerDataProvider.GetCurrentPlayers();
-            var playersInCombat = _playerDataProvider.GetPlayersInCombat();
-
-            Logger.Debug("KikimeterWindow", $"Synchronisation initiale: {currentPlayerData.Count} joueurs dans JSON, {playersInCombat.Count} en combat");
-
-            // ÉTAPE 1: Réinitialiser les stats de tous les joueurs existants
-            foreach (var player in _playersCollection)
-            {
-                player.DamageDealt = 0;
-                player.DamageTaken = 0;
-                player.HealingDone = 0;
-                player.ShieldGiven = 0;
-                player.DamageBySummon = 0;
-                player.DamageByAOE = 0;
-                player.NumberOfTurns = 0;
-                player.ResetTurnDamage();
-            }
-
-            // ÉTAPE 2: Synchroniser TOUS les joueurs actifs du combat (JSON + LogParser)
-            // IMPORTANT: Ne jamais filtrer sur IsMainCharacter seul - afficher tous les joueurs actifs
-            var playersToKeep = new HashSet<PlayerStats>();
-            var now = DateTime.Now;
-            
-            // Étape 2a: Ajouter/mettre à jour tous les joueurs actifs depuis le JSON
-            foreach (var playerData in currentPlayerData.Values)
-            {
-                // Inclure tous les joueurs actifs (pas seulement IsMainCharacter)
-                if (!playerData.IsActive)
-                    continue;
-
-                // Chercher un joueur existant par nom ou ID
-                var existing = _playersCollection.FirstOrDefault(p =>
-                    string.Equals(p.Name, playerData.Name, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(p.PlayerId.ToString(), playerData.Id, StringComparison.OrdinalIgnoreCase));
-
-                if (existing != null)
-                {
-                    // Mettre à jour le joueur existant avec les données du provider
-                    _playerManagementService.UpdatePlayerFromJson(existing, playerData);
-                    existing.LastSeenInCombat = now;
-                    existing.IsActive = true;
-                    playersToKeep.Add(existing);
-                    Logger.Debug("KikimeterWindow", $"Joueur existant mis à jour pour nouveau combat: {playerData.Name}");
-                }
-                else
-                {
-                    // Créer un nouveau joueur depuis les données JSON
-                    var newPlayer = new PlayerStats
-                    {
-                        Name = playerData.Name,
-                        PlayerId = long.TryParse(playerData.Id, out var id) ? id : 0,
-                        IsInGroup = playerData.IsInGroup,
-                        IsMainCharacter = playerData.IsMainCharacter,
-                        IsActive = playerData.IsActive,
-                        LastSeenInCombat = now
-                    };
-
-                    _playersCollection.Add(newPlayer);
-                    newPlayer.PropertyChanged += Player_PropertyChanged;
-                    playersToKeep.Add(newPlayer);
-                    Logger.Info("KikimeterWindow", $"Joueur ajouté au Kikimeter : {playerData.Name}");
-                }
-            }
-            
-            // Étape 2b: S'assurer que TOUS les joueurs actifs en combat sont présents
-            // (même s'ils ne sont pas encore dans currentPlayerData mais détectés par LogParser)
-            foreach (var playerNameOrId in playersInCombat)
-            {
-                // Vérifier si ce joueur est déjà dans la collection
-                var existing = _playersCollection.FirstOrDefault(p =>
-                    string.Equals(p.Name, playerNameOrId, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(p.PlayerId.ToString(), playerNameOrId, StringComparison.OrdinalIgnoreCase));
-
-                if (existing == null)
-                {
-                    // Joueur actif en combat mais pas encore dans la collection
-                    // Essayer de le trouver dans le LogParser si disponible
-                    if (_logWatcher?.Parser != null)
-                    {
-                        var parserStats = _logWatcher.Parser.PlayerStats.Values
-                            .FirstOrDefault(p => 
-                                string.Equals(p.Name, playerNameOrId, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(p.PlayerId.ToString(), playerNameOrId, StringComparison.OrdinalIgnoreCase));
-
-                        if (parserStats != null)
-                        {
-                            // Créer un nouveau joueur depuis le LogParser
-                            var newPlayer = new PlayerStats
-                            {
-                                Name = parserStats.Name,
-                                PlayerId = parserStats.PlayerId,
-                                Breed = parserStats.Breed,
-                                ClassName = parserStats.ClassName,
-                                IsActive = true,
-                                IsInGroup = parserStats.IsInGroup,
-                                IsMainCharacter = parserStats.IsMainCharacter,
-                                LastSeenInCombat = now
-                            };
-
-                            _playersCollection.Add(newPlayer);
-                            newPlayer.PropertyChanged += Player_PropertyChanged;
-                            playersToKeep.Add(newPlayer);
-                            Logger.Info("KikimeterWindow", $"Joueur ajouté au Kikimeter : {newPlayer.Name} (depuis LogParser)");
-                        }
-                    }
-                }
-                else
-                {
-                    // Mettre à jour le joueur existant pour s'assurer qu'il est actif
-                    existing.IsActive = true;
-                    existing.LastSeenInCombat = now;
-                    playersToKeep.Add(existing);
-                }
-            }
-
-            // ÉTAPE 4: Retirer les joueurs qui ne sont plus dans le combat
-            // MAIS conserver le personnage principal et les joueurs du groupe
-            var playersToRemove = new List<PlayerStats>();
-            foreach (var player in _playersCollection.ToList())
-            {
-                // Ne jamais retirer le personnage principal
-                if (player.IsMainCharacter)
-                {
-                    playersToKeep.Add(player);
-                    continue;
-                }
-
-                // Ne jamais retirer les joueurs du groupe
-                if (player.IsInGroup)
-                {
-                    playersToKeep.Add(player);
-                    continue;
-                }
-
-                // Retirer uniquement si le joueur n'est pas dans la liste à conserver
-                if (!playersToKeep.Contains(player))
-                {
-                    playersToRemove.Add(player);
-                }
-            }
-
-            // Retirer les joueurs identifiés
-            foreach (var player in playersToRemove)
-            {
-                try
-                {
-                    player.PropertyChanged -= Player_PropertyChanged;
-                    _playersCollection.Remove(player);
-                    Logger.Debug("KikimeterWindow", $"Joueur retiré pour nouveau combat: {player.Name}");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("KikimeterWindow", $"Erreur lors de la suppression de '{player.Name}' pour nouveau combat: {ex.Message}");
-                }
-            }
-
-            // ÉTAPE 5: Sélection automatique du personnage principal si aucun n'est défini
-            if (_playerManagementService != null)
-            {
-                var hasMainCharacter = _playersCollection.Any(p => p.IsMainCharacter);
-                if (!hasMainCharacter && _playersCollection.Count > 0)
-                {
-                    // Sélectionner automatiquement le premier joueur actif du groupe
-                    var firstGroupPlayer = _playersCollection
-                        .Where(p => p.IsActive && p.IsInGroup)
-                        .OrderBy(p => p.LastSeenInCombat)
-                        .FirstOrDefault();
-                        
-                    if (firstGroupPlayer != null)
-                    {
-                        _playerManagementService.SetMainCharacter(firstGroupPlayer.Name);
-                        Logger.Info("KikimeterWindow", $"Personnage principal : {firstGroupPlayer.Name}");
-                    }
-                    else
-                    {
-                        // Si aucun joueur du groupe, sélectionner le premier joueur actif
-                        var firstActivePlayer = _playersCollection
-                            .Where(p => p.IsActive)
-                            .OrderBy(p => p.LastSeenInCombat)
-                            .FirstOrDefault();
-                            
-                        if (firstActivePlayer != null)
-                        {
-                            _playerManagementService.SetMainCharacter(firstActivePlayer.Name);
-                            Logger.Info("KikimeterWindow", $"Personnage principal : {firstActivePlayer.Name}");
-                        }
-                    }
-                }
-            }
-
-            // ÉTAPE 6: Réinitialiser les progress bars (déjà fait dans OnCombatStarted, mais on s'assure)
-            _displayedMaxDamage = 10000;
-            _displayedMaxDamageTaken = 10000;
-            _displayedMaxHealing = 10000;
-            _displayedMaxShield = 10000;
-
-            Logger.Info("KikimeterWindow", $"Initialisation terminée: {_playersCollection.Count} joueurs prêts pour le nouveau combat - Suivi dynamique activé");
-            
-            // Notifier LootWindow des joueurs du nouveau combat (via l'event PlayersChanged)
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("KikimeterWindow", $"Erreur lors de la synchronisation initiale pour nouveau combat: {ex.Message}");
-        }
-    }
-    
-    /// <summary>
     /// Appelé lorsque la liste des joueurs change dans PlayerManagementService
     /// Notifie automatiquement LootWindow et SettingsWindow
     /// </summary>
@@ -3354,7 +3005,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
             try
             {
                 // Notifier LootWindow des joueurs actuels
-                UpdateLootWindowCombatPlayers();
                 
                 Logger.Debug("KikimeterWindow", $"PlayersChanged event reçu - {_playersCollection.Count} joueurs");
             }
@@ -3385,196 +3035,12 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
         }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    /// <summary>
-    /// Synchronise les joueurs pendant le combat avec une mise à jour en diff
-    /// Ajoute les nouveaux joueurs détectés, retire uniquement les absents (sauf personnage principal)
-    /// Ne vide JAMAIS la collection entièrement pendant le combat
-    /// </summary>
-    private void SyncPlayersDuringCombat()
-    {
-        if (_playerDataProvider == null || _playerManagementService == null)
-            return;
-
-        // Ne pas synchroniser si le Kikimeter est figé après le combat
-        // MAIS permettre la synchronisation si c'est un nouveau combat (initialisation)
-        if (_freezeAfterCombat && !_isNewCombat)
-        {
-            Logger.Debug("KikimeterWindow", "Synchronisation suspendue car le Kikimeter est figé après le combat");
-            return;
-        }
-
-        try
-        {
-            // Récupérer les joueurs actuellement en combat depuis le provider
-            var currentPlayerData = _playerDataProvider.GetCurrentPlayers();
-            var playersInCombat = _playerDataProvider.GetPlayersInCombat();
-
-            Logger.Debug("KikimeterWindow", $"Synchronisation pendant combat: {currentPlayerData.Count} joueurs dans JSON, {playersInCombat.Count} en combat");
-
-            // ÉTAPE 1: Ajouter TOUS les nouveaux joueurs actifs détectés (JSON + LogParser)
-            // IMPORTANT: Ne jamais filtrer sur IsMainCharacter seul - afficher tous les joueurs actifs
-            var now = DateTime.Now;
-            
-            // Étape 1a: Ajouter/mettre à jour les joueurs actifs depuis le JSON
-            foreach (var playerData in currentPlayerData.Values)
-            {
-                // Vérifier si le joueur existe déjà dans la collection
-                var existing = _playersCollection.FirstOrDefault(p =>
-                    string.Equals(p.Name, playerData.Name, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(p.PlayerId.ToString(), playerData.Id, StringComparison.OrdinalIgnoreCase));
-
-                if (existing == null && playerData.IsActive)
-                {
-                    // Créer un nouveau joueur depuis les données JSON
-                    var newPlayer = new PlayerStats
-                    {
-                        Name = playerData.Name,
-                        PlayerId = long.TryParse(playerData.Id, out var id) ? id : 0,
-                        IsInGroup = playerData.IsInGroup,
-                        IsMainCharacter = playerData.IsMainCharacter,
-                        IsActive = playerData.IsActive,
-                        LastSeenInCombat = playerData.LastSeenInCombat != DateTime.MinValue ? playerData.LastSeenInCombat : now
-                    };
-
-                    _playersCollection.Add(newPlayer);
-                    newPlayer.PropertyChanged += Player_PropertyChanged;
-                    Logger.Info("KikimeterWindow", $"Joueur ajouté au Kikimeter : {playerData.Name}");
-                    
-                    // Sélection automatique du personnage principal si aucun n'est défini
-                    if (_playerManagementService != null && !_playersCollection.Any(p => p.IsMainCharacter))
-                    {
-                        _playerManagementService.SetMainCharacter(newPlayer.Name);
-                        Logger.Info("KikimeterWindow", $"Personnage principal : {newPlayer.Name}");
-                    }
-                }
-                else if (existing != null)
-                {
-                    // Mettre à jour les propriétés du joueur existant
-                    _playerManagementService.UpdatePlayerFromJson(existing, playerData);
-                    
-                    // Si le joueur est dans le combat actuel, mettre à jour LastSeenInCombat
-                    if (playersInCombat.Contains(playerData.Name) || playersInCombat.Contains(playerData.Id))
-                    {
-                        existing.LastSeenInCombat = now;
-                        existing.IsActive = true;
-                    }
-                }
-            }
-            
-            // Étape 1b: S'assurer que TOUS les joueurs actifs en combat sont présents
-            // (même s'ils ne sont pas encore dans currentPlayerData mais détectés par LogParser)
-            foreach (var playerNameOrId in playersInCombat)
-            {
-                // Vérifier si ce joueur est déjà dans la collection
-                var existing = _playersCollection.FirstOrDefault(p =>
-                    string.Equals(p.Name, playerNameOrId, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(p.PlayerId.ToString(), playerNameOrId, StringComparison.OrdinalIgnoreCase));
-
-                if (existing == null)
-                {
-                    // Joueur actif en combat mais pas encore dans la collection
-                    // Essayer de le trouver dans le LogParser si disponible
-                    if (_logWatcher?.Parser != null)
-                    {
-                        var parserStats = _logWatcher.Parser.PlayerStats.Values
-                            .FirstOrDefault(p => 
-                                string.Equals(p.Name, playerNameOrId, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(p.PlayerId.ToString(), playerNameOrId, StringComparison.OrdinalIgnoreCase));
-
-                        if (parserStats != null)
-                        {
-                            // Créer un nouveau joueur depuis le LogParser
-                            var newPlayer = new PlayerStats
-                            {
-                                Name = parserStats.Name,
-                                PlayerId = parserStats.PlayerId,
-                                Breed = parserStats.Breed,
-                                ClassName = parserStats.ClassName,
-                                IsActive = true,
-                                IsInGroup = parserStats.IsInGroup,
-                                IsMainCharacter = parserStats.IsMainCharacter,
-                                LastSeenInCombat = now
-                            };
-
-                            _playersCollection.Add(newPlayer);
-                            newPlayer.PropertyChanged += Player_PropertyChanged;
-                            Logger.Info("KikimeterWindow", $"Joueur ajouté au Kikimeter : {newPlayer.Name} (depuis LogParser)");
-                            
-                            // Sélection automatique du personnage principal si aucun n'est défini
-                            if (_playerManagementService != null && !_playersCollection.Any(p => p.IsMainCharacter))
-                            {
-                                _playerManagementService.SetMainCharacter(newPlayer.Name);
-                                Logger.Info("KikimeterWindow", $"Personnage principal : {newPlayer.Name}");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // Mettre à jour le joueur existant pour s'assurer qu'il est actif
-                    existing.IsActive = true;
-                    existing.LastSeenInCombat = now;
-                }
-            }
-
-            // ÉTAPE 2: Retirer uniquement les joueurs absents (sauf personnage principal et joueurs du groupe)
-            // Ne jamais vider la collection entièrement pendant le combat
-            var playersToRemove = new List<PlayerStats>();
-            foreach (var player in _playersCollection.ToList())
-            {
-                // Ne jamais retirer le personnage principal
-                if (player.IsMainCharacter)
-                {
-                    continue;
-                }
-
-                // Ne jamais retirer les joueurs du groupe
-                if (player.IsInGroup)
-                {
-                    continue;
-                }
-
-                // Vérifier si le joueur est toujours dans les données JSON ou en combat
-                var existsInJson = currentPlayerData.Values.Any(p =>
-                    string.Equals(p.Name, player.Name, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(p.Id, player.PlayerId.ToString(), StringComparison.OrdinalIgnoreCase));
-
-                var isInCombat = playersInCombat.Contains(player.Name) || playersInCombat.Contains(player.PlayerId.ToString());
-
-                // Retirer uniquement si le joueur n'est ni dans le JSON ni en combat
-                if (!existsInJson && !isInCombat)
-                {
-                    playersToRemove.Add(player);
-                }
-            }
-
-            // Retirer les joueurs identifiés
-            foreach (var player in playersToRemove)
-            {
-                try
-                {
-                    player.PropertyChanged -= Player_PropertyChanged;
-                    _playersCollection.Remove(player);
-                    Logger.Info("KikimeterWindow", $"Joueur retiré du Kikimeter : {player.Name}");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("KikimeterWindow", $"Erreur lors de la suppression de '{player.Name}' pendant combat: {ex.Message}");
-                }
-            }
-
-            Logger.Debug("KikimeterWindow", $"Synchronisation pendant combat terminée: {_playersCollection.Count} joueurs affichés");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("KikimeterWindow", $"Erreur lors de la synchronisation pendant combat: {ex.Message}");
-        }
-    }
-    
     private void OnCombatEnded(object sender, EventArgs e)
     {
         Dispatcher.Invoke(() =>
         {
+            if (!ReferenceEquals(sender, _logWatcher?.Parser))
+                return;
             // Ne pas nettoyer pendant un reset serveur
             if (_isResetInProgress)
             {
@@ -3611,7 +3077,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
                     // Le nettoyage sera effectué au début du prochain combat dans OnCombatStarted
                     
                     // Mettre à jour la fenêtre de loot avec les joueurs restants (unidirectionnel)
-                    UpdateLootWindowCombatPlayers();
                     
                     // Mettre à jour la hauteur de la fenêtre si nécessaire
                     UpdateWindowHeight();
@@ -3681,115 +3146,6 @@ public partial class KikimeterWindow : Window, INotifyPropertyChanged
     
     private DateTime _lastArrowUpdateTime = DateTime.MinValue;
     
-    private void UpdateTimer_Tick(object sender, EventArgs e)
-    {
-        try
-        {
-            if (_logWatcher != null)
-            {
-                Task.Run(() =>
-                {
-                    try
-                    {
-                        _logWatcher.ManualRead();
-                    }
-                    catch (Exception ex2)
-                    {
-                        Logger.Error("KikimeterWindow", $"Erreur lors de ManualRead: {ex2.Message}");
-                    }
-                });
-            }
-            
-            // Mise à jour en diff pendant le combat (ajout/retrait uniquement des joueurs nécessaires)
-            // Ne jamais vider la collection entièrement pendant le combat
-            var now = DateTime.Now;
-            if (_playerManagementService != null && 
-                _playerDataProvider != null &&
-                _isInitialized &&
-                !_isResetInProgress)
-            {
-                var isCombatActive = _playerDataProvider.IsCombatActive;
-
-                // Filet de sécurité:
-                // si un combat est actif mais que le Kikimeter est resté figé (événement CombatStarted manqué),
-                // on force la reprise pour réinitialiser correctement les compteurs.
-                if (isCombatActive && _freezeAfterCombat && !_isNewCombat)
-                {
-                    Logger.Warning("KikimeterWindow", "Combat actif détecté alors que le Kikimeter est figé: reprise forcée du suivi.");
-                    _isNewCombat = true;
-                    _freezeAfterCombat = false;
-                }
-                
-                // NOUVEAU COMBAT : Initialisation complète (une seule fois)
-                // Le flag _freezeAfterCombat est ignoré pour permettre l'initialisation
-                if (_isNewCombat && isCombatActive)
-                {
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            InitializePlayersForNewCombat();
-                            _isNewCombat = false; // Après initialisation, passer en mode diff normal
-                        }
-                        catch (Exception initEx)
-                        {
-                            Logger.Error("KikimeterWindow", $"Erreur lors de l'initialisation pour nouveau combat: {initEx.Message}");
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Background);
-                }
-                else if (isCombatActive && !_isNewCombat && !_freezeAfterCombat)
-                {
-                    // PENDANT LE COMBAT : Mise à jour en diff uniquement
-                    // Ajouter les nouveaux joueurs détectés, retirer uniquement les absents (sauf personnage principal)
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            Logger.Debug("KikimeterWindow", "Mise à jour en diff pendant combat");
-                            SyncPlayersDuringCombat();
-                        }
-                        catch (Exception syncEx)
-                        {
-                            Logger.Error("KikimeterWindow", $"Erreur lors de la synchronisation pendant le combat: {syncEx.Message}");
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Background);
-                }
-                else if (!isCombatActive && !_freezeAfterCombat && (now - _lastPlayerSyncTime).TotalSeconds >= PlayerSyncIntervalSeconds)
-                {
-                    // HORS COMBAT : Synchronisation périodique complète (toutes les 5 secondes)
-                    // Seulement si le Kikimeter n'est pas figé
-                    _lastPlayerSyncTime = now;
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            Logger.Debug("KikimeterWindow", "Synchronisation périodique hors combat");
-                            _playerManagementService.SyncPlayersWithJson(_playersCollection, skipIfResetting: true);
-                        }
-                        catch (Exception syncEx)
-                        {
-                            Logger.Error("KikimeterWindow", $"Erreur lors de la synchronisation périodique: {syncEx.Message}");
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Background);
-                }
-            }
-            
-            // Log de debug si figé après combat
-            if (_freezeAfterCombat && !_isNewCombat)
-            {
-                Logger.Debug("KikimeterWindow", "Kikimeter figé après combat");
-            }
-            
-            // Mettre à jour la position de la flèche collapse périodiquement (toutes les 500ms)
-            // pour s'adapter aux changements de taille de la barre (ex: DPT qui change)
-            // La flèche est maintenant en position fixe, plus besoin de mise à jour périodique
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("KikimeterWindow", $"Erreur dans UpdateTimer_Tick: {ex.Message}");
-        }
-    }
-
     private void ParseLogLine(string line)
     {
         // Patterns pour détecter les kikis dans les logs Wakfu

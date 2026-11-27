@@ -23,7 +23,9 @@ public class LogParser
     private readonly HashSet<string> _currentCombatPlayers;
     private HashSet<string> _playersPendingRemoval;
     private bool _rosterFinalized;
-    private CombatState _currentState;
+    private volatile CombatState _currentState;
+    private PlayerStats[] _playerSnapshot = Array.Empty<PlayerStats>();
+    private string[] _combatPlayerKeys = Array.Empty<string>();
 
     private static readonly string UnaccountedLogPath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory,
@@ -138,6 +140,23 @@ public class LogParser
     public Dictionary<string, PlayerStats> PlayerStats => _playerStats;
     
     public CombatContext CombatContext => _combatContext;
+
+    // Publish membership on the parser thread; readers never enumerate the mutable roster.
+    public PlayerStats[] GetPlayerSnapshot() =>
+        System.Threading.Volatile.Read(ref _playerSnapshot).ToArray();
+
+    public HashSet<string> GetCombatPlayerKeys() =>
+        new HashSet<string>(System.Threading.Volatile.Read(ref _combatPlayerKeys), StringComparer.OrdinalIgnoreCase);
+
+    private void PublishRoster()
+    {
+        System.Threading.Volatile.Write(ref _playerSnapshot, _playerStats.Values.ToArray());
+        var keys = _currentCombatPlayers
+            .Where(name => _playerStats.ContainsKey(name))
+            .SelectMany(name => new[] { name, _playerStats[name].PlayerId.ToString(CultureInfo.InvariantCulture) })
+            .ToArray();
+        System.Threading.Volatile.Write(ref _combatPlayerKeys, keys);
+    }
     
     /// <summary>
     /// Traite une ligne de log
@@ -331,6 +350,7 @@ public class LogParser
     
     private void HandleCombatEnd()
     {
+        EnsureRosterFinalized();
         _currentState = CombatState.Terminated;
         Logger.Info(LogCategory, "Fin de combat détectée");
         CombatEnded?.Invoke(this, EventArgs.Empty);
@@ -367,7 +387,6 @@ public class LogParser
             }
         
         _playerStats[playerName] = stats;
-        PlayerAdded?.Invoke(this, stats);
         }
         else
         {
@@ -388,8 +407,13 @@ public class LogParser
             }
         }
 
-        _currentCombatPlayers.Add(playerName);
+        bool firstJoin = _currentCombatPlayers.Add(playerName);
+        stats.IsActive = true;
+        stats.LastSeenInCombat = DateTime.Now;
         _playersPendingRemoval.Remove(playerName);
+        PublishRoster();
+        if (firstJoin)
+            PlayerAdded?.Invoke(this, stats);
 
         if (_playersPendingRemoval.Count == 0)
         {
@@ -946,6 +970,7 @@ public class LogParser
         _playersPendingRemoval = new HashSet<string>(_playerStats.Keys, StringComparer.OrdinalIgnoreCase);
         _rosterFinalized = _playersPendingRemoval.Count == 0;
         _currentState = CombatState.Waiting;
+        PublishRoster();
     }
 
     private void EnsureRosterFinalized()
@@ -966,6 +991,7 @@ public class LogParser
         {
             if (_playerStats.Remove(player))
             {
+                PublishRoster();
                 PlayerRemoved?.Invoke(this, player);
                 Logger.Info(LogCategory, $"Joueur retiré du nouveau combat: {player}");
             }

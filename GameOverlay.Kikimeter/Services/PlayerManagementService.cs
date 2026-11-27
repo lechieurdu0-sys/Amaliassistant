@@ -57,6 +57,13 @@ public class PlayerManagementService
         OnPlayersChanged();
     }
     
+    public void DetachPlayersCollection()
+    {
+        if (_playersCollection != null)
+            _playersCollection.CollectionChanged -= PlayersCollection_CollectionChanged;
+        _playersCollection = null;
+    }
+
     private void PlayersCollection_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         OnPlayersChanged();

@@ -22,7 +22,8 @@ internal static class Program
             ("Reset refreshes server baseline", ServerReset),
             ("Catalog manifest preflight", CatalogManifestRegression.Run),
             ("Wakfu catalog authority and ambiguity", WakfuCatalogRegression.Run),
-            ("Virtual desktop canvas positioning", OverlayCanvasRegression.Run)
+            ("Virtual desktop canvas positioning", OverlayCanvasRegression.Run),
+            ("Combat roster comes from log events", CombatRosterRegression.Run)
         };
         int failures = 0;
         foreach (var test in cases)

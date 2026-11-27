@@ -28,9 +28,8 @@ public class LogParserPlayerDataProvider : IPlayerDataProvider
         try
         {
             // Récupérer les joueurs depuis le LogParser
-            foreach (var kvp in _logParser.PlayerStats)
+            foreach (var playerStats in _logParser.GetPlayerSnapshot())
             {
-                var playerStats = kvp.Value;
                 var playerData = new PlayerData
                 {
                     Id = playerStats.PlayerId.ToString(),
@@ -57,34 +56,7 @@ public class LogParserPlayerDataProvider : IPlayerDataProvider
 
     public HashSet<string> GetPlayersInCombat()
     {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        try
-        {
-            // Récupérer les joueurs actuellement en combat depuis le LogParser
-            // Le LogParser maintient une liste _currentCombatPlayers, mais elle n'est pas exposée
-            // On utilise donc les PlayerStats qui ont été mis à jour récemment
-            var recentThreshold = DateTime.Now.AddSeconds(-60); // Joueurs vus dans les 60 dernières secondes
-
-            foreach (var kvp in _logParser.PlayerStats)
-            {
-                var playerStats = kvp.Value;
-                
-                // Considérer comme en combat si le joueur a été vu récemment
-                if (playerStats.LastSeenInCombat >= recentThreshold || 
-                    _logParser.CurrentState == CombatState.Active)
-                {
-                    result.Add(playerStats.Name);
-                    result.Add(playerStats.PlayerId.ToString());
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(LogCategory, $"Erreur lors de la récupération des joueurs en combat: {ex.Message}");
-        }
-
-        return result;
+        return IsCombatActive ? _logParser.GetCombatPlayerKeys() : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
     public bool IsCombatActive => _logParser.CurrentState == CombatState.Active;

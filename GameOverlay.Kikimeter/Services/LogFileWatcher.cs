@@ -65,7 +65,7 @@ public class LogFileWatcher : IDisposable
             // Lire le fichier existant de manière asynchrone si le fichier existe déjà
             if (File.Exists(_logPath))
             {
-                System.Threading.Tasks.Task.Run(() => ReadExistingLog());
+                ReadExistingLog();
                 Logger.Info(LogCategory, $"Fichier existant détecté, lecture initiale démarrée");
             }
             else
